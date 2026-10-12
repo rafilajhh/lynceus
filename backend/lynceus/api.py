@@ -11,11 +11,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
-
 from lynceus import __version__
 from lynceus import audit
 from lynceus import decision
@@ -25,7 +25,27 @@ from lynceus import impact
 from lynceus import pipeline
 from lynceus.config import get_settings
 
-_WEB_DIR = Path(__file__).resolve().parents[2] / "web"
+_WEB_DIR = Path(__file__).resolve().parents[2] / "web" / "out"
+
+def _web_file(filename: str) -> Path:
+    """Absolute path of a static-export page inside ``web/out``."""
+    return _WEB_DIR / filename
+
+
+def _wants_html(request: Request) -> bool:
+    """Content negotiation for the pages that share a path with the API.
+
+    A browser navigation sends ``Accept: text/html,application/xhtml+xml,…``
+    (no ``application/json``); ``fetch`` from the demo frontend explicitly
+    sends ``Accept: application/json`` and a bare ``fetch`` defaults to
+    ``*/*``.  Rule: serve HTML only when ``text/html`` is offered AND
+    ``application/json`` is not explicitly preferred — the JSON API keeps
+    the path for every programmatic caller.
+    """
+    accept = request.headers.get("accept", "")
+    wants_html = "text/html" in accept.lower()
+    wants_json = "application/json" in accept.lower()
+    return wants_html and not wants_json
 
 class AssessRequest(BaseModel):
     """One waste batch, as the demo UI submits it."""
@@ -174,7 +194,10 @@ def _run_inspection_with_audit(
     photo_bytes = (
         request.photo_base64.encode("ascii") if request.photo_base64 else b""
     )
-    photo_filename = (
+    # Demo photos arrive as site URLs ("/demo/red-1.jpg"); the audit record
+    # stores a portable relative filename (invariant: no absolute paths),
+    # so keep only the basename. Real uploads already send bare names.
+    photo_filename = audit.safe_filename(
         request.photo_filename or "photo.jpg"
     )
     now = audit.now_utc()
@@ -386,7 +409,31 @@ def create_app() -> FastAPI:
             "status": "ok",
             "version": settings.version,
             "engine_available": engine_adapter.engine_available(),
+            # Consumed by the status chip's one-shot VLM liveness probe:
+            # the browser cannot read the backend's environment, so the
+            # configured endpoint is disclosed here (finding 5).
+            "vllm_vlm_url": settings.vllm_vlm_url,
         }
+
+    @app.get("/app", include_in_schema=False)
+    def serve_app_page() -> FileResponse:
+        """Demo-day hard-reload fix: ``/app`` must serve the workspace page.
+
+        ``StaticFiles(html=True)`` only maps ``/app`` → ``app/index.html``,
+        but the static export is a flat ``app.html`` — a refresh or a
+        direct URL previously hit the API 404 instead.  This explicit
+        route serves the file.
+        """
+        page = _web_file("app.html")
+        if not page.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "app_page_not_found",
+                    "message": "web/out/app.html is missing — build the web export.",
+                },
+            )
+        return FileResponse(page, media_type="text/html")
 
     @app.post("/assess")
     def assess(request: AssessRequest) -> dict[str, Any]:
@@ -448,6 +495,98 @@ def create_app() -> FastAPI:
                 status_code=500,
                 detail={"error": "audit_error", "message": str(exc)},
             ) from exc
+
+    @app.get("/inspections", response_model=None)
+    def list_inspections(request: Request) -> dict[str, Any] | FileResponse:
+        """Ledger view: one summary row per inspection, newest first.
+
+        ``list_inspections`` (audit) scans the filesystem and skips corrupt
+        records with ``ok: False`` — the listing never crashes.  For healthy
+        rows the verdict fields are read from the full record so the summary
+        stays consistent with what a strict decode would return.
+
+        Direct browser navigation (``Accept: text/html`` without an explicit
+        JSON preference) gets the static-export ledger page; the JSON API —
+        used by the frontend ``fetch`` (explicit ``application/json`` or the
+        ``*/*`` default) — is unchanged.
+        """
+        if _wants_html(request):
+            page = _web_file("inspections.html")
+            if page.is_file():
+                return FileResponse(page, media_type="text/html")
+            # No export to serve — fall through to the JSON API so a
+            # browser never gets a 404 where the API still works.
+        settings = get_settings()
+        rows: list[dict[str, Any]] = []
+        for entry in audit.list_inspections(settings.storage_dir):
+            if not entry.get("ok"):
+                continue
+            record_path = (
+                Path(settings.storage_dir) / entry["record_id"] / audit.RECORD_FILENAME
+            )
+            try:
+                record = audit.load_record(record_path)
+            except audit.AuditError:
+                # Listed ok but unreadable a moment later — skip, stay honest.
+                continue
+            states = {
+                gate: getattr(record.gates, gate).state for gate in audit.GATE_NAMES
+            }
+            rows.append(
+                {
+                    "record_id": record.record_id,
+                    "truck_id": record.inputs.truck_id,
+                    "decision": record.verdict.decision,
+                    "decided_at_utc": record.verdict.decided_at_utc,
+                    "prevented_loss_idr": impact.estimate_prevented_loss(
+                        record.verdict.decision,
+                        {"detected": record.ai_outputs.vlm.detected},
+                        record.inputs.weight.value_kg,
+                    )["prevented_loss_idr"],
+                    "gate_states": states,
+                }
+            )
+        # Newest inspection first: record_id is zero-padded, so a plain
+        # string sort matches numeric order.
+        rows.sort(key=lambda row: row["record_id"], reverse=True)
+        return {"inspections": rows}
+
+    @app.get("/inspections/{record_id}")
+    def get_inspection(record_id: str) -> dict[str, Any]:
+        """Full audit record for one inspection (strict decode).
+
+        The record_id is validated against the audit's own closed pattern
+        before it ever reaches the filesystem — ``../etc/passwd`` and
+        friends are rejected with 422, not probed on disk.
+        """
+        if not audit.RECORD_ID_RE.match(record_id):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "invalid_record_id",
+                    "message": (
+                        "record_id must match 'inspection-NNN' "
+                        f"(got {record_id!r})"
+                    ),
+                },
+            )
+        settings = get_settings()
+        record_path = (
+            Path(settings.storage_dir) / record_id / audit.RECORD_FILENAME
+        )
+        try:
+            record = audit.load_record(record_path)
+        except audit.AuditError as exc:
+            # Missing file (IO_ERROR) and strict-decode failures both mean
+            # "no servable record here" — 404, not a 500 crash.
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "record_not_found",
+                    "message": str(exc),
+                },
+            ) from exc
+        return record.model_dump()
 
 
     if _WEB_DIR.is_dir():

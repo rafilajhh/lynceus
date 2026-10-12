@@ -112,7 +112,7 @@ def test_escalate_without_moisture_reports_zero_honestly():
     vlm = _vlm(light=["plastic_film"], moisture=None)
     out = impact.estimate_prevented_loss("escalate_human", vlm, 5200.0)
     assert out["prevented_loss_idr"] == 0
-    assert "tidak dapat dihitung" in out["note"]
+    assert "cannot be estimated" in out["note"]
 
 
 def test_refuse_insufficient_input_never_invents_a_number():
@@ -139,3 +139,32 @@ def test_deterministic_output():
             verdict, copy.deepcopy(vlm), weight
         )
         assert first == second, verdict
+
+
+# ---------------------------------------------------------------------------
+# Presentation language: notes and basis labels are English (finding 3 —
+# Indonesian stays only in cited source names/places, never in UI copy).
+# ---------------------------------------------------------------------------
+
+
+def test_notes_and_labels_are_english_not_indonesian():
+    cases = [
+        ("reject", _vlm(hard=["metal"]), 5200.0),
+        ("escalate_human", _vlm(light=["wet_mix"], moisture=0.55), 5200.0),
+        ("escalate_human", _vlm(light=["plastic_film"], moisture=None), 5200.0),
+        ("accept", _vlm(), 5200.0),
+        ("accept", _vlm(), None),  # exercises the defaulted-weight basis row
+        ("refuse_insufficient_input", None, None),
+    ]
+    indonesian_markers = (
+        "dengan", "yang", "tidak", "adalah", "diteruskan", "muatan",
+        "kadar air", "kerugian", "jam ", " ton ", "ribu", "dicegah",
+        "konservatif", "harga", "nilai",
+    )
+    for verdict, vlm, weight in cases:
+        out = impact.estimate_prevented_loss(verdict, vlm, weight)
+        blob = out["note"] + " " + " ".join(
+            f"{row['label']} {row['value']}" for row in out["basis"]
+        ).lower()
+        for marker in indonesian_markers:
+            assert marker not in blob.lower(), (verdict, marker, blob)

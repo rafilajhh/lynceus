@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Lynceus — AI Gate Inspector</title>
+
+  <!-- IBM Plex Sans + Mono via Google Fonts CDN. Font CDN only —
+       NO CSS framework. Self-host swap-in is a drop-in later. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+  <!-- Foundation: tokens → base → shell. Other agents append route
+       stylesheets after shell.css. -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/shell.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ============ Persistent top bar ============ -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <h1 class="topbar-wordmark"><span class="glyph">◉</span>LYNCEUS</h1>
+        <span class="topbar-subtitle">AI Gate Inspector</span>
+      </div>
+
+      <nav class="topbar-nav" aria-label="Primary">
+        <a class="nav-link" href="#/app">Demo</a>
+        <a class="nav-link" href="#/inspections">Inspections</a>
+      </nav>
+
+      <!-- Live status chip: dot green "SYSTEMS NOMINAL" when /health ok,
+           red + error text when backend down. router.js polls /health. -->
+      <span id="status-chip" class="topbar-status is-checking" role="status"
+            aria-live="polite" aria-atomic="true">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-text">CHECKING</span>
+      </span>
+    </header>
+
+    <!-- ============ Router mount ============ -->
+    <!-- router.js renders the active route's .panel here. -->
+    <main id="view" class="view"></main>
+
+    <!-- ============ Footer ============ -->
+    <footer class="site-footer">
+      <p>Lynceus · AI on AMD GPU track · Verdicts are <code>screening_estimate</code>
+         for triage, not validated measurements. ISO 21640:2021 / EN 15359:2011 reference classes.</p>
+    </footer>
+  </div>
+
+  <script src="js/router.js" defer></script>
+</body>
+</html>

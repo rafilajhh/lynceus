@@ -203,6 +203,17 @@ def sha256_field(data: bytes) -> str:
     return value
 
 
+def safe_filename(name: str) -> str:
+    """Reduce any incoming photo path to a portable bare filename.
+
+    Demo clients may send site URLs ("/demo/red-1.jpg") or absolute paths;
+    the audit record's portability invariant allows neither. Keep only the
+    final path component and strip directory markers.
+    """
+    candidate = name.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    return candidate or "photo.jpg"
+
+
 def _validate_sha256_field(value: str, field: str) -> str:
     if not isinstance(value, str) or not SHA256_FIELD_RE.match(value):
         raise _err(

@@ -125,8 +125,8 @@ def _effective_weight_kg(
         return float(weight_kg)
     basis.append(
         _basis(
-            "Berat muatan default (arm roll)",
-            f"≈ {ARM_ROLL_TRIP_KG / 1000:.1f} ton/trip (14 m³ × 372,71 kg/m³)",
+            "Default load weight (arm roll)",
+            f"≈ {ARM_ROLL_TRIP_KG / 1000:.1f} tonnes/trip (14 m³ × 372.71 kg/m³)",
             _first_url(ARM_ROLL_SOURCE),
         )
     )
@@ -182,30 +182,30 @@ def estimate_prevented_loss(
         basis.extend(
             [
                 _basis(
-                    "Kerusakan shredder (1 unit)",
+                    "Shredder damage (1 unit)",
                     f"Rp {SHREDDER_COST_IDR:,.0f}",
                     _first_url(SHREDDER_SOURCE),
                 ),
                 _basis(
-                    "Downtime kiln (1 jam, batas bawah rentang riset)",
-                    f"US$ {downtime_usd:,.0f} @ kurs Rp {USD_IDR_RATE:,.0f}/USD "
+                    "Kiln downtime (1 hour, low end of research range)",
+                    f"US$ {downtime_usd:,.0f} @ Rp {USD_IDR_RATE:,.0f}/USD "
                     f"= Rp {downtime_idr:,.0f}",
                     _first_url(KILN_DOWNTIME_SOURCE),
                 ),
                 _basis(
-                    "Kurs konversi USD→Rp",
-                    f"Rp {USD_IDR_RATE:,.0f}/USD (eksplisit, rentang riset "
-                    "Rp 15.000-16.500)",
+                    "USD→Rp conversion rate",
+                    f"Rp {USD_IDR_RATE:,.0f}/USD (explicit, research range "
+                    "Rp 15,000–16,500)",
                     "https://docs.research-realcase-indonesia.md",
                 ),
             ]
         )
         note = (
-            "REJECT dengan kontaminan keras: estimasi kerugian yang dicegah = "
-            "biaya penggantian shredder (RDI 2024, Lampiran 2A) + 1 jam "
-            "downtime kiln pada batas bawah rentang riset (US$28.000/jam, "
-            "rentang hingga US$100.000/jam). Konservatif: kerusakan parsial "
-            "dan downtime lebih panjang tidak dihitung."
+            "REJECT with a hard contaminant: estimated prevented loss = "
+            "shredder replacement cost (RDI 2024, Annex 2A) + 1 hour of "
+            "kiln downtime at the low end of the research range "
+            "(US$28,000/hour, up to US$100,000/hour). Conservative: "
+            "partial damage and longer downtime are not counted."
         )
         return {
             "prevented_loss_idr": round(total_idr),
@@ -222,8 +222,8 @@ def estimate_prevented_loss(
                 "prevented_loss_usd": 0,
                 "basis": basis,
                 "note": (
-                    "ESCALATE: estimasi dampak pembakaran tidak dapat dihitung — "
-                    "VLM tidak melaporkan estimasi kadar air yang dapat dipakai."
+                    "ESCALATE: combustion impact cannot be estimated — "
+                    "the VLM reported no usable moisture estimate."
                 ),
             }
         water_kg = weight * moisture
@@ -233,36 +233,36 @@ def estimate_prevented_loss(
         basis.extend(
             [
                 _basis(
-                    "Kadar air visual muatan (VLM)",
-                    f"{moisture:.0%} × {weight / 1000:.1f} ton = "
-                    f"{water_kg / 1000:.2f} ton air",
+                    "Visual moisture of the load (VLM)",
+                    f"{moisture:.0%} × {weight / 1000:.1f} t = "
+                    f"{water_kg / 1000:.2f} tonnes of water",
                     "VLM visual moisture estimate (inspection pipeline)",
                 ),
                 _basis(
-                    "Energi menguapkan air (kalor laten)",
+                    "Energy to evaporate water (latent heat)",
                     f"{WATER_LATENT_HEAT_MJ_PER_KG} MJ/kg × "
                     f"{water_kg / 1000:.2f} t = {energy_mj:,.0f} MJ",
-                    "Konstanta fisis (kalor laten uap air, ~100°C)",
+                    "Physical constant (latent heat of water vapour, ~100°C)",
                 ),
                 _basis(
-                    "Nilai kalor RDF (basis energi setara)",
-                    "≈ 3.000 kcal/kg ≈ 12,55 MJ/kg",
+                    "RDF calorific value (energy-equivalent basis)",
+                    "≈ 3,000 kcal/kg ≈ 12.55 MJ/kg",
                     _first_url(RDF_CALORIFIC_SOURCE),
                 ),
                 _basis(
-                    "Harga energi RDF",
-                    f"Rp {RDF_PRICE_IDR_PER_TONNE:,.0f}/ton (titik tengah band "
-                    "Rp 300-450 ribu/ton)",
+                    "RDF energy price",
+                    f"Rp {RDF_PRICE_IDR_PER_TONNE:,.0f}/tonne (midpoint of the "
+                    "Rp 300–450k/tonne band)",
                     _first_url(RDF_PRICE_SOURCE),
                 ),
             ]
         )
         note = (
-            "ESCALATE: penalti efisiensi pembakaran muatan lembap — energi "
-            "yang hilang menguapkan air muatan dikonversi ke tonase setara "
-            "RDF dan dinilai pada harga pasar RDF. Asumsi konservatif: seluruh "
-            "kadar air terevaporasi di kiln dan energi dipricing pada nilai "
-            "kalor RDF, bukan batu bara."
+            "ESCALATE: combustion-efficiency penalty for a wet load — the "
+            "energy lost to evaporating the load's moisture is converted to "
+            "RDF-equivalent tonnage and valued at the RDF market price. "
+            "Conservative assumptions: all moisture evaporates in the kiln, "
+            "and energy is priced at RDF calorific value, not coal."
         )
         return {
             "prevented_loss_idr": round(penalty_idr),
@@ -276,17 +276,17 @@ def estimate_prevented_loss(
         value_idr = tonnes * RDF_PRICE_IDR_PER_TONNE
         basis.append(
             _basis(
-                "Nilai muatan RDF diteruskan",
-                f"{tonnes:.1f} ton × Rp {RDF_PRICE_IDR_PER_TONNE:,.0f}/ton "
-                "(titik tengah band Rp 300-450 ribu/ton)",
+                "RDF load value forwarded",
+                f"{tonnes:.1f} tonnes × Rp {RDF_PRICE_IDR_PER_TONNE:,.0f}/tonne "
+                "(midpoint of the Rp 300–450k/tonne band)",
                 _first_url(RDF_PRICE_SOURCE),
             )
         )
         note = (
-            "ACCEPT: muatan lolos gerbang dan diteruskan sebagai feedstock RDF "
-            "— angka ini adalah nilai pasar muatan (bukan kerugian yang "
-            "dicegah). Band harga Rp 300-450 ribu/ton dari kasus "
-            "Bantargebang/Cilacap/Kalsel."
+            "ACCEPT: the load passed the gates and is forwarded as RDF "
+            "feedstock — this figure is the load's market value (not a "
+            "prevented loss). Price band Rp 300–450k/tonne from the "
+            "Bantargebang/Cilacap/Kalsel cases."
         )
         return {
             "prevented_loss_idr": round(value_idr),
@@ -300,7 +300,7 @@ def estimate_prevented_loss(
         "prevented_loss_usd": 0,
         "basis": basis,
         "note": (
-            f"Verdict '{verdict or 'unknown'}': tidak ada basis kuantitatif "
-            "dari riset untuk angka dampak — laporan jujur tanpa estimasi."
+            f"Verdict '{verdict or 'unknown'}': no quantitative research "
+            "basis for an impact figure — an honest report with no estimate."
         ),
     }

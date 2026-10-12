@@ -1,0 +1,192 @@
+/* ============================================================
+   globals.css — Lynceus design tokens + Tailwind v4 theme
+
+   Single source of truth for the visual language (direction
+   contract: .impeccable/surface-briefs/web-app.md):
+   - graphite-dark ground, hairline 1px seams instead of shadows,
+     one-step elevation
+   - one amber accent (#f5a623) reserved for state + signature
+   - verdict green/amber/red ONLY where they carry meaning
+   - IBM Plex Sans/Mono (loaded via next/font in app/layout.tsx)
+   - small-caps panel headers, mono figures
+
+   Tailwind v4 is CSS-first: tokens are declared as @theme vars and
+   are usable as utilities (bg-panel, text-ink, border-seam, ...).
+   ============================================================ */
+
+@import "tailwindcss";
+
+@theme {
+  /* ---- Ground (graphite) — ordered dark scale ---------------- */
+  --color-ground: #0a0c10;         /* page background, deepest tier  */
+  --color-panel: #0e1116;          /* panels / cards / top bar       */
+  --color-raised: #161b23;         /* raised surface inside a panel  */
+  --color-seam: #1c2128;           /* 1px hairline borders           */
+  --color-seam-strong: #2a323d;    /* hovered seams, control borders */
+
+  /* ---- Ink (text) -------------------------------------------- */
+  --color-ink: #e8eaed;            /* primary text                   */
+  --color-muted: #9aa3ad;          /* secondary text, labels         */
+  --color-faint: #7d8899;          /* tertiary, source lines (>=4.5:1 on panel/raised) */
+
+  /* ---- Accent (amber) — the ONE brand accent ------------------ */
+  --color-amber: #f5a623;
+  --color-amber-soft: rgba(245, 166, 35, 0.16);   /* tint bgs       */
+  --color-amber-line: rgba(245, 166, 35, 0.45);   /* ring outer     */
+
+  /* ---- Verdict states — meaning-only colors ------------------- */
+  --color-verdict-green: #2ecc71;
+  --color-verdict-amber: #f5a623;
+  --color-verdict-red: #e74c3c;
+  --color-green-dim: rgba(46, 204, 113, 0.14);
+  --color-amber-dim: rgba(245, 166, 35, 0.14);
+  --color-red-dim: rgba(231, 76, 60, 0.14);
+
+  /* ---- Status dots -------------------------------------------- */
+  --color-dot-ok: #2ecc71;
+  --color-dot-warn: #f5a623;
+  --color-dot-down: #e74c3c;
+  --color-dot-idle: #7d8899;
+
+  /* ---- Radius --------------------------------------------------
+     Cards 12–16px; controls 6px for a crisper machine feel.      */
+  --radius-card: 14px;
+  --radius-card-lg: 16px;
+  --radius-control: 6px;
+
+  /* ---- Typography ----------------------------------------------
+     IBM Plex via next/font exposes --font-plex-sans/--font-plex-mono
+     variable class names; Tailwind maps them to font-sans/font-mono. */
+  --font-sans: var(--font-plex-sans), "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Consolas, monospace;
+
+  /* ---- Motion -------------------------------------------------- */
+  --ease-smooth: cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  /* ---- Workspace: interlock gate strip ------------------------- */
+  --stagger: 120ms; /* sequential gate-light snap */
+}
+
+/* ---- Base / browser surfaces (themed) ------------------------ */
+
+* {
+  border-color: var(--color-seam);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+}
+
+/* ::selection — amber tint: highlighted text reads as "flagged". */
+::selection {
+  background: var(--color-amber-soft);
+  color: var(--color-ink);
+}
+
+/* Thin graphite scrollbar — never stealing attention. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-ground); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-seam-strong);
+  border-radius: 999px;
+  border: 2px solid var(--color-ground);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-seam-strong) var(--color-ground);
+}
+
+/* :focus-visible — amber ring, keyboard only. */
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* Caret echoes the accent. */
+input, textarea, [contenteditable] { caret-color: var(--color-amber); }
+
+/* ---- Component tokens (documented for other agents) -----------
+   .panel    — bg-panel, 1px seam border, radius-card
+   .panel-head — small-caps uppercase label band, bg-raised
+   .btn      — 6px radius control (shadcn/ui Button wraps this language)
+   .input    — bg-raised field, seam border, amber focus
+   Utility classes live in @utility blocks below so Tailwind v4
+   treats them as first-class utilities. */
+
+@utility panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-seam);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+@utility panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-raised);
+  border-bottom: 1px solid var(--color-seam);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Small-caps label pattern used across panels + section eyebrows. */
+@utility smallcaps {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Mono figures — industrial-control register for all measurements. */
+@utility figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Field controls — bg-raised, seam border, amber focus.
+   Foundation: use class="input" on all form fields. */
+@utility input {
+  width: 100%;
+  background: var(--color-raised);
+  border: 1px solid var(--color-seam-strong);
+  border-radius: var(--radius-control);
+  padding: 8px 10px;
+  color: var(--color-ink);
+  font-size: 13.5px;
+}
+
+/* ---- Workspace: interlock gate pulse (loading state) ------------
+   Amber breathing on the gate strip while the interlock evaluates. */
+@keyframes gate-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

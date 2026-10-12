@@ -1,0 +1,208 @@
+/**
+ * API client + contract types for the inspection ledger.
+ *
+ * TODO(backend): GET /inspections and GET /inspections/{record_id} are not
+ * implemented yet in backend/lynceus/api.py. The frontend is written against
+ * the agreed contract:
+ *
+ *   GET /inspections →
+ *     { inspections: [{ record_id, truck_id, decision, decided_at_utc,
+ *                        prevented_loss_idr, gate_states }] }
+ *
+ *   GET /inspections/{record_id} → the full audit record (shape of
+   *   backend/runs/inspection-<id>/audit.json): digest.record_sha256, gates,
+ *   inputs, ai_outputs, engine_outputs, verdict, record_id.
+ *
+ * External JSON is untrusted: each response is parsed once at this boundary
+ * with a zod schema; consumers receive a fully typed value. Missing fields
+ * degrade to honest placeholders (catchall "passthrough" keeps unknown
+ * backend extras available without crashing the UI).
+ */
+
+import { z } from "zod";
+
+/** Final verdict values (audit.Decision closed enum). */
+export type Decision =
+  | "accept"
+  | "reject"
+  | "escalate_human"
+  | "refuse_insufficient_input"
+  | "unknown";
+
+/** Per-gate states (audit.GateState closed enum). */
+export type GateState = "passed" | "failed" | "not_run" | "not_evaluated";
+
+const decisionSchema = z
+  .enum(["accept", "reject", "escalate_human", "refuse_insufficient_input", "unknown"])
+  .catch("unknown");
+
+const gateStateSchema = z
+  .enum(["passed", "failed", "not_run", "not_evaluated"])
+  .catch("not_evaluated");
+
+const inspectionSummarySchema = z.object({
+  record_id: z.string(),
+  truck_id: z.string().catch("—"),
+  decision: decisionSchema,
+  decided_at_utc: z.string().catch(""),
+  prevented_loss_idr: z.coerce.number().catch(0),
+  gate_states: z.record(z.string(), gateStateSchema).catch({}),
+});
+
+const inspectionsResponseSchema = z.object({
+  inspections: z.array(inspectionSummarySchema).catch([]),
+});
+
+const gateResultSchema = z.object({
+  state: gateStateSchema,
+  value: z.number().nullable().catch(null),
+  threshold: z.number().nullable().catch(null),
+  reason: z.string().catch(""),
+});
+
+const auditRecordSchema = z
+  .object({
+    record_id: z.string().optional(),
+    digest: z
+      .object({
+        record_sha256: z.string().optional(),
+        algorithm: z.string().optional(),
+      })
+      .optional(),
+    gates: z.record(z.string(), gateResultSchema).optional(),
+    inputs: z
+      .object({
+        truck_id: z.string().optional(),
+        photo: z
+          .object({
+            filename: z.string().catch("photo.jpg"),
+            sha256: z.string().optional(),
+            captured_at_utc: z.string().optional(),
+            provenance: z.string().optional(),
+            // TODO(backend): relative path to the stored photo, when exposed.
+            path: z.string().optional(),
+          })
+          .optional(),
+        weight: z
+          .object({
+            value_kg: z.number().optional(),
+            source: z.string().optional(),
+          })
+          .optional(),
+        gas: z
+          .object({
+            readings_ppm: z.record(z.string(), z.number()).optional(),
+            source: z.string().optional(),
+          })
+          .optional(),
+        manifest_text: z
+          .object({
+            source: z.string().optional(),
+            ocr_confidence: z.number().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    ai_outputs: z
+      .object({
+        llm: z
+          .object({
+            reasoning: z.string().optional(),
+            model: z.string().optional(),
+            confidence: z.number().optional(),
+          })
+          .optional(),
+        vlm: z.object({ confidence: z.number().optional() }).optional(),
+      })
+      .optional(),
+    verdict: z
+      .object({
+        decision: decisionSchema.optional(),
+        decided_at_utc: z.string().optional(),
+        classification: z.string().optional(),
+        uncertainty: z.string().optional(),
+      })
+      .optional(),
+    // Optional human-readable reasons list (as returned by POST /inspect).
+    reasons: z.array(z.string()).optional(),
+  })
+  .catchall(z.unknown());
+
+// The detail endpoint may wrap the record; accept {record|audit_record: …}
+// as well as the bare record itself. Unwrap first, then parse strictly.
+const unwrapRecordSchema = z.union([
+  z.object({ record: z.unknown() }).transform((v) => v.record),
+  z.object({ audit_record: z.unknown() }).transform((v) => v.audit_record),
+  z.unknown().transform((v) => v),
+]);
+
+export type InspectionSummary = z.infer<typeof inspectionSummarySchema>;
+export type InspectionDetail = z.infer<typeof auditRecordSchema>;
+export type GateResult = z.infer<typeof gateResultSchema>;
+
+/**
+ * Impact estimate as returned by POST /inspect (backend
+ * impact.estimate_prevented_loss): prevented-loss in IDR/USD with
+ * per-figure provenance rows — every basis entry carries its source
+ * URL, no invented figures.
+ */
+export interface ImpactBasisRow {
+  label: string;
+  value: string;
+  source_url: string;
+}
+
+export interface ImpactEstimate {
+  prevented_loss_idr?: number;
+  prevented_loss_usd?: number;
+  basis?: ImpactBasisRow[];
+  note?: string;
+  /** Research provenance string set by the backend (impact.py). */
+  provenance?: string;
+}
+export type PhotoInput = NonNullable<
+  NonNullable<InspectionDetail["inputs"]>["photo"]
+>;
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function getJSON(path: string): Promise<unknown> {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError("Backend unreachable — is the Lynceus API running?", 0);
+  }
+  if (!res.ok) {
+    throw new ApiError(`GET ${path} failed (HTTP ${res.status})`, res.status);
+  }
+  return res.json();
+}
+
+export async function fetchInspections(): Promise<InspectionSummary[]> {
+  const data = inspectionsResponseSchema.parse(await getJSON("/inspections"));
+  return data.inspections.filter((item) => item.record_id !== "");
+}
+
+export async function fetchInspectionDetail(
+  recordId: string,
+): Promise<InspectionDetail> {
+  const record = auditRecordSchema.parse(
+    unwrapRecordSchema.parse(
+      await getJSON(`/inspections/${encodeURIComponent(recordId)}`),
+    ),
+  );
+  // The path identifies the record; keep it even if the payload disagrees.
+  return { ...record, record_id: recordId };
+}

@@ -16,8 +16,12 @@ backend/runs/
 .DS_Store
 Thumbs.db
 
-# Node (if web gains tooling later)
+# Node / Next.js (web/)
 node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
 # Stray research downloads (agent artifacts, not part of the app)
 rf.html
 rf1.json
