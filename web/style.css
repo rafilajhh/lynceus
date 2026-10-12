@@ -89,7 +89,7 @@ html, body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(340px, 5fr) minmax(380px, 6fr);
+  grid-template-columns: minmax(340px, 5fr) minmax(300px, 4fr) minmax(380px, 6fr);
   gap: 24px;
   padding: 24px 28px;
   max-width: 1400px;
@@ -97,9 +97,54 @@ html, body {
   align-items: start;
 }
 
+@media (max-width: 1180px) {
+  /* Photo stacks between the form and the ticket on medium screens. */
+  .layout { grid-template-columns: minmax(340px, 5fr) minmax(380px, 6fr); }
+  .load-photo-panel { grid-column: 1 / -1; }
+}
+
 @media (max-width: 960px) {
   .layout { grid-template-columns: 1fr; padding: 16px; }
   .site-header { padding: 16px; }
+  .problem-banner-wrap { padding: 0 16px; }
+}
+
+/* ---------- problem banner (the 10-second hook) ---------- */
+
+.problem-banner-wrap {
+  padding: 0 28px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.problem-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-top: 18px;
+  padding: 10px 16px;
+  background: var(--amber-dim);
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.problem-banner .banner-icon {
+  color: var(--amber);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.problem-banner .banner-text { font-weight: 500; }
+.problem-banner .banner-text strong { color: var(--amber); font-weight: 700; }
+
+.problem-banner .banner-source {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
 }
 
 .panel {
@@ -265,6 +310,33 @@ input[type="file"]::file-selector-button {
 }
 
 .photo-preview[hidden] { display: none; }
+
+/* ---------- incoming load photo (hero evidence) ---------- */
+
+.load-photo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.load-photo-panel[hidden] { display: none; }
+
+.load-photo-panel img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  object-fit: cover;
+  max-height: 560px;
+}
+
+.load-photo-caption {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  line-height: 1.45;
+}
 
 /* ---------- placeholder / awaiting backend ---------- */
 

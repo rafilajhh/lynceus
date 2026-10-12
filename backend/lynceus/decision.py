@@ -35,7 +35,7 @@ __all__ = [
     "HARD_CONTAMINANT_CONFIDENCE",
     "UNSAFE_VLM_CONFIDENCE",
     "WEIGHT_MISMATCH_THRESHOLD",
-    "MOISTURE_CONFLICT_MARGIN",
+    "GAS_CH4_ANAEROBIC_THRESHOLD_PPM",
     "decide",
 ]
 
@@ -57,6 +57,10 @@ WEIGHT_MISMATCH_THRESHOLD = 0.10
 #: A waybill "dry" claim conflicts with a visibly wet load above this visual
 #: moisture estimate (fraction, wet basis).
 MOISTURE_CONFLICT_MARGIN = 0.15
+#: CH4 concentration above which a load is strongly anaerobic / spoiling
+#: (ppmv above the bin).  Very high CH4 with a "dry" waybill claim means
+#: the load is far wetter and older than declared.
+GAS_CH4_ANAEROBIC_THRESHOLD_PPM = 100.0
 
 
 def _gate(
@@ -309,8 +313,60 @@ def decide(
         reason="; ".join(cross_reasons) if cross_reasons else "Manifest cross-check passed.",
     )
 
-    # ----- Gas plausibility (not measured in this pipeline) ---------------
-    gas_gate = _not_run("Gas readings are not part of this inspection stage.")
+    # ----- Gas plausibility (digital twin, supporting evidence only) -----
+    # The gas channel is a *supporting* gate: it corroborates or
+    # contradicts the waybill's moisture / age claims but never overrides
+    # the VLM-driven verdict.  Its absence stays honest: not_run.
+    gas_input = inputs.get("gas")
+    if isinstance(gas_input, dict):
+        gas_input = dict(gas_input)
+    readings = gas_input.get("readings_ppm") if gas_input else None
+    if not isinstance(readings, dict) or not readings:
+        gas_gate = _not_run("Gas readings are not part of this inspection stage.")
+    else:
+        ch4_ppm = _as_float(readings.get("ch4"))
+        if ch4_ppm is None:
+            gas_gate = _not_run("No CH4 reading in the gas twin output.")
+        elif ch4_ppm > GAS_CH4_ANAEROBIC_THRESHOLD_PPM:
+            # High CH4 means a strongly anaerobic, spoiling load.  It only
+            # contradicts the waybill when the load is claimed dry (the
+            # same <15 % boundary the visual moisture conflict uses); a
+            # declared or supplied wet mix explains the reading.
+            claimed_moisture = _waybill_moisture_claim(manifest_text)
+            supplied_moisture = _as_float(inputs.get("moisture"))
+            dry_claimed = claimed_moisture is not None and claimed_moisture < MOISTURE_CONFLICT_MARGIN
+            dry_supplied = supplied_moisture is not None and supplied_moisture < MOISTURE_CONFLICT_MARGIN
+            if dry_claimed or (dry_supplied and claimed_moisture is None):
+                gas_gate = _gate(
+                    GateState.FAILED,
+                    value=ch4_ppm,
+                    threshold=GAS_CH4_ANAEROBIC_THRESHOLD_PPM,
+                    reason=(
+                        f"CH4 reading {ch4_ppm:.0f} ppm exceeds "
+                        f"{GAS_CH4_ANAEROBIC_THRESHOLD_PPM:.0f} ppm: the load is strongly "
+                        "anaerobic / spoiling, conflicting with the dry-load claim."
+                    ),
+                )
+            else:
+                gas_gate = _gate(
+                    GateState.PASSED,
+                    value=ch4_ppm,
+                    threshold=GAS_CH4_ANAEROBIC_THRESHOLD_PPM,
+                    reason=(
+                        f"CH4 reading {ch4_ppm:.0f} ppm indicates an anaerobic load, "
+                        "consistent with the claimed moisture and age of the load."
+                    ),
+                )
+        else:
+            gas_gate = _gate(
+                GateState.PASSED,
+                value=ch4_ppm,
+                threshold=GAS_CH4_ANAEROBIC_THRESHOLD_PPM,
+                reason=(
+                    f"CH4 reading {ch4_ppm:.0f} ppm is consistent with the claimed "
+                    "moisture and age of the load."
+                ),
+            )
 
     gates: Dict[str, Any] = {
         "vlm_confidence": vlm_gate,

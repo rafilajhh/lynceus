@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional, Protocol
 
 import httpx
 
+from lynceus import gas_twin
 from lynceus.config import Settings, get_settings
 
 __all__ = [
@@ -432,22 +433,62 @@ def resolve_clients(
     return StubAIClients(demo_case=demo_case, provenance="stub")
 
 
-def run_inspection(payload: Dict[str, Any], ai_clients: AIClients) -> Dict[str, Any]:
-    """Run the VLM + LLM stages for one inspection payload.
+def _simulate_gas_readings(
+    payload: Dict[str, Any], record_id: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """Run the gas digital twin for this load, or ``None`` when it cannot.
+
+    The twin needs the full batch description (waste stream, tonnage,
+    moisture, age) and the Scentinel engine.  Anything missing or
+    off-domain means "no gas data for this inspection" — the gas channel
+    is a *supporting* signal and must never fail the inspection itself.
+    """
+    waste_stream = payload.get("waste_stream") or payload.get("stream")
+    weight_kg = payload.get("weight_kg")
+    moisture = payload.get("moisture")
+    age_h = payload.get("age_h")
+    if not waste_stream or weight_kg is None or moisture is None or age_h is None:
+        return None
+    try:
+        return gas_twin.simulate_gate_readings(
+            str(waste_stream),
+            float(weight_kg) / 1000.0,
+            float(moisture),
+            float(age_h),
+            truck_id=str(payload.get("truck_id") or ""),
+            record_id=str(record_id or ""),
+        )
+    except (gas_twin.GasTwinUnavailableError, ValueError, TypeError):
+        return None
+
+
+def run_inspection(
+    payload: Dict[str, Any],
+    ai_clients: AIClients,
+    record_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Run the VLM + LLM + gas-twin stages for one inspection payload.
 
     Args:
         payload: The raw ``/inspect`` request payload (``truck_id``,
             ``demo_case``, ``photo_base64``, ``manifest_text``, weights, ...).
         ai_clients: A live :class:`VLLMClient` or a :class:`StubAIClients`.
+        record_id: The audit record identity — part of the deterministic
+            noise seed of the gas twin, so the same truck + record always
+            reproduce the same readings.
 
     Returns:
-        ``{"vlm": ..., "llm": ..., "provenance": "live"|"stub"}``.  When the
+        ``{"vlm": ..., "llm": ..., "gas": ..., "provenance": "live"|"stub"}``.
+        ``gas`` carries the digital-twin gate readings (see
+        :mod:`lynceus.gas_twin`) or ``None`` when the twin could not run
+        (incomplete batch description or engine unavailable).  When the
         live client raises, the call falls back to the stub for the *same*
         payload and reports ``provenance: "stub_fallback_live_error"`` with
         the original error message — the stub result is marked honestly,
         never passed off as live output.
     """
     payload = dict(payload or {})
+    gas_result = _simulate_gas_readings(payload, record_id)
     context = {
         "truck_id": payload.get("truck_id"),
         "weight_kg": payload.get("weight_kg"),
@@ -470,6 +511,7 @@ def run_inspection(payload: Dict[str, Any], ai_clients: AIClients) -> Dict[str, 
             return {
                 "vlm": vlm_result,
                 "llm": llm_result,
+                "gas": gas_result,
                 "provenance": "stub_fallback_live_error",
                 "fallback_reason": f"{type(exc).__name__}: {exc}",
             }
@@ -478,5 +520,7 @@ def run_inspection(payload: Dict[str, Any], ai_clients: AIClients) -> Dict[str, 
     return {
         "vlm": vlm_result,
         "llm": llm_result,
+        "gas": gas_result,
         "provenance": ai_clients.provenance,
     }
+

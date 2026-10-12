@@ -20,47 +20,78 @@ const BASE_URL = window.location.origin.startsWith("http")
 // ------------------------------------------------------------
 const DEMO_CASES = {
   green: {
-    truck_id: "B-9174-KT",
+    // Arm-roll truck on the Bantargebang RDF corridor. B = DKI/Jakarta
+    // plate area (Bantargebang); offtakers are the cement co-processing
+    // lines (SBI Narogong is one of the three RDF plants: Narogong,
+    // Cilacap, Tuban). Numbers: arm roll 14 m³ × 372.71 kg/m³ ≈ 5.2 t/trip
+    // (ITATS Surabaya, TPA Benowo weighbridge); RDF gate price
+    // Rp 300,000/t (SWITCH-Asia §5d). Plate 'B' = DKI per TNKB codes.
+    truck_id: "B 9174 KT",
+    photo: "demo/green-1.jpg",
+    photo_caption: "Arm-roll B 9174 KT · RDF feedstock, dry & baled — Bantargebang to SBI Narogong line",
     manifest_text:
-      "DUTY OF CARE — WASTE TRANSFER NOTE\n" +
-      "Producer: Eco RDF Processing Plant 2\n" +
-      "Waste type: SRF / RDF fluff, pre-sorted, baled\n" +
-      "Origin: MRF Bintara sorting line\n" +
-      "Declared weight: 18,400 kg\n" +
+      "WAYBILL / WEIGHBRIDGE TICKET (RDF-MSW) — No. SJ: SJ/RDF/2026/10/0001\n" +
+      "Plate No.  : B 9174 KT        Date: 2026-10-13   Entry time: 01:20\n" +
+      "Driver     : Sukarno          Origin: TPST Bantargebang RDF plant (waste source: TPS district 4)\n" +
+      "Destination: SBI Narogong cement plant (RDF co-processing line)\n" +
+      "Gross (kg) : 10,000           Tare (kg): 4,800\n" +
+      "Netto (kg) : 5,200            Weighbridge operator: Gate A\n" +
+      "Load type  : RDF fluff, pre-sorted, baled\n" +
+      "Declared weight: 5,200 kg\n" +
       "Moisture declared: 10% (dry, stored under cover)\n" +
-      "Collected: 2026-10-13 01:20 UTC",
-    weight_kg: 18500,
+      "Checks     : non-hazardous, non-medical, moisture/calorific value (RDF)",
+    weight_kg: 5200,
     stream: "rdf-feedstock",
     moisture_pct: 9.5,
     age_h: 5
   },
   amber: {
-    truck_id: "DK-4418-WR",
+    // Wet organics rejected at RDF intake: Indonesian MSW runs 55-60%
+    // moisture (SBI Cilacap study) and ~40.77% food waste nationally
+    // (SIPSN 2025) — exactly why MBT pre-processing is mandatory before
+    // kiln feeding. Plate "B" = Bantargebang/Jakarta corridor.
+    truck_id: "B 9282 AP",
+    photo: "demo/amber-1.jpg",
+    photo_caption: "Compactor B 9282 AP · wet organics from TPST — 57% moisture measured",
     manifest_text:
-      "DUTY OF CARE — WASTE TRANSFER NOTE\n" +
-      "Producer: TPA Suwung transfer station\n" +
-      "Waste type: organic-rich source-separated biowaste\n" +
-      "Origin: kerbside organics collection, district 4\n" +
-      "Declared weight: 11,200 kg\n" +
+      "WAYBILL / WEIGHBRIDGE TICKET (RDF-MSW) — No. SJ: SJ/RDF/2026/10/0002\n" +
+      "Plate No.  : B 9282 AP        Date: 2026-10-13   Entry time: 04:05\n" +
+      "Driver     : Rustam           Origin: TPST Bantargebang (waste source: TPS district 4)\n" +
+      "Destination: RDF processing plant -> cement plant co-processing\n" +
+      "Gross (kg) : 12,250           Tare (kg): 4,850\n" +
+      "Netto (kg) : 7,400            Weighbridge operator: Gate A\n" +
+      "Load type  : organic-rich, source-separated biowaste\n" +
+      "Declared weight: 7,400 kg\n" +
       "Moisture declared: 30%\n" +
-      "Collected: 2026-10-10 08:00 UTC",
-    weight_kg: 11450,
+      "Checks     : non-hazardous, non-medical, moisture/calorific value (RDF)",
+    weight_kg: 7400,
     stream: "organic-rich",
     moisture_pct: 57.0,
     age_h: 76
   },
   red: {
-    truck_id: "F-7702-TS",
+    // Scrap metal smuggled in under a 'clean RDF' claim with a weight
+    // mismatch — the kiln-killer scenario: metal in the feed damages the
+    // kiln/refractory; unplanned downtime ≈ Rp 450 million/hour
+    // (oxmaint US benchmark @ Rp 16,000/USD, §5a). Metal is also 3.11% of
+    // national MSW composition (SIPSN 2025) — the exact fraction screening
+    // must catch at the gate. Plate "F" = Bogor (SBI Narogong corridor).
+    truck_id: "F 7702 TS",
+    photo: "demo/red-1.jpg",
+    photo_caption: "Compactor F 7702 TS · scrap metal found under the bales — weight mismatch",
     manifest_text:
-      "DUTY OF CARE — WASTE TRANSFER NOTE\n" +
-      "Producer: Metro Scrap Trading CV\n" +
-      "Waste type: clean RDF fluff, dry, no contamination\n" +
-      "Origin: industrial park skip hire\n" +
+      "WAYBILL / WEIGHBRIDGE TICKET (RDF-MSW) — No. SJ: SJ/RDF/2026/10/0003\n" +
+      "Plate No.  : F 7702 TS        Date: 2026-10-13   Entry time: 00:45\n" +
+      "Driver     : Hendra           Origin: RDF supplier CV, Bogor (waste source: industrial park skip)\n" +
+      "Destination: cement plant co-processing line\n" +
+      "Gross (kg) : 24,800           Tare (kg): 9,300\n" +
+      "Netto (kg) : 15,500           Weighbridge operator: Gate A\n" +
+      "Load type  : clean RDF fluff, dry, no contamination\n" +
       "Declared weight: 15,500 kg\n" +
       "Moisture declared: 12%\n" +
-      "NOTE (driver): drum of scrap metal and concrete rubble " +
-      "loaded on top of the bales at the last minute.\n" +
-      "Collected: 2026-10-13 00:45 UTC",
+      "NOTE (driver): drum of scrap metal and concrete rubble loaded on " +
+      "top of the bales at the last minute.\n" +
+      "Checks     : non-hazardous, non-medical, moisture/calorific value (RDF)",
     weight_kg: 19300, // weighbridge far above declared 15,500 kg
     stream: "mixed-msw",
     moisture_pct: 14.0,
@@ -100,6 +131,12 @@ function clearResultError() {
   resultError.hidden = true;
 }
 
+// Demo-photo state: the current demo case's photo (path + fetched base64)
+// lives outside photoFile, which stays reserved for user uploads.
+let demoCase = null;
+let demoPhotoPath = null;
+let demoPhotoBase64 = null;
+let demoPhotoCaption = "";
 
 // ------------------------------------------------------------
 // Demo case loading
@@ -115,6 +152,55 @@ function loadDemo(caseKey) {
   $("stream").value = c.stream;
   $("moisture_pct").value = c.moisture_pct;
   $("age_h").value = c.age_h;
+  demoCase = caseKey;
+  demoPhotoBase64 = null;
+  demoPhotoPath = c.photo || null;
+  demoPhotoCaption = c.photo_caption || "";
+  showDemoPhoto();
+}
+
+// Show the current demo photo in both previews (form + hero panel) and
+// fetch its bytes as base64 so submit can send real image data.
+function showDemoPhoto() {
+  const heroPanel = $("load-photo-panel");
+  if (!demoPhotoPath) {
+    heroPanel.hidden = true;
+    photoPreview.hidden = true;
+    photoPreviewImg.removeAttribute("src");
+    return;
+  }
+  photoPreviewImg.src = demoPhotoPath;
+  photoPreview.hidden = false;
+  $("load-photo-img").src = demoPhotoPath;
+  $("load-photo-caption").textContent = demoPhotoCaption;
+  heroPanel.hidden = false;
+  const pathUsed = demoPhotoPath;
+  fetch(pathUsed)
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.blob();
+    })
+    .then(blobToBase64)
+    .then((b64) => {
+      // Keep base64 in sync with the preview: if the user switched to
+      // another demo case while this fetch was in flight, drop stale bytes.
+      if (demoPhotoPath === pathUsed) demoPhotoBase64 = b64;
+    })
+    .catch(() => {
+      // file:// or offline: the <img> preview still renders, but the
+      // payload falls back to the filename-only stub path.
+      if (demoPhotoPath === pathUsed) demoPhotoBase64 = null;
+    });
+}
+
+// Blob → raw base64 (no data: URI prefix).
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 $("demo-green").addEventListener("click", () => loadDemo("green"));
@@ -128,14 +214,25 @@ const photoInput = $("photo");
 const photoPreview = $("photo-preview");
 const photoPreviewImg = $("photo-preview-img");
 let photoFile = null;
+let photoUploadBase64 = null;  // raw base64 of the user's uploaded file
 
 photoInput.addEventListener("change", () => {
   photoFile = photoInput.files && photoInput.files[0] ? photoInput.files[0] : null;
+  photoUploadBase64 = null;
   if (photoFile) {
+    // A user upload takes precedence over the demo photo: drop the demo
+    // state so the payload sends the uploaded bytes.
+    demoPhotoBase64 = null;
+    demoPhotoPath = null;
     const reader = new FileReader();
     reader.onload = (e) => {
-      photoPreviewImg.src = e.target.result;
+      const dataUri = String(e.target.result);
+      photoUploadBase64 = dataUri.split(",")[1] || "";
+      photoPreviewImg.src = dataUri;
       photoPreview.hidden = false;
+      $("load-photo-img").src = dataUri;
+      $("load-photo-caption").textContent = photoFile ? photoFile.name : "";
+      $("load-photo-panel").hidden = false;
     };
     reader.readAsDataURL(photoFile);
   } else {
@@ -147,9 +244,18 @@ photoInput.addEventListener("change", () => {
 $("photo-clear").addEventListener("click", () => {
   photoInput.value = "";
   photoFile = null;
+  photoUploadBase64 = null;
+  demoPhotoBase64 = null;
+  demoPhotoPath = null;
   photoPreview.hidden = true;
   photoPreviewImg.removeAttribute("src");
+  $("load-photo-panel").hidden = true;
 });
+
+// Base64 of the user's uploaded photo, or null when no upload is active.
+function photoBase64FromUpload() {
+  return photoFile && photoUploadBase64 ? photoUploadBase64 : null;
+}
 
 // ------------------------------------------------------------
 // Result rendering
@@ -223,11 +329,19 @@ function renderResult(data) {
     ? "audit record: " + data.record_id
     : "";
 
-  // Headline
+  // Headline: the engine's routing headline is only appropriate when the
+  // fusion verdict agrees; on reject/escalate/refuse it would contradict
+  // the banner (e.g. "Recommended for RDF processing" under a REJECT).
+  const engineHeadline =
+    ((data.engine_outputs && data.engine_outputs.recommendation) || {}).headline;
   const headline =
-    ((data.engine_outputs && data.engine_outputs.recommendation) || {}).headline ||
-    data.headline ||
-    "Inspection completed.";
+    decision === "reject" || String(decision).startsWith("reject")
+      ? "Load rejected — do not admit to RDF processing."
+      : decision === "escalate_human" || String(decision).startsWith("escalate")
+        ? "Human review required before unloading."
+        : String(decision).startsWith("refuse")
+          ? "Insufficient input — inspection cannot proceed."
+          : engineHeadline || data.headline || "Inspection completed.";
   $("headline").textContent = headline;
 
   // Confidence (0..1 or 0..100 — both accepted)
@@ -382,7 +496,11 @@ form.addEventListener("submit", async (e) => {
 
   const payload = {
     truck_id: $("truck_id").value.trim(),
-    photo_filename: photoFile ? photoFile.name : null,
+    // photo_base64: demo-case photo bytes (fetched from demo/*.jpg) or the
+    // user's upload; photo_filename covers the offline/file:// fallback.
+    photo_base64: demoPhotoBase64 || photoBase64FromUpload(),
+    photo_filename: photoFile ? photoFile.name : demoPhotoPath,
+    demo_case: demoCase,
     manifest_text: $("manifest_text").value.trim() || null,
     weight_kg: weight,
     stream: $("stream").value,

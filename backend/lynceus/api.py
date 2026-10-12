@@ -20,6 +20,8 @@ from lynceus import __version__
 from lynceus import audit
 from lynceus import decision
 from lynceus import engine_adapter
+from lynceus import gas_twin
+from lynceus import impact
 from lynceus import pipeline
 from lynceus.config import get_settings
 
@@ -115,18 +117,50 @@ class InspectRequest(BaseModel):
 
 
 def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
-    """Request model → plain pipeline/decision payload dict."""
+    """Request model → plain pipeline/decision payload dict.
+
+    When only ``demo_case`` is supplied (no manual data), research-backed
+    defaults fill the gaps so the demo tells a true story (see
+    docs/research-realcase-indonesia.md): an arm-roll truck carries
+    ≈ 5,2 ton/trip (jurnal ITATS Surabaya §3a) and Indonesian MSW runs
+    55–60 % moisture (SBI Cilacap §2c).  The InspectRequest contract
+    itself is untouched — only the demo defaults are realistic.
+    """
+    weight_kg = request.weight_kg
+    moisture = request.moisture
+    waste_stream = request.waste_stream
+    age_h = request.age_h
+    manifest_text = request.manifest_text
+    if request.demo_case:
+        if weight_kg is None:
+            weight_kg = impact.ARM_ROLL_TRIP_KG  # ≈ 5,2 t/trip (ITATS §3a)
+        if moisture is None:
+            moisture = 0.55  # MSW Indonesia 55–60 % (SBI Cilacap §2c)
+        if waste_stream is None:
+            waste_stream = "mixed-msw"
+        if age_h is None:
+            age_h = 48.0
+        if not (manifest_text or "").strip():
+            # Waybill skeleton per SOP PUPR §4a / praktik jembatan timbang
+            # (docs/research-realcase-indonesia.md §4d) — a demo_case-only
+            # payload still carries an honest scripted waybill.
+            manifest_text = (
+                "SURAT JALAN / TIKET TIMBANG (RDF-MSW)\n"
+                "Jenis muatan: MSW\n"
+                f"Netto (kg): {int(weight_kg)} (bruto - tarra, jembatan timbang)\n"
+                "Verifikasi: non-B3, non-medis; kadar air sesuai deklarasi."
+            )
     return {
         "truck_id": request.truck_id or "",
         "demo_case": request.demo_case,
         "photo_base64": request.photo_base64,
         "photo_filename": request.photo_filename,
-        "manifest_text": request.manifest_text,
-        "weight_kg": request.weight_kg,
+        "manifest_text": manifest_text,
+        "weight_kg": weight_kg,
         "declared_weight_kg": request.declared_weight_kg,
-        "waste_stream": request.waste_stream,
-        "moisture": request.moisture,
-        "age_h": request.age_h,
+        "waste_stream": waste_stream,
+        "moisture": moisture,
+        "age_h": age_h,
     }
 
 
@@ -144,6 +178,7 @@ def _run_inspection_with_audit(
         request.photo_filename or "photo.jpg"
     )
     now = audit.now_utc()
+    gas_input: dict[str, Any] = {"readings_ppm": {}, "source": "not_measured", "measured_at_utc": now}
     inputs = {
         "truck_id": request.truck_id or f"demo-{request.demo_case or 'truck'}",
         "photo": {
@@ -163,7 +198,7 @@ def _run_inspection_with_audit(
             "source": "weighbridge",
             "measured_at_utc": now,
         },
-        "gas": {"readings_ppm": {}, "source": "not_measured", "measured_at_utc": now},
+        "gas": gas_input,
     }
     input_digests = {
         "photo": audit.sha256_field(photo_bytes),
@@ -177,9 +212,20 @@ def _run_inspection_with_audit(
     )
     record_id = begin.record_id
 
-    ai = pipeline.run_inspection(payload, pipeline.resolve_clients(payload, settings))
+    ai = pipeline.run_inspection(
+        payload, pipeline.resolve_clients(payload, settings), record_id
+    )
     vlm_result = ai.get("vlm") or {}
     llm_result = ai.get("llm") or {}
+
+    # The gas digital twin (when it ran) feeds both the decision layer
+    # and the audit record's frozen inputs — the readings above the bin
+    # are part of what the verdict answers to.
+    gas_result = ai.get("gas")
+    if gas_result and gas_result.get("readings_ppm"):
+        gas_input["readings_ppm"] = gas_result["readings_ppm"]
+        gas_input["source"] = gas_twin.GAS_SOURCE
+        payload["gas"] = gas_input
 
     engine_result = None
     if (
@@ -290,9 +336,21 @@ def _run_inspection_with_audit(
             audit_gates,
         )
 
+    # Presentation-layer measurable impact — NOT part of the audit schema:
+    # it derives from the verdict + VLM result with explicit research
+    # provenance (docs/research-realcase-indonesia.md) and sits in the
+    # response JSON parallel to the frozen audit_record.
+    impact_estimate = impact.estimate_prevented_loss(
+        verdict, vlm_result, request.weight_kg
+    )
+    impact_estimate["provenance"] = (
+        "docs/research-realcase-indonesia.md (dampak Rp, §5) — "
+        "every basis row carries its source URL"
+    )
     response = {
         "record_id": record_id,
         "verdict": verdict_payload,
+        "impact": impact_estimate,
         "gates": audit_gates,
         "reasons": reasons,
         "provenance": ai.get("provenance"),

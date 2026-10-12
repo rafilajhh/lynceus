@@ -205,7 +205,15 @@ def test_inspect_demo_case_verdicts(client, tmp_path, demo_case):
         assert GateState.FAILED not in states.values(), states
     elif demo_case == "amber":
         # Amber = flagged for human review, not silently waved through.
-        assert any(s != GateState.PASSED for s in states.values()), states
+        # The gas digital twin now runs for every complete batch
+        # description; the declared wet organic mix legitimately explains
+        # its high CH4, so the gas gate passes and the escalation rides on
+        # the VLM's light-contamination detections.  (Before the twin, the
+        # not_run gas gate satisfied the old "some gate not passed" check.)
+        # The real guarantee stays: an explained escalation, never a silent
+        # accept.
+        assert _decision(body) == Decision.ESCALATE_HUMAN
+        assert any("contamination" in r.lower() for r in body["reasons"]), body["reasons"]
     else:  # red — declared 15,500 kg vs weighbridge 19,300 kg
         assert states.get("weight_plausibility") == GateState.FAILED, states
 

@@ -12,7 +12,7 @@
       <span class="brand-mark">◉</span>
       <div>
         <h1>Lynceus — AI Gate Inspector</h1>
-        <p class="subtitle">AI-assisted refuse-derived fuel load screening at the plant gate — visual contaminant detection, manifest cross-check, and route suitability in seconds.</p>
+        <p class="subtitle">For weighbridge operators at RDF co-processing cement plants in Indonesia — AI load screening at the gate: visual contaminant detection, waybill cross-check, and route suitability in seconds. Semen Gresik / SBI Cilacap run real RDF co-processing lines today.</p>
       </div>
     </div>
     <div class="header-meta">
@@ -21,6 +21,14 @@
     </div>
   </header>
 
+  <div class="problem-banner-wrap">
+    <div class="problem-banner" role="note">
+      <span class="banner-icon" aria-hidden="true">&#9888;</span>
+      <span class="banner-text">One missed metal chunk can stop a cement kiln — &asymp; <strong>Rp 450 million per hour</strong> of unplanned downtime.</span>
+      <span class="banner-source">Source: ~US$28k/hr US cement benchmark (oxmaint) @ Rp 16,000/USD &middot; docs/research-realcase-indonesia.md &sect;5a</span>
+    </div>
+  </div>
+
   <main class="layout">
     <!-- ============ LEFT: inspection form ============ -->
     <section class="panel" id="inspect-form-panel">
@@ -28,14 +36,14 @@
 
       <div class="demo-row">
         <span class="demo-label">Load Demo Case:</span>
-        <button type="button" class="btn btn-demo demo-green" id="demo-green">🟢 Green</button>
-        <button type="button" class="btn btn-demo demo-amber" id="demo-amber">🟡 Amber</button>
-        <button type="button" class="btn btn-demo demo-red" id="demo-red">🔴 Red</button>
+        <button type="button" class="btn btn-demo demo-green" id="demo-green" title="Arm-roll B 9174 KT · dry RDF feedstock from Bantargebang to SBI Narogong">🟢 Green — Dry RDF</button>
+        <button type="button" class="btn btn-demo demo-amber" id="demo-amber" title="Compactor B 9282 AP · wet organics from TPST · claimed 30% moisture, measured 57%">🟡 Amber — Wet Organics</button>
+        <button type="button" class="btn btn-demo demo-red" id="demo-red" title="Compactor F 7702 TS · scrap metal hidden under 'clean RDF' claim · weighbridge mismatch">🔴 Red — Hidden Metal</button>
       </div>
 
       <form id="inspect-form" autocomplete="off">
         <label for="truck_id">Truck ID</label>
-        <input type="text" id="truck_id" name="truck_id" placeholder="e.g. B-9174-KT" required>
+        <input type="text" id="truck_id" name="truck_id" placeholder="e.g. B 9174 KT" required>
 
         <label for="photo">Load Photo</label>
         <input type="file" id="photo" name="photo" accept="image/*">
@@ -49,7 +57,7 @@
           placeholder="Paste or type the waybill / duty-of-care transfer note text here…"></textarea>
 
         <label for="weight_kg">Weight (kg, weighbridge)</label>
-        <input type="number" id="weight_kg" name="weight_kg" min="0" step="1" placeholder="e.g. 18500" required>
+        <input type="number" id="weight_kg" name="weight_kg" min="0" step="1" placeholder="e.g. 5200" required>
 
         <label for="stream">Waste Stream Preset</label>
         <select id="stream" name="stream">
@@ -76,6 +84,13 @@
         <div id="form-error" class="error-msg" hidden></div>
       </form>
     </section>
+
+    <!-- ============ MIDDLE: incoming load photo (hero evidence) ============ -->
+    <figure id="load-photo-panel" class="panel load-photo-panel" hidden>
+      <h2>Incoming Load</h2>
+      <img id="load-photo-img" alt="Incoming truck load photo">
+      <figcaption id="load-photo-caption" class="load-photo-caption"></figcaption>
+    </figure>
 
     <!-- ============ RIGHT: result ticket ============ -->
     <section class="panel" id="inspect-result">
