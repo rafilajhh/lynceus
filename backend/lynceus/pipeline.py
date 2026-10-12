@@ -145,15 +145,54 @@ class VLLMClient:
     def __init__(
         self,
         settings: Optional[Settings] = None,
-        timeout_s: float = 20.0,
+        timeout_s: float = 90.0,
     ) -> None:
         self._settings = settings or get_settings()
         self._timeout_s = timeout_s
         self.provenance = "live"
 
+    def _auth_headers(self) -> Dict[str, str]:
+        """Bearer header when an API key is configured, else nothing."""
+        if self._settings.vllm_api_key:
+            return {"Authorization": f"Bearer {self._settings.vllm_api_key}"}
+        return {}
+
+    @staticmethod
+    def _read_sse(r: httpx.Response) -> str:
+        """Consume an SSE chat-completions stream and join delta contents.
+
+        Some OpenAI-compatible endpoints always answer with ``text/event-stream``
+        (even without ``stream: true``), so the reader collects
+        ``choices[0].delta.content`` fragments until ``data: [DONE]``.
+        """
+        parts: list = []
+        for line in r.iter_lines():
+            line = line.strip()
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[len("data:") :].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            try:
+                delta = chunk["choices"][0]["delta"].get("content")
+            except (KeyError, IndexError, TypeError, AttributeError):
+                continue
+            if delta:
+                parts.append(delta)
+        return "".join(parts)
+
     def _chat(self, base_url: str, model: str, messages: list) -> str:
-        """One chat-completions round trip; raises on transport/HTTP errors."""
-        response = httpx.post(
+        """One chat-completions round trip; raises on transport/HTTP errors.
+
+        The response is read through two paths: SSE when the endpoint streams
+        (``text/event-stream``), plain JSON otherwise.
+        """
+        with httpx.stream(
+            "POST",
             f"{base_url.rstrip('/')}/chat/completions",
             json={
                 "model": model,
@@ -161,11 +200,16 @@ class VLLMClient:
                 "max_tokens": 512,
                 "temperature": 0.1,
             },
+            headers=self._auth_headers(),
             timeout=self._timeout_s,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        return str(payload["choices"][0]["message"]["content"])
+        ) as response:
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if "text/event-stream" in content_type:
+                return self._read_sse(response)
+            # Fallback: a full non-streaming JSON body (application/json).
+            payload = json.loads(response.read().decode("utf-8"))
+            return str(payload["choices"][0]["message"]["content"])
 
     def _chat_json(self, base_url: str, model: str, messages: list) -> Dict[str, Any]:
         """Chat round trip with robust JSON parsing and exactly one retry."""

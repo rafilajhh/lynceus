@@ -21,3 +21,8 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["lynceus*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: live smoke tests against a real endpoint (opt-in via LYNCEUS_LIVE_TESTS=1)",
+]

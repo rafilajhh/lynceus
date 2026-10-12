@@ -20,6 +20,10 @@ VLLM_LLM_URL_ENV = "VLLM_LLM_URL"
 #: Model names served by the two vLLM instances.
 VLM_MODEL_ENV = "VLM_MODEL"
 LLM_MODEL_ENV = "LLM_MODEL"
+#: Optional bearer key for the vLLM endpoints (empty = no auth header).
+VLLM_API_KEY_ENV = "VLLM_API_KEY"
+#: AI provider selector; "vllm" and "openai-compatible" share the same logic.
+LYNCEUS_AI_PROVIDER_ENV = "LYNCEUS_AI_PROVIDER"
 #: Directory where run artefacts are persisted.
 LYNCEUS_STORAGE_DIR_ENV = "LYNCEUS_STORAGE_DIR"
 #: Version tag stamped onto audit records.
@@ -30,8 +34,9 @@ _DEFAULT_VLLM_LLM_URL = "http://localhost:8001/v1"
 _DEFAULT_VLM_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
 _DEFAULT_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 _DEFAULT_STORAGE_DIR = "./runs"
+_DEFAULT_VLLM_API_KEY = ""
+_DEFAULT_AI_PROVIDER = "vllm"
 _DEFAULT_AUDIT_FORMAT_VERSION = 1
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -41,10 +46,11 @@ class Settings:
     vllm_llm_url: str
     vlm_model: str
     llm_model: str
+    vllm_api_key: str
+    ai_provider: str
     storage_dir: str
     audit_format_version: int
     version: str
-
 
 def get_settings() -> Settings:
     """Build a :class:`Settings` from the current environment.
@@ -67,6 +73,8 @@ def get_settings() -> Settings:
         vlm_model=os.environ.get(VLM_MODEL_ENV, _DEFAULT_VLM_MODEL),
         llm_model=os.environ.get(LLM_MODEL_ENV, _DEFAULT_LLM_MODEL),
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
+        vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),
+        ai_provider=os.environ.get(LYNCEUS_AI_PROVIDER_ENV, _DEFAULT_AI_PROVIDER),
         audit_format_version=audit_format_version,
         version=__version__,
     )

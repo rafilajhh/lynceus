@@ -67,6 +67,8 @@ Then open <http://localhost:8020> — the dashboard loads with three demo cases
 | `VLLM_LLM_URL` | `http://localhost:8001/v1` | vLLM endpoint for the text LLM |
 | `VLM_MODEL` | `Qwen/Qwen2.5-VL-7B-Instruct` | Vision-language model id |
 | `LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Text model id |
+| `VLLM_API_KEY` | *(empty)* | Optional bearer key for the vLLM endpoints; no auth header sent when empty |
+| `LYNCEUS_AI_PROVIDER` | `vllm` | AI provider selector (`vllm` or `openai-compatible` — same client logic) |
 | `LYNCEUS_STORAGE_DIR` | `./runs` | Where inspection audit records live |
 | `AUDIT_FORMAT_VERSION` | `1` | Audit record schema version |
 
