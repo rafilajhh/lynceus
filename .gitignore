@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.python-version
+
+# Node
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.local
+*.pem
+
+# Data (large industrial datasets never committed)
+data/raw/
+data/processed/
+data/models/
+*.csv
+*.parquet
+*.h5
+*.pt
+*.pth
+*.onnx
+!data/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build & cache
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+htmlcov/
+
+# Logs
+*.log
+logs/
