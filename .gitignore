@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Env & secrets
+.env
+*.key
+
+# Lynceus runtime
+runs/
+backend/runs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (if web gains tooling later)
+node_modules/

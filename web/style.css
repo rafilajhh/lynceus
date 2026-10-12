@@ -1,0 +1,454 @@
+/* ============================================================
+   Lynceus — AI Gate Inspector
+   Dark industrial theme · vanilla CSS · no external deps
+   ============================================================ */
+
+:root {
+  --bg: #0e1116;
+  --bg-panel: #161b23;
+  --bg-raised: #1d2430;
+  --border: #2a3240;
+  --border-strong: #3a4557;
+  --text: #e8ecf1;
+  --text-dim: #9aa5b4;
+  --text-faint: #6b7686;
+  --accent: #4da3ff;
+  --green: #2ecc71;
+  --green-dim: rgba(46, 204, 113, 0.14);
+  --amber: #f1c40f;
+  --amber-dim: rgba(241, 196, 15, 0.14);
+  --red: #e74c3c;
+  --red-dim: rgba(231, 76, 60, 0.14);
+  --mono: "Cascadia Code", "Consolas", "JetBrains Mono", ui-monospace, monospace;
+  --sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* ---------- header ---------- */
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 20px 28px;
+  background: linear-gradient(180deg, #141a22 0%, var(--bg) 100%);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand { display: flex; align-items: center; gap: 14px; }
+
+.brand-mark {
+  font-size: 26px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  max-width: 640px;
+}
+
+.header-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pill {
+  font-size: 11.5px;
+  font-family: var(--mono);
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+  white-space: nowrap;
+}
+
+.pill-dim { color: var(--text-faint); }
+
+/* ---------- layout ---------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 5fr) minmax(380px, 6fr);
+  gap: 24px;
+  padding: 24px 28px;
+  max-width: 1400px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; padding: 16px; }
+  .site-header { padding: 16px; }
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+
+.panel h2 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+}
+
+.panel h3 {
+  margin: 18px 0 8px;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--text-faint);
+}
+
+/* ---------- demo buttons ---------- */
+
+.demo-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.demo-label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+
+.btn:hover { background: #232c3a; border-color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  width: 100%;
+  margin-top: 20px;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  background: #14304d;
+  border-color: var(--accent);
+  color: #cfe6ff;
+}
+
+.btn-primary:hover { background: #1a3f66; }
+.btn-primary:disabled { opacity: 0.55; cursor: wait; }
+
+.btn-small { font-size: 12px; padding: 4px 10px; }
+
+.demo-green  { border-color: var(--green); color: var(--green); }
+.demo-green:hover  { background: var(--green-dim); }
+.demo-amber  { border-color: var(--amber); color: var(--amber); }
+.demo-amber:hover  { background: var(--amber-dim); }
+.demo-red    { border-color: var(--red); color: var(--red); }
+.demo-red:hover    { background: var(--red-dim); }
+
+/* ---------- form ---------- */
+
+label {
+  display: block;
+  margin: 14px 0 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.label-hint { font-weight: 400; color: var(--text-faint); }
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  padding: 9px 11px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+textarea { font-family: var(--mono); font-size: 13px; resize: vertical; }
+
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+input[type="file"] {
+  width: 100%;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+input[type="file"]::file-selector-button {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 5px 12px;
+  margin-right: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 480px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ---------- photo preview ---------- */
+
+.photo-preview {
+  margin-top: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.photo-preview img {
+  max-width: 100%;
+  max-height: 220px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  display: block;
+}
+
+.photo-preview[hidden] { display: none; }
+
+/* ---------- placeholder / awaiting backend ---------- */
+
+.result-placeholder {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-faint);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.placeholder-mark { font-size: 40px; margin-bottom: 8px; }
+
+.placeholder-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+.placeholder-sub { margin: 0 auto; max-width: 420px; font-size: 13.5px; }
+
+/* ---------- verdict banner ---------- */
+
+.verdict-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 18px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  margin-bottom: 14px;
+}
+
+.verdict-label {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 3px;
+}
+
+.verdict-record-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.verdict-accept   { background: var(--green-dim); border-color: var(--green); }
+.verdict-accept   .verdict-label { color: var(--green); }
+.verdict-escalate { background: var(--amber-dim); border-color: var(--amber); }
+.verdict-escalate .verdict-label { color: var(--amber); }
+.verdict-reject   { background: var(--red-dim); border-color: var(--red); }
+.verdict-reject   .verdict-label { color: var(--red); }
+.verdict-unknown  { background: var(--bg-raised); }
+.verdict-unknown  .verdict-label { color: var(--text-dim); }
+
+.headline {
+  margin: 0 0 4px;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+/* ---------- confidence ---------- */
+
+.confidence-bar {
+  height: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), #7cc4ff);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.confidence-text {
+  margin: 6px 0 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+/* ---------- lists ---------- */
+
+.reasoning-list, .caveats-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13.5px;
+}
+
+.reasoning-list li { margin-bottom: 6px; }
+.caveats-list li { margin-bottom: 6px; color: var(--amber); }
+
+.muted { color: var(--text-faint); font-size: 13.5px; }
+
+/* ---------- gates ---------- */
+
+.gates { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.gate-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+}
+
+.gate-chip .gate-state { font-weight: 700; }
+
+.gate-passed { border-color: var(--green); }
+.gate-passed .gate-state { color: var(--green); }
+.gate-failed { border-color: var(--red); }
+.gate-failed .gate-state { color: var(--red); }
+.gate-warning { border-color: var(--amber); }
+.gate-warning .gate-state { color: var(--amber); }
+
+/* ---------- audit record ---------- */
+
+.audit-record {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.audit-record summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent);
+  user-select: none;
+}
+
+.audit-record summary:hover { text-decoration: underline; }
+
+.audit-record pre {
+  margin: 0;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  overflow-x: auto;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+/* ---------- errors ---------- */
+
+.error-msg {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--red);
+  background: var(--red-dim);
+  border-radius: 6px;
+  color: #ffb3aa;
+  font-size: 13.5px;
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- footer ---------- */
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 16px 28px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.site-footer code {
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
