@@ -47,14 +47,14 @@ def test_audit_invariants():
     inputs = {
         "truck_id": "B-9174-KT",
         "photo": {"filename": "photo_0001.jpg", "sha256": A.sha256_field(photo_bytes),
-                  "captured_at_utc": "2026-10-13T02:14:52Z", "provenance": "gate_camera"},
+                  "captured_at_utc": "2099-01-01T02:14:52Z", "provenance": "gate_camera"},
         "manifest_text": {"source": "paper_manifest_ocr", "raw_text_sha256": A.sha256_field(manifest_bytes),
                           "extracted_fields": {"waste_type": "organik", "origin": "TPA Suwung",
                                                "declared_weight_kg": 4200.0},
                           "ocr_confidence": 0.91},
-        "weight": {"value_kg": 4185.0, "source": "weighbridge", "measured_at_utc": "2026-10-13T02:14:55Z"},
+        "weight": {"value_kg": 4185.0, "source": "weighbridge", "measured_at_utc": "2099-01-01T02:14:55Z"},
         "gas": {"readings_ppm": {"ch4": 15.2, "co2": 850.0}, "source": "portable_sensor",
-                "measured_at_utc": "2026-10-13T02:14:58Z"},
+                "measured_at_utc": "2099-01-01T02:14:58Z"},
     }
     ai_outputs = {
         "vlm": {"model": "qwen2.5-vl-7b", "model_version": "2026-09-01",
@@ -72,7 +72,7 @@ def test_audit_invariants():
                            "missing": [], "caveats": ["moisture 58%: drying prerequisite"],
                            "alternative": "rejection scores 0.31 (margin 0.43)"},
     }
-    verdict = {"decision": "accept", "decided_at_utc": "2026-10-13T02:15:40Z",
+    verdict = {"decision": "accept", "decided_at_utc": "2099-01-01T02:15:40Z",
                "classification": "screening_estimate",
                "uncertainty": "Keputusan AI tanpa validasi eksperimental silang; gunakan untuk triase."}
     gates = {
@@ -90,9 +90,9 @@ def test_audit_invariants():
     check("sha256_field format", A.sha256_field(b"x") == "sha256:" + A.sha256_hex(b"x"))
     raises("sha256_hex rejects str", A.sha256_hex, "not-bytes", contains="FORMAT_ERROR")
     check("now_utc ends with Z and matches regex", A.TIMESTAMP_RE.match(A.now_utc()) is not None)
-    raises("bad timestamp no-Z", A.validate_timestamp, "2026-10-13T02:15:00+00:00", contains="Z")
-    raises("bad timestamp naive", A.validate_timestamp, "2026-10-13 02:15:00", contains="ISO 8601 UTC")
-    raises("bad timestamp offset", A.validate_timestamp, "2026-10-13T02:15:00+07:00", contains="ISO 8601")
+    raises("bad timestamp no-Z", A.validate_timestamp, "2099-01-01T02:15:00+00:00", contains="Z")
+    raises("bad timestamp naive", A.validate_timestamp, "2099-01-01 02:15:00", contains="ISO 8601 UTC")
+    raises("bad timestamp offset", A.validate_timestamp, "2099-01-01T02:15:00+07:00", contains="ISO 8601")
 
     print("== begin_record (invariant 1, 3) ==")
     rec = A.begin_record(storage, {"name": "lynceus", "version": "0.1.0"}, inputs, input_digests)
@@ -106,18 +106,18 @@ def test_audit_invariants():
     check("begin record reloads strictly", A.load_record(storage / "inspection-000001" / "audit.json").record_id == rec.record_id)
 
     print("== finish_record happy path (invariants 1,2,3,7) ==")
-    final = A.finish_record(storage, rec.record_id, "completed", "2026-10-13T02:15:41Z",
+    final = A.finish_record(storage, rec.record_id, "completed", "2099-01-01T02:15:41Z",
                             {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs,
                             engine_outputs, verdict, gates,
                             frozen_inputs={"photo": photo_bytes, "manifest_text": manifest_bytes})
     check("final status completed", final.execution_status == "completed")
-    check("finished_at set", final.finished_at_utc == "2026-10-13T02:15:41Z")
+    check("finished_at set", final.finished_at_utc == "2099-01-01T02:15:41Z")
     check("gates preserved", final.gates.manifest_crosscheck.state == "failed")
     final_disk = json.loads((storage / "inspection-000001" / "audit.json").read_text(encoding="utf-8"))
     check("digest stamped", final_disk["digest"]["record_sha256"] != A.EMPTY_SHA256_FIELD)
 
     print("== invariant 2: single-shot finalization ==")
-    raises("terminal cannot be re-finalized", A.finish_record, storage, rec.record_id, "failed", "2026-10-13T02:16:00Z",
+    raises("terminal cannot be re-finalized", A.finish_record, storage, rec.record_id, "failed", "2099-01-01T02:16:00Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, gates,
            contains="already terminal")
     check("re-finalize attempt left record intact",
@@ -126,38 +126,38 @@ def test_audit_invariants():
     print("== invariant 3: frozen input mismatch ==")
     rec2 = A.begin_record(storage, {"name": "lynceus", "version": "0.1.0"}, inputs, input_digests)
     check("second id incremented", rec2.record_id == "inspection-000002", rec2.record_id)
-    raises("tampered photo rejected", A.finish_record, storage, rec2.record_id, "completed", "2026-10-13T02:15:41Z",
+    raises("tampered photo rejected", A.finish_record, storage, rec2.record_id, "completed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, gates,
            frozen_inputs={"photo": b"tampered!" + photo_bytes, "manifest_text": manifest_bytes},
            contains=A._ERR_INPUT_MISMATCH)
-    raises("unknown frozen input rejected", A.finish_record, storage, rec2.record_id, "completed", "2026-10-13T02:15:41Z",
+    raises("unknown frozen input rejected", A.finish_record, storage, rec2.record_id, "completed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, gates,
            frozen_inputs={"surprise": b"x"}, contains=A._ERR_INPUT_MISMATCH)
     # leave inspection-000002 in_progress on purpose (crash simulation)
 
     print("== invariant 10: non-terminal finish + bad values ==")
     rec3 = A.begin_record(storage, {"name": "lynceus", "version": "0.1.0"}, inputs, input_digests)
-    raises("in_progress status rejected by finish", A.finish_record, storage, rec3.record_id, "in_progress", "2026-10-13T02:15:41Z",
+    raises("in_progress status rejected by finish", A.finish_record, storage, rec3.record_id, "in_progress", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, gates,
            contains="terminal status")
     raises("missing finished_at rejected at entry", A.finish_record, storage, rec3.record_id, "failed", "not-a-time",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, gates,
            contains="finished_at_utc")
     bad_verdict = dict(verdict); bad_verdict["decision"] = "maybe"
-    raises("closed enum verdict", A.finish_record, storage, rec3.record_id, "completed", "2026-10-13T02:15:41Z",
+    raises("closed enum verdict", A.finish_record, storage, rec3.record_id, "completed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, bad_verdict, gates,
            contains="verdict.decision")
     bad_ai = json.loads(json.dumps(ai_outputs)); bad_ai["vlm"]["confidence"] = 1.5
-    raises("confidence >1 rejected", A.finish_record, storage, rec3.record_id, "completed", "2026-10-13T02:15:41Z",
+    raises("confidence >1 rejected", A.finish_record, storage, rec3.record_id, "completed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, bad_ai, engine_outputs, verdict, gates,
            contains="ai_outputs.vlm.confidence")
     bad_ai2 = json.loads(json.dumps(ai_outputs)); bad_ai2["llm"]["confidence"] = float("nan")
     raises("NaN confidence rejected (allow_nan=False guard + validator)",
-           A.finish_record, storage, rec3.record_id, "completed", "2026-10-13T02:15:41Z",
+           A.finish_record, storage, rec3.record_id, "completed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, bad_ai2, engine_outputs, verdict, gates,
            contains="non-finite")
     bad_gates = json.loads(json.dumps(gates)); bad_gates["ocr_confidence"]["state"] = "skipped"
-    raises("closed enum gate state", A.finish_record, storage, rec3.record_id, "completed", "2026-10-13T02:15:41Z",
+    raises("closed enum gate state", A.finish_record, storage, rec3.record_id, "completed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, bad_gates,
            contains="gates")
     # record 3 still in_progress on disk after all failed finishes
@@ -166,13 +166,13 @@ def test_audit_invariants():
 
     print("== invariant 4: refuse_insufficient_input requires missing list ==")
     refuse_verdict = dict(verdict); refuse_verdict["decision"] = "refuse_insufficient_input"
-    raises("refuse without missing list rejected", A.finish_record, storage, rec3.record_id, "failed", "2026-10-13T02:15:41Z",
+    raises("refuse without missing list rejected", A.finish_record, storage, rec3.record_id, "failed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, refuse_verdict, gates,
            contains="refuse_insufficient_input")
     refuse_rec = {**engine_outputs, "recommendation": {**engine_outputs["recommendation"],
                    "actionable": False, "route": "hold_for_review", "insufficient": True,
                    "missing": ["manifest_text"], "headline": "Manifest tidak terbaca."}}
-    A.finish_record(storage, rec3.record_id, "failed", "2026-10-13T02:15:41Z",
+    A.finish_record(storage, rec3.record_id, "failed", "2099-01-01T02:15:41Z",
                     {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, refuse_rec, refuse_verdict, gates)
     check("refuse with missing list accepted",
           A.load_record(storage / "inspection-000003" / "audit.json").verdict.decision == "refuse_insufficient_input")
@@ -205,7 +205,7 @@ def test_audit_invariants():
     def bump_version(d): d["format_version"] = 99
     def bad_digest(d): d["inputs"]["photo"]["sha256"] = "deadbeef"
     def extra_key(d): d["sneaky"] = True
-    def bad_ts(d): d["verdict"]["decided_at_utc"] = "2026-10-13T02:15:40+00:00"
+    def bad_ts(d): d["verdict"]["decided_at_utc"] = "2099-01-01T02:15:40+00:00"
     def strip_finished(d): del d["finished_at_utc"]
     def inf_gas(d): d["inputs"]["gas"]["readings_ppm"]["ch4"] = 1e400
     def bad_decision(d): d["verdict"]["decision"] = "approve"
@@ -254,7 +254,7 @@ def test_audit_invariants():
           final_loaded.execution_status == "completed" and final_loaded.gates.manifest_crosscheck.state == "failed")
 
     print("== failed finish on nonexistent record ==")
-    raises("finish unknown record", A.finish_record, storage, "inspection-999999", "failed", "2026-10-13T02:15:41Z",
+    raises("finish unknown record", A.finish_record, storage, "inspection-999999", "failed", "2099-01-01T02:15:41Z",
            {"name": "lynceus", "version": "0.1.0"}, inputs, ai_outputs, engine_outputs, verdict, gates,
            contains="not found")
 

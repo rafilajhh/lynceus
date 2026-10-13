@@ -39,8 +39,8 @@ runs-e2e-real*/
 # Stray root lockfile (real one lives in web/)
 package-lock.json
 
-# Impeccable critique snapshots (local-only backlog)
-.impeccable/critique/
+# Impeccable artifacts (local-only: critique snapshots, surface briefs)
+.impeccable/
 
 # Screenshot artifacts from visual QA / agent runs
 .playwright-mcp/
