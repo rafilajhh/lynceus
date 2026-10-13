@@ -12,6 +12,9 @@ export interface InspectPayload {
   photo_filename: string | null;
   demo_case: string | null;
   manifest_text: string | null;
+  /** Optional photo of the paper waybill (extra evidence; backend's
+      InspectRequest allows extra fields and digests all inputs). */
+  waybill_image_base64?: string | null;
   weight_kg: number;
   stream: string;
   moisture_pct: number;

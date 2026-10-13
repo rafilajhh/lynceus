@@ -65,7 +65,7 @@ function headlineFor(
 /** Design-review finding 5: the REFUSED verdict needs explaining. */
 const REFUSE_EXPLANATION =
   "REFUSED means the gate did not receive enough usable input to inspect " +
-  "this load honestly: no photo (or demo-case photo) and/or no manifest " +
+  "this load honestly: no photo (or demo-case photo) and/or no waybill " +
   "text. Rather than guessing, the engine declines to issue a verdict: " +
   "the truck is held at the gate until the missing input is supplied and " +
   "the inspection is re-run. No impact figure is invented for a refusal.";
@@ -90,6 +90,53 @@ function collectCaveats(data: InspectResponse | null): string[] {
   if (Array.isArray(data.caveats)) out.push(...data.caveats);
   const uncertainty = data.verdict?.uncertainty;
   if (typeof uncertainty === "string" && uncertainty) out.push(uncertainty);
+  return out;
+}
+
+/** Engine field names → operator language (critique P2: snake_case must
+    not leak into caveats on the most-read surface). */
+const FIELD_LABELS: Record<string, string> = {
+  ncv_mj_per_kg: "heating value",
+  ash_fraction: "ash content",
+  chlorine_fraction: "chlorine content",
+  mixed_msw: "mixed municipal waste",
+};
+
+function humanizeCaveat(caveat: string): string {
+  let out = caveat;
+  for (const [field, label] of Object.entries(FIELD_LABELS)) {
+    out = out.replaceAll(field, label);
+  }
+  out = out.replaceAll("mixed-msw", "mixed municipal waste");
+  return out;
+}
+
+/** Near-duplicate detector: caveats arrive from two sources (engine +
+    fusion) that state the same fact twice with different wording
+    (follow-up: fuel-grade lab analysis appeared twice). Two caveats are
+    duplicates when they share a long content token (≥7 chars) — short
+    generic words ("fuel", "needs") are too common to dedupe on. */
+const STOP_TOKENS = new Set([
+  "require", "requires", "analysis", "laboratory", "established", "needs",
+]);
+
+function tokensOf(caveat: string): string[] {
+  return caveat
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 7 && !STOP_TOKENS.has(w));
+}
+
+function dedupeCaveats(caveats: string[]): string[] {
+  const claimed = new Set<string>();
+  const out: string[] = [];
+  for (const c of caveats) {
+    const toks = tokensOf(c);
+    if (toks.length > 0 && toks.some((t) => claimed.has(t))) continue;
+    toks.forEach((t) => claimed.add(t));
+    out.push(c);
+  }
   return out;
 }
 
@@ -127,7 +174,7 @@ export function VerdictPanel({
   const tone = verdictTone(decision);
   const style = VERDICT_STYLE[tone];
   const reasons = collectReasons(data);
-  const caveats = collectCaveats(data);
+  const caveats = dedupeCaveats(collectCaveats(data));
 
   return (
     <Panel className="flex flex-col">
@@ -137,7 +184,10 @@ export function VerdictPanel({
       />
 
       <div className="flex flex-col gap-4 px-4 py-4">
-        {/* Verdict banner: lights only after the five gates resolve */}
+        {/* Verdict banner: lights only after the five gates resolve.
+            The reset control lives inside this row: after resolve it is
+            the second-most-important action (critique P1 — it was buried
+            mid-panel in the quietest variant). */}
         <div
           role="status"
           aria-live="polite"
@@ -148,15 +198,20 @@ export function VerdictPanel({
               : "border-seam bg-raised text-faint opacity-70",
           )}
         >
-          {/* Verdict banner: lights only after the five gates resolve.
-              10px radius: matches --radius-card for the banner container.
+          {/* 10px radius: matches --radius-card for the banner container.
               4px tracking: industrial register for the verdict label (small-caps companion). */}
           <span className="text-[20px] font-bold tracking-[4px]">
             {bannerLit ? style.label : "— — —"}
           </span>
-          <span className="figure text-[11px] tracking-[0.5px] text-muted">
-            {data?.record_id ?? ""}
-          </span>
+          {phase === "resolved" && onReset ? (
+            <button
+              type="button"
+              onClick={onReset}
+              className="shrink-0 cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-3 py-1.5 text-[13px] font-semibold tracking-[0.2px] text-ink transition-colors duration-100 hover:border-amber-line hover:bg-seam active:translate-y-px"
+            >
+              Next truck
+            </button>
+          ) : null}
         </div>
 
         {/* Headline: directive sentence sits just under the verdict word
@@ -166,7 +221,7 @@ export function VerdictPanel({
             ? headlineFor(decision, data)
             : phase === "evaluating"
               ? "Evaluating interlock…"
-              : "Pick a demo case on the left, then press Inspect Load."}
+              : "Pick a demo case above, then press Inspect Load."}
         </p>
 
         {/* The interlock gate strip: the decision theater comes before the
@@ -189,19 +244,6 @@ export function VerdictPanel({
         ) : null}
 
         {children}
-
-        {/* Next-truck reset: gate flow is truck-by-truck (critique Q1) */}
-        {phase === "resolved" && onReset ? (
-          <div className="flex justify-end border-t border-seam pt-3">
-            <button
-              type="button"
-              onClick={onReset}
-              className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-4 py-2 text-[13px] font-semibold tracking-[0.2px] text-ink transition-colors duration-100 hover:bg-seam hover:border-amber-line active:translate-y-px"
-            >
-              Clear for next truck →
-            </button>
-          </div>
-        ) : null}
 
         {/* REFUSED: explain what refuse_insufficient_input means
             (review finding 5: unexplained term) */}
@@ -270,7 +312,7 @@ export function VerdictPanel({
                   key={i}
                   className="text-[13px] leading-snug text-muted"
                 >
-                  {String(c)}
+                  {humanizeCaveat(String(c))}
                 </li>
               ))}
             </ul>

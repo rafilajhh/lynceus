@@ -76,6 +76,9 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  /* Sticky top bar (py-3 + content ≈ 60px) must never occlude anchor /
+     scroll targets: headings were clipped mid-glyph (critique P3). */
+  scroll-padding-top: 72px;
 }
 
 body {

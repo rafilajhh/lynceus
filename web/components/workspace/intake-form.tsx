@@ -8,7 +8,7 @@
  * the parent (WorkspaceClient).
  */
 
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { WASTE_STREAMS, DEMO_CASES } from "@/lib/demo-cases";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,13 @@ export interface IntakeValues {
   age_h: string;
 }
 
+/** Uploaded photo state, owned by the parent (bytes go into the payload). */
+export interface UploadSlot {
+  /** object URL for the preview; null = no upload (demo photo shows). */
+  previewUrl: string | null;
+  filename: string | null;
+}
+
 const DEMO_BTN_TONE: Record<string, string> = {
   green: "border-verdict-green/70 text-verdict-green hover:bg-green-dim",
   amber: "border-amber/70 text-amber hover:bg-amber-dim",
@@ -33,20 +40,23 @@ export function IntakeForm({
   onChange,
   onDemo,
   onSubmit,
+  onWaybillPhoto,
+  waybillPhoto,
   loading,
   formError,
   activeDemo,
-  photoSlot,
 }: {
   values: IntakeValues;
   onChange: (patch: Partial<IntakeValues>) => void;
   onDemo: (key: "green" | "amber" | "red") => void;
   onSubmit: () => void;
+  /** Upload handler receives the picked File (or null to clear). The load
+      photo upload lives beside the hero image, not in this form. */
+  onWaybillPhoto: (file: File | null) => void;
+  waybillPhoto: UploadSlot;
   loading: boolean;
   formError: string | null;
   activeDemo: string | null;
-  /** Hero photo figure is rendered between the demo row and the form. */
-  photoSlot: ReactNode;
 }) {
   const field =
     "input disabled:opacity-50 disabled:cursor-not-allowed";
@@ -56,11 +66,55 @@ export function IntakeForm({
     onSubmit();
   };
 
+  /** Shared file-input row: hidden input + ghost button + clear. */
+  const uploadRow = (
+    id: string,
+    label: string,
+    slot: UploadSlot,
+    onPick: (file: File | null) => void,
+  ) => (
+    <div className="flex items-center gap-2">
+      <input
+        id={id}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        disabled={loading}
+        onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[6px] border border-transparent bg-transparent px-3 py-1.5 text-xs font-semibold text-muted transition-colors duration-100 select-none hover:bg-seam hover:text-ink",
+          loading && "pointer-events-none opacity-50",
+        )}
+      >
+        {label}
+      </label>
+      {slot.filename ? (
+        <>
+          <span className="figure min-w-0 flex-1 truncate text-[12px] text-muted">
+            {slot.filename}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            disabled={loading}
+            className="cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
+          >
+            Clear
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col">
-      {/* Demo-case row */}
+    <div className="flex h-full flex-col">
+      {/* Demo-case row: wraps to two lines instead of clipping (user
+          feedback: nowrap cut off the red case in the half-width column). */}
       <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-seam px-4 py-3">
-        <span className="smallcaps">Demo cases</span>
+        <span className="smallcaps shrink-0">Demo cases</span>
         {(["green", "amber", "red"] as const).map((key) => (
           <Button
             key={key}
@@ -70,7 +124,7 @@ export function IntakeForm({
             disabled={loading}
             aria-pressed={activeDemo === key}
             className={cn(
-              "border",
+              "shrink-0 border",
               DEMO_BTN_TONE[key],
               activeDemo === key && "bg-seam/60",
             )}
@@ -81,13 +135,11 @@ export function IntakeForm({
         ))}
       </div>
 
-      {photoSlot}
-
       <form
         id="inspect-form"
         onSubmit={handleSubmit}
         aria-label="Truck intake form"
-        className="flex flex-col gap-3 px-4 py-4"
+        className="flex flex-1 flex-col gap-3 px-4 py-4"
       >
         <div>
           <label htmlFor="truck_id" className="smallcaps mb-1 block">
@@ -104,19 +156,25 @@ export function IntakeForm({
           />
         </div>
 
+        {/* Waybill: photo upload only (user direction, 2026-10-13 — the
+            paper ticket is photographed at the gate, not typed). Demo cases
+            prefill manifest_text internally; a REFUSED verdict still fires
+            honestly when neither text nor photo is present. */}
         <div>
-          <label htmlFor="manifest_text" className="smallcaps mb-1 block">
-            Waybill
-          </label>
-          <textarea
-            id="manifest_text"
-            className={cn(field, "figure text-[13px] leading-relaxed")}
-            rows={7}
-            value={values.manifest_text}
-            onChange={(e) => onChange({ manifest_text: e.target.value })}
-            placeholder="WAYBILL / WEIGHBRIDGE TICKET…"
-            disabled={loading}
-          />
+          <span className="smallcaps mb-1 block">Waybill</span>
+          <div className="rounded-[6px] border border-seam bg-raised px-3 py-2">
+            {values.manifest_text ? (
+              <p className="m-0 mb-1 text-[12px] text-muted">
+                Waybill text loaded from demo case.
+              </p>
+            ) : null}
+            {uploadRow(
+              "waybill-photo-upload",
+              waybillPhoto.filename ? "Replace waybill photo" : "Upload waybill photo",
+              waybillPhoto,
+              onWaybillPhoto,
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -195,12 +253,14 @@ export function IntakeForm({
           </p>
         ) : null}
 
+        {/* CTA anchors the panel bottom (mt-auto): right column height
+            matches the photo column, no floating button. */}
         <Button
           type="submit"
           variant="primary"
           size="lg"
           disabled={loading}
-          className="mt-1 w-full"
+          className="mt-auto w-full"
         >
           {loading ? "Evaluating interlock…" : "Inspect Load"}
         </Button>

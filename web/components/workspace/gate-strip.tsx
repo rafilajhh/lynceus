@@ -66,10 +66,10 @@ const DOT_TONE: Record<GateDisplay["state"], string> = {
 };
 
 const STATE_LABEL: Record<GateDisplay["state"], string> = {
-  passed: "passed",
+  passed: "PASSED",
   failed: "FAILED",
-  not_run: "not_run",
-  not_evaluated: "n/a",
+  not_run: "NOT RUN",
+  not_evaluated: "N/A",
 };
 
 export function GateStrip({
@@ -180,12 +180,18 @@ export function GateStrip({
           <span className="figure text-[12px] tracking-[0.5px] text-muted">
             Interlock resolved: verdict issued.
           </span>
-        ) : (
-          <span className="figure text-[12px] tracking-[0.5px] text-muted">
-            Awaiting inspection.
-          </span>
-        )}
+        ) : null}
       </div>
+
+      {/* Gate legend (critique P2): the signature move must explain
+          itself — XCHECK/GAS are meaningless without it. Rendered once
+          the gates resolve, when the judge's eye is on the strip. */}
+      {allResolved ? (
+        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-faint">
+          VLM visual contaminants · OCR waybill read · XCHECK waybill vs
+          observed load · GAS gate sensors · WEIGHT weighbridge vs declared
+        </p>
+      ) : null}
     </div>
   );
 }

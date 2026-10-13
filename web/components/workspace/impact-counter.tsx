@@ -23,21 +23,7 @@ export function ImpactCounter({
   runKey: number;
   className?: string;
 }) {
-  const [display] = useCountUp(preventedLossIdr, runKey);
-
-  if (runKey === 0) {
-    return (
-      <div className={cn("flex flex-col gap-1", className)}>
-        <span className="smallcaps">Prevented loss</span>
-        <span className="figure text-[26px] leading-tight text-faint">
-          Rp —
-        </span>
-        <span className="text-[13px] text-muted">
-          Awaiting first verdict
-        </span>
-      </div>
-    );
-  }
+  const [display, animating] = useCountUp(preventedLossIdr, runKey);
 
   const idr = new Intl.NumberFormat("id-ID", {
     maximumFractionDigits: 0,
@@ -46,8 +32,17 @@ export function ImpactCounter({
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <span className="smallcaps">Prevented loss</span>
-      <span className="figure text-[26px] leading-tight text-ink" aria-live="polite">
+      {/* a11y (critique, Sam): the rAF count-up would be announced dozens
+          of times by aria-live. Hide intermediates from AT; announce the
+          final value once via the sr-only live region below. */}
+      <span
+        aria-hidden={animating || undefined}
+        className="figure text-[26px] leading-tight text-ink"
+      >
         Rp {idr}
+      </span>
+      <span aria-live="polite" className="sr-only">
+        {animating ? "" : `Rp ${idr}`}
       </span>
       <span className="figure text-[12px] text-muted">
         ≈ US$ {new Intl.NumberFormat("en-US", {
