@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * Badge — shadcn/ui badge primitive. On the Lynceus foundation, color is
+ * Badge: shadcn/ui badge primitive. On the Lynceus foundation, color is
  * meaning-only: verdict variants map to the decision states; everything
  * else stays graphite.
  */

@@ -215,7 +215,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             )}
           </div>
 
-          {/* photo thumbnail — only when the API exposes a relative path */}
+          {/* photo thumbnail: only when the API exposes a relative path */}
           {photo?.path ? (
             <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
               <div className="smallcaps mb-1">Photo</div>
@@ -288,7 +288,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
         </Button>
         {detail.inputs?.truck_id ? null : null}
         <span className="self-center text-[12px] text-muted">
-          Immutable audit record — saved as {detail.record_id}.json
+          Immutable audit record: saved as {detail.record_id}.json
         </span>
       </div>
     </div>

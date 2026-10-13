@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ImpactCounter — prevented-loss figure that counts up when a verdict
+ * ImpactCounter: prevented-loss figure that counts up when a verdict
  * arrives (triggered by runKey, not viewport: the workspace is the
  * stage). "Rp 798.000.000" Indonesian grouping + small USD figure.
  * Honesty contract: the end value is the backend's real estimate;

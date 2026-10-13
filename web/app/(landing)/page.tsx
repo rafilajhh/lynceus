@@ -6,15 +6,15 @@ import { CountUpFigure } from "@/components/landing/count-up-figure";
 export const metadata = { title: "One hidden metal chunk can stop a cement kiln" };
 
 /**
- * Route: / — landing (Persuade for judges).
+ * Route: /: landing (Persuade for judges).
  *
  * Direction contract (.impeccable/surface-briefs/web-app.md):
  * graphite-dark ground, hairline seams, IBM Plex, one amber accent,
  * mono figures. Every number on screen answers "from where?" with a
- * source line (PRODUCT.md principle #1) — figures come from
+ * source line (PRODUCT.md principle #1): figures come from
  * docs/research-realcase-indonesia.md.
  *
- * No kicker/eyebrow, no hero-metric grid — the first viewport states
+ * No kicker/eyebrow, no hero-metric grid: the first viewport states
  * the problem, not the product name.
  */
 
@@ -75,7 +75,7 @@ const STEPS = [
 export default function LandingPage() {
   return (
     <div className="flex flex-col gap-0 pb-6">
-      {/* ============ HERO — the problem, not the product ============ */}
+      {/* ============ HERO: the problem, not the product ============ */}
       <section
         aria-labelledby="hero-headline"
         className="grid items-center gap-10 border-b border-seam py-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14 lg:py-16"
@@ -105,7 +105,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Proof photo panel — evidence, labeled */}
+        {/* Proof photo panel: evidence, labeled */}
         <figure className="panel m-0 flex flex-col">
           <Image
             src="/demo/red-1.jpg"
@@ -126,7 +126,7 @@ export default function LandingPage() {
         </figure>
       </section>
 
-      {/* ============ PROOF STRIP — real numbers, sourced ============ */}
+      {/* ============ PROOF STRIP: real numbers, sourced ============ */}
       <section
         aria-labelledby="proof-label"
         className="border-b border-seam py-12 lg:py-16"
@@ -163,7 +163,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ============ HOW IT WORKS — three process gates ============ */}
+      {/* ============ HOW IT WORKS: three process gates ============ */}
       <section aria-labelledby="how-label" className="py-12 lg:py-16">
         <h2 id="how-label" className="smallcaps mb-8">
           How a truck is cleared, gate by gate
@@ -197,7 +197,7 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      {/* ============ PROVENANCE — honest footer ============ */}
+      {/* ============ PROVENANCE: honest footer ============ */}
       <footer className="mt-auto border-t border-seam pt-8">
         <p className="m-0 max-w-[90ch] text-[13px] leading-[1.7] text-muted">
           Decision engine built on{" "}

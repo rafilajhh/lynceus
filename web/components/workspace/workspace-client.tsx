@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * WorkspaceClient — route /app (Operate). The whole demo stage:
+ * WorkspaceClient: route /app (Operate). The whole demo stage:
  *
  * LEFT  "Incoming Load": demo-case buttons, photo hero (rounded 16px,
  *       mono caption), intake form.
@@ -48,7 +48,7 @@ export function WorkspaceClient() {
   const [impactRunKey, setImpactRunKey] = useState(0);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
 
-  // Photo state: demo case photo (path + race-guarded base64) — a user
+  // Photo state: demo case photo (path + race-guarded base64): a user
   // upload would replace it, but the demo surface only loads demo cases.
   // The first viewport never shows an empty stage: the green case's photo
   // is the initial hero, its form fields the initial values.
@@ -176,6 +176,7 @@ export function WorkspaceClient() {
   const photoSlot = heroPhoto ? (
     <figure className="m-0 border-b border-seam px-4 py-4">
       {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
+      {/* 16px radius matches --radius-card-lg: hero evidence panel uses the larger card radius */}
       <img
         src={heroPhoto.path}
         alt={heroPhoto.caption}

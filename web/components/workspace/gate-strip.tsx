@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * GateStrip — the signature move: five industrial indicator lights
+ * GateStrip: the signature move: five industrial indicator lights
  * (VLM, OCR, XCHECK, GAS, WEIGHT) on a horizontal strip that light
  * up sequentially with a 120ms stagger when a verdict arrives, like
  * a machine startup interlock. Green = passed, red = failed,
  * graphite = not_run/not_evaluated.
  *
- * The verdict banner may only light after all five gates resolve —
+ * The verdict banner may only light after all five gates resolve:
  * the parent reads `allResolved`.
  */
 
@@ -41,7 +41,7 @@ export function normalizeGates(
   if (!gates) return [...map.values()];
   for (const [key, raw] of Object.entries(gates)) {
     const display = map.get(key);
-    if (!display) continue; // unknown gate key — ignore
+    if (!display) continue; // unknown gate key: ignore
     const state =
       typeof raw === "object" && raw !== null
         ? String((raw as GateResult).state ?? "not_evaluated")
@@ -92,7 +92,7 @@ export function GateStrip({
       setLitCount(0);
       return;
     }
-    // Snap the lights on one by one, 120ms apart — the interlock.
+    // Snap the lights on one by one, 120ms apart: the interlock.
     const timers: ReturnType<typeof setTimeout>[] = [];
     gates.forEach((_, i) => {
       timers.push(setTimeout(() => setLitCount(i + 1), i * staggerMs));
@@ -178,7 +178,7 @@ export function GateStrip({
           </span>
         ) : allResolved ? (
           <span className="figure text-[12px] tracking-[0.5px] text-muted">
-            Interlock resolved — verdict issued.
+            Interlock resolved: verdict issued.
           </span>
         ) : (
           <span className="figure text-[12px] tracking-[0.5px] text-muted">

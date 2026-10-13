@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * VerdictPanel — the right column: verdict banner (lights only after
+ * VerdictPanel: the right column: verdict banner (lights only after
  * all five gates resolve), headline, impact counter, gate strip,
  * reasons (dot leaders), caveats, and the audit-record link.
  * States: idle placeholder | evaluating | resolved | error.
@@ -54,9 +54,9 @@ function headlineFor(
   data: InspectResponse | null,
 ): string {
   const tone = verdictTone(decision);
-  if (tone === "reject") return "Load rejected — do not admit to RDF processing.";
+  if (tone === "reject") return "Load rejected: do not admit to RDF processing.";
   if (tone === "escalate") return "Human review required before unloading.";
-  if (tone === "refuse") return "Insufficient input — inspection cannot proceed.";
+  if (tone === "refuse") return "Insufficient input: inspection cannot proceed.";
   const engine =
     data?.engine_outputs?.recommendation?.headline || data?.headline || "";
   return engine || "Inspection completed.";
@@ -65,7 +65,7 @@ function headlineFor(
 /** Design-review finding 5: the REFUSED verdict needs explaining. */
 const REFUSE_EXPLANATION =
   "REFUSED means the gate did not receive enough usable input to inspect " +
-  "this load honestly — no photo (or demo-case photo) and/or no manifest " +
+  "this load honestly: no photo (or demo-case photo) and/or no manifest " +
   "text. Rather than guessing, the engine declines to issue a verdict: " +
   "the truck is held at the gate until the missing input is supplied and " +
   "the inspection is re-run. No impact figure is invented for a refusal.";
@@ -134,7 +134,7 @@ export function VerdictPanel({
       />
 
       <div className="flex flex-col gap-4 px-4 py-4">
-        {/* Verdict banner — lights only after the five gates resolve */}
+        {/* Verdict banner: lights only after the five gates resolve */}
         <div
           role="status"
           aria-live="polite"
@@ -145,6 +145,9 @@ export function VerdictPanel({
               : "border-seam bg-raised text-faint opacity-70",
           )}
         >
+          {/* Verdict banner: lights only after the five gates resolve.
+              10px radius: matches --radius-card for the banner container.
+              4px tracking: industrial register for the verdict label (small-caps companion). */}
           <span className="text-[20px] font-bold tracking-[4px]">
             {bannerLit ? style.label : "— — —"}
           </span>
@@ -178,7 +181,7 @@ export function VerdictPanel({
 
         {children}
 
-        {/* REFUSED — explain what refuse_insufficient_input means
+        {/* REFUSED: explain what refuse_insufficient_input means
             (review finding 5: unexplained term) */}
         {phase === "resolved" && tone === "refuse" ? (
           <div className="rounded-[10px] border border-amber/50 bg-amber-dim px-4 py-3">
@@ -189,14 +192,14 @@ export function VerdictPanel({
           </div>
         ) : null}
 
-        {/* Error state — inline red panel with recovery */}
+        {/* Error state: inline red panel with recovery */}
         {error ? (
           <div
             role="alert"
             className="rounded-[10px] border border-verdict-red/60 bg-red-dim px-4 py-3"
           >
             <p className="m-0 text-[13.5px] font-semibold text-verdict-red">
-              Backend unreachable — is the server running?
+              Backend unreachable: is the server running?
             </p>
             <p className="figure m-0 mt-1 text-[13px] leading-relaxed break-words text-muted">
               {error}
@@ -208,7 +211,7 @@ export function VerdictPanel({
           </div>
         ) : null}
 
-        {/* Reasons — dot leaders */}
+        {/* Reasons: dot leaders */}
         {phase === "resolved" && data ? (
           <div>
             <h3 className="smallcaps mb-2 mt-0">Reasons</h3>

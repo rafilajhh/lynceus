@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * AuditModal — "View audit record" detail dialog showing the full
+ * AuditModal: "View audit record" detail dialog showing the full
  * inspection JSON. Real <dialog>-style overlay with protected focus
  * (focus moves into the modal, Escape closes, focus returns to the
  * trigger). Kept dependency-free per the vanilla-free-but-lean rule:

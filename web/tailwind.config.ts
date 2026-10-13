@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Tailwind v4 is CSS-first — the real theme lives in app/globals.css
+ * Tailwind v4 is CSS-first: the real theme lives in app/globals.css
  * under @theme. This file exists only for tooling that still expects
  * an explicit config entry point; keep custom design tokens in
  * globals.css, not here.

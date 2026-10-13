@@ -95,7 +95,7 @@ export function LedgerView() {
 
   const ready = state.kind === "ready" ? state.inspections : [];
 
-  /** Summary hairline figures — computed over ALL rows, not the filtered view. */
+  /** Summary hairline figures: computed over ALL rows, not the filtered view. */
   const summary = useMemo(() => {
     const rejected = ready.filter(
       (item) => item.decision === "reject",
@@ -370,7 +370,7 @@ function SortButton({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${children} — toggle sort order`}
+      aria-label={`${children}: toggle sort order`}
       className={`cursor-pointer uppercase transition-colors duration-100 hover:text-ink ${
         active ? "text-ink" : ""
       }`}
@@ -408,7 +408,7 @@ function LedgerEmpty() {
         ≡
       </div>
       <p className="max-w-[46ch] text-[13.5px] text-muted">
-        No inspections yet — run one in the{" "}
+        No inspections yet: run one in the{" "}
         <Link href="/app" className="text-amber underline underline-offset-2">
           Live Demo
         </Link>
@@ -438,7 +438,7 @@ function LedgerError({
       </div>
       <p className="max-w-[52ch] text-[13.5px] text-muted">
         The ledger could not be loaded. {message} Start the FastAPI backend
-        (see README), then retry — records are read live from the API, so
+        (see README), then retry: records are read live from the API, so
         nothing is lost.
       </p>
       <Button variant="default" size="sm" onClick={onRetry}>

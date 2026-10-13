@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Route: /app — the workspace (Operate). One inspection is the whole
+ * Route: /app: the workspace (Operate). One inspection is the whole
  * stage: left "Incoming Load" (photo hero + intake form + demo cases),
  * right "Inspection Verdict" (banner, impact counter, gate strip).
  */

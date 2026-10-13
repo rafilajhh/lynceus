@@ -1,3 +1,9 @@
+# Agent session state
+.omo/
+
+# Anti-slop audit reports
+anti-slop/
+
 # Python
 __pycache__/
 *.pyc

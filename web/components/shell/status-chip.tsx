@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Status chip — per-service honest degradation (review finding 5).
+ * Status chip: per-service honest degradation (review finding 5).
  *
  * Polls GET /health for the engine dot ("ENGINE ONLINE" / "ENGINE DOWN")
  * and probes the configured vLLM VLM endpoint once on mount for the AI
- * dot ("AI LIVE" / "AI STUB" — a 2s GET /models probe; any failure is
+ * dot ("AI LIVE" / "AI STUB": a 2s GET /models probe; any failure is
  * silent and reads as the offline stub). Never a fake green when a
  * service is down.
  */

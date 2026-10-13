@@ -435,6 +435,20 @@ def create_app() -> FastAPI:
             )
         return FileResponse(page, media_type="text/html")
 
+    @app.get("/settings", include_in_schema=False)
+    def serve_settings_page() -> FileResponse:
+        """Serve the settings console page (static export flat file)."""
+        page = _web_file("settings.html")
+        if not page.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "settings_page_not_found",
+                    "message": "web/out/settings.html is missing — build the web export.",
+                },
+            )
+        return FileResponse(page, media_type="text/html")
+
     @app.post("/assess")
     def assess(request: AssessRequest) -> dict[str, Any]:
         try:

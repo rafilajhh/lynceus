@@ -2,7 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Table — shadcn/ui table primitive on the Lynceus foundation:
+ * Table: shadcn/ui table primitive on the Lynceus foundation:
  * hairline seam row separators instead of zebra/shadow, small-caps
  * header band on the raised surface.
  */

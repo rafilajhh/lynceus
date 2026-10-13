@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * CountUpFigure — a Plex Mono figure that counts up to its target the
+ * CountUpFigure: a Plex Mono figure that counts up to its target the
  * first time it enters the viewport (IntersectionObserver, exponential
  * ease-out). The landing's single motion moment: the proof strip.
  *

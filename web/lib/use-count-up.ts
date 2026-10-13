@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * useCountUp — animated count-up to a target, triggered by a `runKey`
+ * useCountUp: animated count-up to a target, triggered by a `runKey`
  * change (the workspace fires it when a verdict arrives).
  *
  * Honesty contract (inherited from CountUpFigure): the end value is the

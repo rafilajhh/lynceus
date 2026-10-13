@@ -1,5 +1,5 @@
 /* ============================================================
-   globals.css — Lynceus design tokens + Tailwind v4 theme
+   globals.css: Lynceus design tokens + Tailwind v4 theme
 
    Single source of truth for the visual language (direction
    contract: .impeccable/surface-briefs/web-app.md):
@@ -17,7 +17,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* ---- Ground (graphite) — ordered dark scale ---------------- */
+  /* ---- Ground (graphite): ordered dark scale ---------------- */
   --color-ground: #0a0c10;         /* page background, deepest tier  */
   --color-panel: #0e1116;          /* panels / cards / top bar       */
   --color-raised: #161b23;         /* raised surface inside a panel  */
@@ -29,12 +29,12 @@
   --color-muted: #9aa3ad;          /* secondary text, labels         */
   --color-faint: #7d8899;          /* tertiary, source lines (>=4.5:1 on panel/raised) */
 
-  /* ---- Accent (amber) — the ONE brand accent ------------------ */
+  /* ---- Accent (amber): the ONE brand accent ------------------ */
   --color-amber: #f5a623;
   --color-amber-soft: rgba(245, 166, 35, 0.16);   /* tint bgs       */
   --color-amber-line: rgba(245, 166, 35, 0.45);   /* ring outer     */
 
-  /* ---- Verdict states — meaning-only colors ------------------- */
+  /* ---- Verdict states: meaning-only colors ------------------- */
   --color-verdict-green: #2ecc71;
   --color-verdict-amber: #f5a623;
   --color-verdict-red: #e74c3c;
@@ -89,13 +89,13 @@ body {
   font-synthesis: none;
 }
 
-/* ::selection — amber tint: highlighted text reads as "flagged". */
+/* ::selection: amber tint: highlighted text reads as "flagged". */
 ::selection {
   background: var(--color-amber-soft);
   color: var(--color-ink);
 }
 
-/* Thin graphite scrollbar — never stealing attention. */
+/* Thin graphite scrollbar: never stealing attention. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--color-ground); }
 ::-webkit-scrollbar-thumb {
@@ -109,7 +109,7 @@ body {
   scrollbar-color: var(--color-seam-strong) var(--color-ground);
 }
 
-/* :focus-visible — amber ring, keyboard only. */
+/* :focus-visible: amber ring, keyboard only. */
 :focus-visible {
   outline: 2px solid var(--color-amber);
   outline-offset: 2px;
@@ -120,10 +120,10 @@ body {
 input, textarea, [contenteditable] { caret-color: var(--color-amber); }
 
 /* ---- Component tokens (documented for other agents) -----------
-   .panel    — bg-panel, 1px seam border, radius-card
-   .panel-head — small-caps uppercase label band, bg-raised
-   .btn      — 6px radius control (shadcn/ui Button wraps this language)
-   .input    — bg-raised field, seam border, amber focus
+   .panel   : bg-panel, 1px seam border, radius-card
+   .panel-head: small-caps uppercase label band, bg-raised
+   .btn     : 6px radius control (shadcn/ui Button wraps this language)
+   .input   : bg-raised field, seam border, amber focus
    Utility classes live in @utility blocks below so Tailwind v4
    treats them as first-class utilities. */
 
@@ -158,13 +158,13 @@ input, textarea, [contenteditable] { caret-color: var(--color-amber); }
   color: var(--color-muted);
 }
 
-/* Mono figures — industrial-control register for all measurements. */
+/* Mono figures: industrial-control register for all measurements. */
 @utility figure {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Field controls — bg-raised, seam border, amber focus.
+/* Field controls: bg-raised, seam border, amber focus.
    Foundation: use class="input" on all form fields. */
 @utility input {
   width: 100%;

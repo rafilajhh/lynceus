@@ -1,5 +1,5 @@
 /**
- * Inspect API client — POST /inspect with POST /assess fallback.
+ * Inspect API client: POST /inspect with POST /assess fallback.
  * Ported from legacy web/app.js (same-origin base, legacy error
  * contract). The ledger client (GET /inspections) lives in api.ts.
  */
@@ -50,7 +50,7 @@ export interface InspectResponse {
 /**
  * POST JSON with the legacy error contract:
  * - network failure → rethrows TypeError (caller renders "backend unreachable")
- * - !ok → Error("Backend returned HTTP <status> <statusText> — <detail>")
+ * - !ok → Error("Backend returned HTTP <status> <statusText>: <detail>")
  */
 async function postJSON<T>(url: string, payload: unknown): Promise<T> {
   const resp = await fetch(url, {
@@ -73,7 +73,7 @@ async function postJSON<T>(url: string, payload: unknown): Promise<T> {
     }
     throw new Error(
       `Backend returned HTTP ${resp.status} ${resp.statusText}` +
-        (detail ? ` — ${detail}` : ""),
+        (detail ? `: ${detail}` : ""),
     );
   }
   return (await resp.json()) as T;
@@ -81,7 +81,7 @@ async function postJSON<T>(url: string, payload: unknown): Promise<T> {
 
 /**
  * Inspect a truck: POST /inspect; on a 404 (endpoint missing on an
- * older backend) falls back to POST /assess — legacy app.js contract.
+ * older backend) falls back to POST /assess: legacy app.js contract.
  */
 export async function inspectLoad(
   payload: InspectPayload,
@@ -96,7 +96,7 @@ export async function inspectLoad(
   }
 }
 
-/** Blob → raw base64 (no data: URI prefix) — legacy blobToBase64. */
+/** Blob → raw base64 (no data: URI prefix): legacy blobToBase64. */
 export function blobToBase64(blob: Blob): Promise<string> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   const reader = new FileReader();

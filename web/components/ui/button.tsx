@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * .btn — the base interactive control.
+ * .btn: the base interactive control.
  * 6px radius (machine-control feel), raised surface, amber accents.
  * Other agents compose these variants; do not invent new ad-hoc buttons.
  */

@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   },
   description:
     "Enterprise-grade AI gate inspection for Indonesian waste-to-energy plants. Verdicts with reasons, audit records, and honest degradation.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export const viewport: Viewport = {
@@ -40,11 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="flex min-h-screen flex-col bg-ground font-sans text-ink">
-        <TopBar />
-        <main className="mx-auto w-full max-w-[1320px] flex-1 px-6 py-6 pb-14">
-          {children}
-        </main>
-        <SiteFooter />
+        {children}
       </body>
     </html>
   );

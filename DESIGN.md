@@ -21,6 +21,11 @@ default (dashboard with KPI cards + accent) is refused.
 Register keywords: industrial control-room, graphite-dark, weighbridge,
 enterprise-grade, hairline seams, mono figures, honest degradation.
 
+**Dial: ENERGY 1 / RHYTHM 2 / MOTION 1**
+- ENERGY 1: Calm, authoritative, no flashy hero. The problem speaks, not the product name.
+- RHYTHM 2: Consistent panel structure with deliberate breaks (unequal proof columns, gate strip interlock).
+- MOTION 1: Hover states only + one scroll-reveal (count-up). No parallax, no bounce, no floating.
+
 ---
 
 ## 2. Palette

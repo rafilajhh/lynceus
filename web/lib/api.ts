@@ -143,7 +143,7 @@ export type GateResult = z.infer<typeof gateResultSchema>;
 /**
  * Impact estimate as returned by POST /inspect (backend
  * impact.estimate_prevented_loss): prevented-loss in IDR/USD with
- * per-figure provenance rows — every basis entry carries its source
+ * per-figure provenance rows: every basis entry carries its source
  * URL, no invented figures.
  */
 export interface ImpactBasisRow {
@@ -182,7 +182,7 @@ async function getJSON(path: string): Promise<unknown> {
       cache: "no-store",
     });
   } catch {
-    throw new ApiError("Backend unreachable — is the Lynceus API running?", 0);
+    throw new ApiError("Backend unreachable: is the Lynceus API running?", 0);
   }
   if (!res.ok) {
     throw new ApiError(`GET ${path} failed (HTTP ${res.status})`, res.status);

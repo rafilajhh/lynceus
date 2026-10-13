@@ -14,7 +14,7 @@ export function Panel({
 }
 
 /**
- * Small-caps panel header band — the industrial register.
+ * Small-caps panel header band: the industrial register.
  * Usage: <Panel><PanelHead title="Workspace" meta="route: /app" />…</Panel>
  */
 export function PanelHead({

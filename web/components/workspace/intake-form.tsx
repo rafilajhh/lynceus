@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * IntakeForm — the weighbridge register: truck_id, waybill textarea,
+ * IntakeForm: the weighbridge register: truck_id, waybill textarea,
  * weight, stream select, moisture, age. Plus the three demo-case
  * buttons (Green/Amber/Red) with their real labels. Fields use the
  * foundation's .input token. Race-guarded demo loading is handled by
