@@ -278,7 +278,7 @@ def test_inspect_weight_mismatch_is_rejected(client):
         # No demo_case: the stub falls back to the clean (green) VLM script,
         # so the rejection must come from the declared-vs-actual weight
         # comparison in the decision engine, not a canned demo route.
-        "photo_base64": "c3R1Yi1waG90bw==",  # any bytes: the stub ignores content
+        "photo_base64": "/9j/4HN0dWItcGhvdG8=",  # any bytes: the stub ignores content
         "manifest_text": _RED_MANIFEST,
         "weight_kg": 19300,  # weighbridge far above the declared 15,500 kg
         "declared_weight_kg": 15500,
@@ -376,7 +376,7 @@ def test_health_engine_available(client):
 
 _LIVE_PAYLOAD = {
     "truck_id": "B-9174-KT",
-    "photo_base64": "c3R1Yi1waG90bw==",
+    "photo_base64": "/9j/4HN0dWItcGhvdG8=",
     "manifest_text": _GREEN_MANIFEST,
     "weight_kg": 18500,
     "waste_stream": "rdf-feedstock",
@@ -434,7 +434,7 @@ def test_inspect_without_gas_data_completes(client, tmp_path):
         "/inspect",
         json={
             "truck_id": "T1",
-            "photo_base64": "c3R1Yi1waG90bw==",
+            "photo_base64": "/9j/4HN0dWItcGhvdG8=",
             "manifest_text": "SURAT JALAN",
             "weight_kg": 5200,
         },

@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
         expected = EXPECTED_VERDICTS[payload["demo_case"]]
         print(
             f"  {record_id}  {payload['truck_id']:<10} "
-            f"{payload['demo_case']:<6} → {decision}"
+            f"{payload['demo_case']:<6} -> {decision}"
         )
         if decision != expected:
             print(

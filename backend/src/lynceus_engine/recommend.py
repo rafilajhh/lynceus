@@ -23,6 +23,10 @@ from lynceus_engine.composition import WasteComposition
 #: Below this score a route is not worth recommending, however it ranks.
 MINIMUM_SCORE = 0.45
 
+#: Route scores closer than this are a tie: the ranking cannot be trusted to
+#: pick one, so the batch is held for review instead of routed on a coin flip.
+TIE_MARGIN = 0.02
+
 #: Moisture above which drying is named as a prerequisite rather than a caveat.
 DRYING_THRESHOLD = 0.45
 
@@ -48,6 +52,8 @@ class Recommendation:
     alternative: str | None = None
     insufficient: bool = False
     missing: tuple[str, ...] = ()
+    #: The top two route scores are within :data:`TIE_MARGIN` of each other.
+    tied: bool = False
 
     @property
     def actionable(self) -> bool:
@@ -157,12 +163,23 @@ def recommend(
 
     ranked = assessment.ranked()
     alternative = None
+    tied = False
     if len(ranked) > 1:
         runner_up = ranked[1]
+        margin = best.score - runner_up.score
         alternative = (
             f"{ROUTE_LABELS[runner_up.route]} scores {runner_up.score:.2f} "
-            f"(margin {best.score - runner_up.score:.2f})"
+            f"(margin {margin:.2f})"
         )
+        # The epsilon keeps a margin of exactly 0.02 a tie despite float noise
+        # (0.50 - 0.48 is 0.02000000000000002).
+        if margin <= TIE_MARGIN + 1e-9:
+            tied = True
+            caveats.append(f"routes tied within {TIE_MARGIN:.2f}")
+            headline = (
+                f"Routes tied: {label} or {ROUTE_LABELS[runner_up.route]}; "
+                "hold for review."
+            )
 
     return Recommendation(
         route=best.route,
@@ -171,4 +188,5 @@ def recommend(
         caveats=tuple(dict.fromkeys(caveats)),
         inputs={"tonnage_t": tonnage_t, "moisture": moisture, "age_h": age_h},
         alternative=alternative,
+        tied=tied,
     )

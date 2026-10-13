@@ -156,7 +156,12 @@ def serialize_assessment(assessment: Any) -> dict[str, Any]:
         "generation": as_jsonable(assessment.generation),
         "balance": as_jsonable(assessment.balance),
         "suitability": as_jsonable(assessment.suitability),
-        "recommendation": as_jsonable(assessment.recommendation),
+        # ``actionable`` is a derived property, not a dataclass field, so it
+        # is lifted explicitly: consumers must read it from the engine.
+        "recommendation": {
+            **as_jsonable(assessment.recommendation),
+            "actionable": assessment.recommendation.actionable,
+        },
         "recommended_route": assessment.recommendation.route,
         "headline": assessment.recommendation.headline,
         "summary": assessment.summary_lines(),

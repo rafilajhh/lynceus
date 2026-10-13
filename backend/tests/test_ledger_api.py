@@ -189,9 +189,17 @@ def test_list_inspections_returns_seeded_records_sorted_desc(client):
     assert red_states["weight_plausibility"] == GateState.FAILED, red_states
 
     # Impact figures match the documented formulas.
-    assert by_id["inspection-000001"]["prevented_loss_idr"] == _EXPECTED_ACCEPT_IDR
-    assert by_id["inspection-000003"]["prevented_loss_idr"] == _EXPECTED_REJECT_IDR
-    assert by_id["inspection-000002"]["prevented_loss_idr"] > 0
+    # "Prevented" is prevented loss only: an accepted load's market value is
+    # reported separately as admitted value and never counted as prevented.
+    accept_row = by_id["inspection-000001"]
+    assert accept_row["prevented_loss_idr"] == 0
+    assert accept_row["admitted_value_idr"] == _EXPECTED_ACCEPT_IDR
+    reject_row = by_id["inspection-000003"]
+    assert reject_row["prevented_loss_idr"] == _EXPECTED_REJECT_IDR
+    assert reject_row["admitted_value_idr"] == 0
+    escalate_row = by_id["inspection-000002"]
+    assert escalate_row["prevented_loss_idr"] > 0
+    assert escalate_row["admitted_value_idr"] == 0
 
 
 #: demo_case → position in _DEMO_PAYLOADS (seeding order).

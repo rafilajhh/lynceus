@@ -438,7 +438,7 @@ def decide(
 
     # Engine actionability (engine refuse-to-answer, pattern 14)
     recommendation = (engine_result or {}).get("recommendation") or {}
-    if not recommendation.get("actionable", True):
+    if recommendation.get("insufficient") or not recommendation.get("actionable", True):
         reasons.append(
             "The engine recommendation is not actionable: "
             + str(recommendation.get("headline") or "insufficient data for routing.")

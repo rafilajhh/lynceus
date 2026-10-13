@@ -19,6 +19,7 @@ masquerades as a live model.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 import time
@@ -31,6 +32,14 @@ from lynceus import gas_ingest
 from lynceus import gas_twin
 from lynceus.config import Settings, get_settings, provider_for_url
 from lynceus.vision_boxes import parse_locations
+
+
+#: Per-call read budgets (seconds).  The VLM is the slow, image-bearing call;
+#: the text-only LLM cross-check and the assist answer must not hold the gate
+#: (or the page) for a full VLM budget when a shared endpoint stalls.
+VLM_TIMEOUT_S = 90.0
+LLM_TIMEOUT_S = 45.0
+ASSIST_TIMEOUT_S = 30.0
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -169,11 +178,21 @@ class VLLMClient:
     def __init__(
         self,
         settings: Optional[Settings] = None,
-        timeout_s: float = 90.0,
+        timeout_s: float = VLM_TIMEOUT_S,
     ) -> None:
         self._settings = settings or get_settings()
         self._timeout_s = timeout_s
         self.provenance = "live"
+
+    def _scoped(self, budget_s: float) -> "VLLMClient":
+        """A shallow copy whose calls time out after ``budget_s`` at most.
+
+        A copy rather than a mutation: the VLM and LLM calls run concurrently
+        on one client, so a shared timeout attribute would race.
+        """
+        scoped = copy.copy(self)
+        scoped._timeout_s = min(self._timeout_s, budget_s)
+        return scoped
 
     def _auth_headers(self) -> Dict[str, str]:
         """Bearer header when an API key is configured, else nothing."""
@@ -285,9 +304,10 @@ class VLLMClient:
     def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
         if not photo:
             raise ValueError("VLMClient.vlm requires a base64 photo")
-        data_uri = (
-            photo if photo.startswith("data:") else f"data:image/jpeg;base64,{photo}"
-        )
+        # PNG base64 always starts "iVBOR" (the 0x89 'PNG' signature); the
+        # API has already admitted only JPEG and PNG.
+        mime = "image/png" if photo.startswith("iVBOR") else "image/jpeg"
+        data_uri = photo if photo.startswith("data:") else f"data:{mime};base64,{photo}"
         messages = [
             {
                 "role": "user",
@@ -333,7 +353,7 @@ class VLLMClient:
             }
         ]
         started = time.perf_counter()
-        parsed = self._chat_json(
+        parsed = self._scoped(LLM_TIMEOUT_S)._chat_json(
             self._settings.vllm_llm_url, self._settings.llm_model, messages
         )
         latency_ms = (time.perf_counter() - started) * 1000.0
@@ -361,7 +381,7 @@ class VLLMClient:
         on transport errors, rate limiting, or unparseable output.
         """
         started = time.perf_counter()
-        parsed = self._chat_json(
+        parsed = self._scoped(ASSIST_TIMEOUT_S)._chat_json(
             self._settings.assist_url,
             self._settings.assist_model,
             messages,
@@ -491,7 +511,8 @@ def _vlm_reachable(settings: Settings, timeout_s: float = 2.0) -> bool:
             f"{settings.vllm_vlm_url.rstrip('/')}/models", timeout=timeout_s
         )
         return response.status_code < 500
-    except httpx.HTTPError:
+    except (httpx.HTTPError, httpx.InvalidURL):
+        # InvalidURL (a malformed configured URL) is not an HTTPError.
         return False
 
 
@@ -523,7 +544,7 @@ def _assist_reachable(settings: Settings, timeout_s: float = 2.0) -> bool:
             timeout=timeout_s,
         )
         return response.status_code < 500
-    except httpx.HTTPError:
+    except (httpx.HTTPError, httpx.InvalidURL):
         return False
 
 

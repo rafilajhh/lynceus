@@ -14,7 +14,7 @@ from lynceus.vision_boxes import ZONES, parse_locations
 
 _LIVE_PAYLOAD = {
     "truck_id": "B-9174-KT",
-    "photo_base64": "c3R1Yi1waG90bw==",
+    "photo_base64": "/9j/4HN0dWItcGhvdG8=",
     "manifest_text": "Declared weight: 18,400 kg. Moisture declared: 10% (dry).",
     "weight_kg": 18500,
     "waste_stream": "rdf-feedstock",

@@ -10,6 +10,8 @@ Routes:
 
 from __future__ import annotations
 
+import base64
+import binascii
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,58 @@ _WEB_DIR = Path(__file__).resolve().parents[3] / "web" / "out"
 # No OCR is performed on the waybill; this is the fixed confidence attached
 # to operator-typed manifest text, not an OCR score.
 _MANUAL_TEXT_CONFIDENCE = 0.95
+
+#: Largest accepted load photo, measured on the decoded bytes.
+MAX_PHOTO_BYTES = 8 * 1024 * 1024
+#: Accepted image formats, by magic bytes (the data: URI's claim is not trusted).
+_PHOTO_MAGIC = (bytes([0xFF, 0xD8, 0xFF]), bytes([0x89, 0x50, 0x4E, 0x47]))  # JPEG, PNG
+
+
+class PhotoError(ValueError):
+    """An uploaded photo failed validation; maps to a 4xx before any record."""
+
+    def __init__(self, status_code: int, error: str, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error = error
+
+
+def decode_photo(photo_base64: str | None) -> bytes:
+    """Decode and validate an uploaded photo; ``b""`` when none was sent.
+
+    Accepts raw base64 or a ``data:image/...;base64,`` URI.  Only JPEG and PNG
+    pass (by magic bytes), up to :data:`MAX_PHOTO_BYTES` decoded.  Called
+    before ``audit.begin_record`` so a rejected upload leaves no record.
+    """
+    if not photo_base64:
+        return b""
+    text = photo_base64.strip()
+    if text[:5].lower() == "data:":
+        header, comma, rest = text.partition(",")
+        if not comma or not header.lower().startswith("data:image/"):
+            raise PhotoError(422, "invalid_photo", "photo is not an image data URI.")
+        text = rest
+    text = "".join(text.split())
+    # Exact for well-formed base64; avoids decoding a huge payload just to refuse it.
+    if len(text) * 3 // 4 - text.count("=", -2) > MAX_PHOTO_BYTES:
+        raise PhotoError(
+            413,
+            "photo_too_large",
+            f"photo exceeds the {MAX_PHOTO_BYTES // (1024 * 1024)} MB limit.",
+        )
+    try:
+        raw = base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise PhotoError(422, "invalid_photo", "photo is not valid base64.") from exc
+    if len(raw) > MAX_PHOTO_BYTES:
+        raise PhotoError(
+            413,
+            "photo_too_large",
+            f"photo exceeds the {MAX_PHOTO_BYTES // (1024 * 1024)} MB limit.",
+        )
+    if not raw.startswith(_PHOTO_MAGIC):
+        raise PhotoError(422, "invalid_photo", "photo must be a JPEG or PNG image.")
+    return raw
 
 def _web_file(filename: str) -> Path:
     """Absolute path of a static-export page inside ``web/out``."""
@@ -249,12 +303,12 @@ def _run_inspection_with_audit(
     ``photo_provenance`` overrides the recorded photo provenance; only the
     seeding script uses it (``"sample"`` for the scripted sample shift).
     """
+    # Validate the upload first: a rejected photo must not leave an
+    # ``inspection-*`` record behind (audit.begin_record is below).
+    photo_bytes = decode_photo(request.photo_base64)
     payload = _inspect_payload(request)
 
     manifest_text = request.manifest_text or ""
-    photo_bytes = (
-        request.photo_base64.encode("ascii") if request.photo_base64 else b""
-    )
     # Demo photos arrive as site URLs ("/demo/red-1.jpg"); the audit record
     # stores a portable relative filename (invariant: no absolute paths),
     # so keep only the basename. Real uploads already send bare names.
@@ -350,6 +404,8 @@ def _run_inspection_with_audit(
 
     verdict, gates, reasons = decision.decide(payload, vlm_result, llm_result, engine_result)
 
+    # No engine run (missing batch inputs): the audit record states so with a
+    # hold-for-review route rather than a guessed one.
     engine_recommendation = {
         "actionable": True,
         "route": audit.Route.HOLD_FOR_REVIEW,
@@ -361,26 +417,34 @@ def _run_inspection_with_audit(
     }
     if engine_result and "recommendation" in engine_result:
         rec = engine_result["recommendation"]
-        route_name = rec.get("route") or audit.Route.HOLD_FOR_REVIEW
+        route_name = rec.get("route")
         # Engine routes (rdf/recycling/composting/anaerobic_digestion/landfill)
-        # collapse onto the audit's closed Route enum.
-        if route_name in ("rdf", "recycling"):
+        # collapse onto the audit's closed Route enum.  No route, or a tie
+        # between the top two, is held for a human rather than guessed.
+        if not route_name or rec.get("tied"):
+            route_name = audit.Route.HOLD_FOR_REVIEW
+        elif route_name in ("rdf", "recycling"):
             route_name = audit.Route.ACCEPT_PROCESSING
         else:
             route_name = audit.Route.SEGREGATE
         engine_recommendation = {
-            "actionable": True,
+            # Read from the engine, never assumed.
+            "actionable": bool(rec.get("actionable", True)),
             "route": route_name,
             "headline": rec.get("headline", ""),
-            "insufficient": False,
-            "missing": [],
-            "caveats": rec.get("caveats", []),
-            "alternative": rec.get("alternative", ""),
+            "insufficient": bool(rec.get("insufficient", False)),
+            "missing": list(rec.get("missing") or []),
+            "caveats": list(rec.get("caveats") or []),
+            "alternative": rec.get("alternative") or "",
         }
     if verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT:
+        # The gate-level refusal (no photo, no weight, ...) also makes the
+        # recommendation unusable; keep whatever the engine itself listed.
         engine_recommendation["actionable"] = False
         engine_recommendation["insufficient"] = True
-        engine_recommendation["missing"] = gates.get("missing", [])
+        engine_recommendation["missing"] = list(
+            gates.get("missing") or engine_recommendation["missing"]
+        )
 
     # Deterministic next-step card; every step cites a clause of the
     # reference gate SOP (knowledge/sop-rdf-gate.md).
@@ -587,6 +651,11 @@ def create_app() -> FastAPI:
         settings = get_settings()
         try:
             return _run_inspection_with_audit(request, settings)
+        except PhotoError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"error": exc.error, "message": str(exc)},
+            ) from exc
         except engine_adapter.UnknownWasteStreamError as exc:
             raise HTTPException(
                 status_code=422,
@@ -651,17 +720,23 @@ def create_app() -> FastAPI:
             states = {
                 gate: getattr(record.gates, gate).state for gate in audit.GATE_NAMES
             }
+            estimate_idr = impact.estimate_prevented_loss(
+                record.verdict.decision,
+                {"detected": record.ai_outputs.vlm.detected},
+                record.inputs.weight.value_kg,
+            )["prevented_loss_idr"]
+            # An accepted load's estimate is its market value, not a loss
+            # that was prevented: report it as admitted value so the
+            # ledger's "prevented" total matches the shift report's.
+            admitted = record.verdict.decision == audit.Decision.ACCEPT
             rows.append(
                 {
                     "record_id": record.record_id,
                     "truck_id": record.inputs.truck_id,
                     "decision": record.verdict.decision,
                     "decided_at_utc": record.verdict.decided_at_utc,
-                    "prevented_loss_idr": impact.estimate_prevented_loss(
-                        record.verdict.decision,
-                        {"detected": record.ai_outputs.vlm.detected},
-                        record.inputs.weight.value_kg,
-                    )["prevented_loss_idr"],
+                    "prevented_loss_idr": 0 if admitted else estimate_idr,
+                    "admitted_value_idr": estimate_idr if admitted else 0,
                     "gate_states": states,
                 }
             )
