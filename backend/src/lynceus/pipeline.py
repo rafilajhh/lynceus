@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Dict, Optional, Protocol
 
 import httpx
@@ -31,6 +32,14 @@ from lynceus.config import Settings, get_settings
 
 class LiveAIUnavailableError(RuntimeError):
     """Live AI failed and stub fallback is disabled (fail-closed mode)."""
+
+
+class _RateLimitedError(Exception):
+    """HTTP 429 from the shared endpoint; carries the Retry-After hint."""
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__(f"rate limited; retry after {retry_after}s")
+        self.retry_after = retry_after
 
 __all__ = [
     "AIClients",
@@ -190,12 +199,8 @@ class VLLMClient:
                 parts.append(delta)
         return "".join(parts)
 
-    def _chat(self, base_url: str, model: str, messages: list) -> str:
-        """One chat-completions round trip; raises on transport/HTTP errors.
-
-        The response is read through two paths: SSE when the endpoint streams
-        (``text/event-stream``), plain JSON otherwise.
-        """
+    def _chat_once(self, base_url: str, model: str, messages: list) -> str:
+        """Single chat-completions attempt; raises on transport/HTTP errors."""
         with httpx.stream(
             "POST",
             f"{base_url.rstrip('/')}/chat/completions",
@@ -208,6 +213,9 @@ class VLLMClient:
             headers=self._auth_headers(),
             timeout=self._timeout_s,
         ) as response:
+            if response.status_code == 429:
+                retry_after = float(response.headers.get("retry-after", "1"))
+                raise _RateLimitedError(retry_after)
             response.raise_for_status()
             content_type = response.headers.get("content-type", "")
             if "text/event-stream" in content_type:
@@ -215,6 +223,26 @@ class VLLMClient:
             # Fallback: a full non-streaming JSON body (application/json).
             payload = json.loads(response.read().decode("utf-8"))
             return str(payload["choices"][0]["message"]["content"])
+
+    def _chat(self, base_url: str, model: str, messages: list) -> str:
+        """One chat-completions round trip; raises on transport/HTTP errors.
+
+        The response is read through two paths: SSE when the endpoint streams
+        (``text/event-stream``), plain JSON otherwise.  Shared endpoints
+        (AMD Token Factory) rate-limit per key, so a 429 is retried after
+        its ``Retry-After`` hint — up to two waits, then the error surfaces
+        (and the honest stub-fallback / fail-closed path takes over).
+        """
+        for attempt in range(3):
+            try:
+                return self._chat_once(base_url, model, messages)
+            except _RateLimitedError as exc:
+                if attempt == 2:
+                    raise ValueError(
+                        f"endpoint rate-limited after 3 attempts ({base_url})"
+                    ) from exc
+                time.sleep(exc.retry_after + 0.25 * (attempt + 1))
+        raise AssertionError("unreachable")
 
     def _chat_json(self, base_url: str, model: str, messages: list) -> Dict[str, Any]:
         """Chat round trip with robust JSON parsing and exactly one retry."""
