@@ -253,41 +253,31 @@ export function LedgerView() {
               </span>
             </div>
 
-            {/* ---- filter chips + search ---- */}
+            {/* ---- search + verdict filter ---- */}
             <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-              <div
-                className="flex flex-wrap items-center gap-2"
-                role="group"
-                aria-label="Filter inspections by verdict"
-              >
-                {FILTERS.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={filter === key}
-                    onClick={() => onFilterChange(key)}
-                    className={`cursor-pointer rounded-full border px-3 py-1 text-[12.5px] font-semibold transition-colors duration-100 ${
-                      filter === key
-                        ? "border-amber bg-amber-soft text-ink"
-                        : "border-seam text-muted hover:border-seam-strong hover:text-ink"
-                    }`}
-                  >
-                    {label}
-                    <span className="figure ml-1.5 text-[12px] text-muted">
-                      {counts[key] ?? 0}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="w-full sm:w-auto sm:ml-auto">
+              <div className="w-full sm:w-auto sm:max-w-[260px] sm:flex-initial flex-1">
                 <input
                   type="search"
                   value={search}
                   onChange={(e) => onSearchChange(e.target.value)}
                   placeholder="Search record or plate…"
                   aria-label="Search record or plate"
-                  className="input w-full max-w-full sm:max-w-[260px] text-[13px]"
+                  className="input w-full text-[13px]"
                 />
+              </div>
+              <div className="sm:ml-auto">
+                <select
+                  value={filter}
+                  onChange={(e) => onFilterChange(e.target.value as FilterKey)}
+                  aria-label="Filter inspections by verdict"
+                  className="input w-full sm:w-auto cursor-pointer text-[13px]"
+                >
+                  {FILTERS.map(({ key, label }) => (
+                    <option key={key} value={key}>
+                      {label} {counts[key] ?? 0}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
