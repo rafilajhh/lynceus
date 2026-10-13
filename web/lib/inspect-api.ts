@@ -4,10 +4,24 @@
  * contract). The ledger client (GET /inspections) lives in api.ts.
  */
 
-import type { Decision, GateResult, ImpactEstimate } from "./api";
+import {
+  llmOutputSchema,
+  nextStepsSchema,
+  provenanceSchema,
+  vlmOutputSchema,
+  type Decision,
+  type GateResult,
+  type ImpactEstimate,
+  type InspectProvenance,
+  type LlmOutput,
+  type NextStep,
+  type VlmOutput,
+} from "./api";
 
 export interface InspectPayload {
   truck_id: string;
+  /** Hauler named on the waybill; the backend accepts extra fields. */
+  supplier: string | null;
   photo_base64: string | null;
   photo_filename: string | null;
   demo_case: string | null;
@@ -23,8 +37,10 @@ export interface InspectPayload {
 
 export interface InspectResponse {
   record_id?: string;
-  /** "live" | "stub" | "stub_fallback_live_error" — backend-provenanced. */
-  provenance?: string;
+  /** Backend-provenanced; null when absent or unrecognised. */
+  provenance: InspectProvenance;
+  /** SOP-cited operator steps; [] when the backend sent none. */
+  actions: NextStep[];
   verdict?: {
     decision?: Decision;
     decided_at_utc?: string;
@@ -36,9 +52,9 @@ export interface InspectResponse {
   reasons?: string[];
   impact?: ImpactEstimate;
   gates?: Record<string, GateResult | GateResult["state"]>;
-  ai_outputs?: {
-    vlm?: { confidence?: number; detected?: Record<string, unknown> };
-    llm?: { reasoning?: string; confidence?: number };
+  ai_outputs: {
+    vlm: VlmOutput | null;
+    llm: LlmOutput | null;
   };
   engine_outputs?: {
     recommendation?: {
@@ -91,14 +107,39 @@ async function postJSON<T>(url: string, payload: unknown): Promise<T> {
 export async function inspectLoad(
   payload: InspectPayload,
 ): Promise<InspectResponse> {
+  let raw: Record<string, unknown>;
   try {
-    return await postJSON<InspectResponse>("/inspect", payload);
+    raw = await postJSON<Record<string, unknown>>("/inspect", payload);
   } catch (err) {
     if (err instanceof Error && /HTTP 404/.test(err.message)) {
-      return await postJSON<InspectResponse>("/assess", payload);
+      raw = await postJSON<Record<string, unknown>>("/assess", payload);
+    } else {
+      throw err;
     }
-    throw err;
   }
+  return normaliseInspectResponse(raw);
+}
+
+/**
+ * Parse the evidence/provenance fields at the boundary (untrusted JSON):
+ * missing or malformed values degrade to null / [] instead of throwing,
+ * so an older backend (or /assess) still renders a verdict.
+ */
+function normaliseInspectResponse(raw: Record<string, unknown>): InspectResponse {
+  const ai =
+    raw.ai_outputs && typeof raw.ai_outputs === "object"
+      ? (raw.ai_outputs as Record<string, unknown>)
+      : {};
+  return {
+    ...raw,
+    provenance: provenanceSchema.parse(raw.provenance),
+    actions: nextStepsSchema.parse(raw.actions),
+    ai_outputs: {
+      ...ai, // keeps gas and any other blocks for the raw audit view
+      vlm: vlmOutputSchema.nullish().catch(null).parse(ai.vlm) ?? null,
+      llm: llmOutputSchema.nullish().catch(null).parse(ai.llm) ?? null,
+    },
+  };
 }
 
 /** Blob → raw base64 (no data: URI prefix): legacy blobToBase64. */

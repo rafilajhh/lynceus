@@ -128,7 +128,9 @@ export function GateStrip({
             <div
               key={gate.key}
               className={cn(
-                "flex flex-1 flex-col items-center gap-1.5 border-r border-seam bg-raised px-2.5 py-3 last:border-r-0 transition-colors duration-150",
+                // min-w-0 + tight phone padding: five cells must fit a
+                // 390px screen (WEIGHT was clipped at px-2.5).
+                "flex min-w-0 flex-1 flex-col items-center gap-1.5 border-r border-seam bg-raised px-1 py-3 last:border-r-0 transition-colors duration-150 sm:px-2.5",
                 evaluating && "animate-[gate-pulse_1.1s_ease-in-out_infinite]",
                 evaluating && "bg-amber-soft",
                 lit && gate.state === "failed" && "bg-red-dim",

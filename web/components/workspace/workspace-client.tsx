@@ -5,8 +5,10 @@
  *
  * LEFT  "Incoming Load": demo-case buttons, photo hero (rounded 16px,
  *       mono caption), intake form.
- * RIGHT "Inspection Verdict": banner, headline, impact counter,
- *       five-gate interlock strip, reasons, caveats, audit modal.
+ * BELOW "Inspection Verdict": banner + provenance, headline, gate
+ *       strip, photo evidence with outlined contaminants beside the
+ *       SOP-cited next steps, impact counter, reasons, caveats, Pythia,
+ *       audit modal.
  *
  * Logic ported from legacy web/app.js: same API contract
  * (POST /inspect, /assess fallback), same demo-case data, same
@@ -36,6 +38,7 @@ import {
 
 const EMPTY_FORM: IntakeValues = {
   truck_id: "",
+  supplier: "",
   manifest_text: "",
   weight_kg: "",
   stream: "mixed-msw",
@@ -73,7 +76,17 @@ export function WorkspaceClient() {
   const [loadUpload, setLoadUpload] = useState<UploadSlot>(EMPTY_SLOT);
   const [waybillUpload, setWaybillUpload] = useState<UploadSlot>(EMPTY_SLOT);
   const loadBase64 = useRef<string | null>(null);
+  const loadMime = useRef<string>("image/jpeg");
   const waybillBase64 = useRef<string | null>(null);
+
+  // The photo the current verdict is about, frozen at submit: the intake
+  // side may change (new upload, next demo case) while the verdict and
+  // its outlined contaminants are still on screen.
+  const [evidence, setEvidence] = useState<{ src: string | null; alt: string }>({
+    src: null,
+    alt: "Load photo",
+  });
+  const [expectLive, setExpectLive] = useState(false);
 
   const pickFile = useCallback(
     (
@@ -101,6 +114,7 @@ export function WorkspaceClient() {
   const onLoadPhoto = useCallback(
     (file: File | null) => {
       pickFile(file, setLoadUpload, loadBase64, loadUpload);
+      if (file?.type) loadMime.current = file.type;
       // Uploading a photo deselects the demo case: the hero now shows
       // the operator's own evidence, and submit sends its bytes.
       if (file) setActiveDemo(null);
@@ -129,6 +143,7 @@ export function WorkspaceClient() {
     setResultError(null);
     setValues({
       truck_id: c.truck_id,
+      supplier: c.supplier,
       manifest_text: c.manifest_text,
       weight_kg: String(c.weight_kg),
       stream: c.stream,
@@ -199,6 +214,22 @@ export function WorkspaceClient() {
       return;
     }
 
+    // Freeze the evidence photo for this inspection. Uploaded bytes become
+    // a data: URL so a later upload revoking its object URL cannot blank
+    // the verdict's photo.
+    const uploadSrc = loadBase64.current
+      ? `data:${loadMime.current};base64,${loadBase64.current}`
+      : loadUpload.previewUrl;
+    setEvidence({
+      src: uploadSrc ?? heroPhoto?.path ?? null,
+      alt: loadUpload.filename
+        ? `Uploaded load photo ${loadUpload.filename}`
+        : (heroPhoto?.caption ?? "Load photo"),
+    });
+    // A demo case runs the scripted sample; anything else calls the live
+    // models (when configured), which takes ~15 s.
+    setExpectLive(activeDemo === null);
+
     setLoading(true);
     setPhase("evaluating");
     setBannerLit(false);
@@ -216,6 +247,7 @@ export function WorkspaceClient() {
     try {
       const resp = await inspectLoad({
         truck_id: values.truck_id.trim(),
+        supplier: values.supplier.trim() || null,
         photo_base64: loadBase64.current ?? demoPhotoBase64.current,
         photo_filename: loadUpload.filename ?? demoPhotoPath.current,
         demo_case: activeDemo,
@@ -242,7 +274,7 @@ export function WorkspaceClient() {
     } finally {
       setLoading(false);
     }
-  }, [values, activeDemo]);
+  }, [values, activeDemo, loadUpload, heroPhoto]);
 
   const onAllResolved = useCallback(() => {
     setBannerLit(true);
@@ -404,6 +436,8 @@ export function WorkspaceClient() {
         onAllResolved={onAllResolved}
         onReset={onReset}
         error={resultError}
+        evidence={evidence}
+        expectLive={expectLive}
       >
         {phase === "resolved" && impact ? (
           <p className="m-0 text-[13px] leading-relaxed text-muted">

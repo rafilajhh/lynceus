@@ -43,6 +43,36 @@ export function relativeTime(
   });
 }
 
+const PROVIDER_NAMES: Record<string, string> = {
+  "amd-token-factory": "AMD Token Factory",
+  "openai-compatible": "OpenAI-compatible endpoint",
+};
+
+/** Latency in seconds, one decimal: 14523 → "14.5 s". */
+export function formatSeconds(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+/**
+ * "Live · AMD Token Factory · {model} · 14.5 s": the provenance line for
+ * output a live model produced. Missing parts are left out, never guessed.
+ */
+export function liveProvenance(
+  provider: string,
+  model: string | null | undefined,
+  latencyMs: number | null | undefined,
+): string {
+  return [
+    "Live",
+    PROVIDER_NAMES[provider] ?? provider,
+    model || null,
+    formatSeconds(latencyMs),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 /** Short SHA: "9e8ed093…" for inline display; full digest elsewhere. */
 export function shortSha(shaField: string | undefined, len = 10): string {
   const hex = (shaField ?? "").replace(/^sha256:/, "");

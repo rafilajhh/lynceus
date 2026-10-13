@@ -69,8 +69,13 @@
 
 /* ---- Base / browser surfaces (themed) ------------------------ */
 
-* {
-  border-color: var(--color-seam);
+/* In the base layer, not unlayered: an unlayered rule beats every
+   Tailwind utility, which silently turned each border-{color} class
+   (verdict banner, evidence boxes, demo buttons) back into seam grey. */
+@layer base {
+  * {
+    border-color: var(--color-seam);
+  }
 }
 
 html {

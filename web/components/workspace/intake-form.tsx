@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * IntakeForm: the weighbridge register: truck_id, waybill textarea,
- * weight, stream select, moisture, age. Plus the three demo-case
+ * IntakeForm: the weighbridge register: truck_id, supplier, waybill
+ * photo, weight, stream select, moisture, age. Plus the three demo-case
  * buttons (Green/Amber/Red) with their real labels. Fields use the
  * foundation's .input token. Race-guarded demo loading is handled by
  * the parent (WorkspaceClient).
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 export interface IntakeValues {
   truck_id: string;
+  supplier: string;
   manifest_text: string;
   weight_kg: string;
   stream: string;
@@ -162,19 +163,35 @@ export function IntakeForm({
         aria-label="Truck intake form"
         className="flex flex-1 flex-col gap-3 px-4 py-4"
       >
-        <div>
-          <label htmlFor="truck_id" className="smallcaps mb-1 block">
-            Truck ID <span className="text-muted normal-case">(plate)</span>
-          </label>
-          <input
-            id="truck_id"
-            className={field}
-            value={values.truck_id}
-            onChange={(e) => onChange({ truck_id: e.target.value })}
-            placeholder="B 9174 KT"
-            disabled={loading}
-            autoComplete="off"
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="truck_id" className="smallcaps mb-1 block">
+              Truck ID <span className="text-muted normal-case">(plate)</span>
+            </label>
+            <input
+              id="truck_id"
+              className={field}
+              value={values.truck_id}
+              onChange={(e) => onChange({ truck_id: e.target.value })}
+              placeholder="B 9174 KT"
+              disabled={loading}
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label htmlFor="supplier" className="smallcaps mb-1 block">
+              Supplier
+            </label>
+            <input
+              id="supplier"
+              className={field}
+              value={values.supplier}
+              onChange={(e) => onChange({ supplier: e.target.value })}
+              placeholder="Hauler on the waybill"
+              disabled={loading}
+              autoComplete="off"
+            />
+          </div>
         </div>
 
         {/* Waybill: photo upload only (user direction, 2026-10-13 — the

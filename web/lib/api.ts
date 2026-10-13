@@ -60,6 +60,82 @@ const gateResultSchema = z.object({
   reason: z.string().catch(""),
 });
 
+/**
+ * Tolerant list: items that fail `item` are dropped, a non-array becomes
+ * []. One malformed entry from the model must not blank the whole card.
+ */
+function tolerantList<T extends z.ZodType>(item: T) {
+  return z
+    .array(z.unknown())
+    .catch([])
+    .transform((items) =>
+      items.flatMap((raw) => {
+        const parsed = item.safeParse(raw);
+        return parsed.success ? [parsed.data as z.infer<T>] : [];
+      }),
+    );
+}
+
+/** Normalised (0..1, top-left origin) contaminant region on the photo.
+    Malformed or inverted boxes are dropped, never clamped (same rule as
+    backend vision_boxes.py: a box in the wrong place is worse than none). */
+const evidenceBoxSchema = z
+  .object({
+    label: z.string().catch("contaminant"),
+    x0: z.number(),
+    y0: z.number(),
+    x1: z.number(),
+    y1: z.number(),
+  })
+  .refine(
+    (b) => 0 <= b.x0 && b.x0 < b.x1 && b.x1 <= 1 && 0 <= b.y0 && b.y0 < b.y1 && b.y1 <= 1,
+  );
+
+/** One SOP-cited operator step (backend actions.next_steps). */
+const nextStepSchema = z.object({
+  order: z.number().catch(0),
+  text: z.string().min(1),
+  sop_ref: z.string().catch(""),
+});
+
+export const nextStepsSchema = tolerantList(nextStepSchema);
+
+/** AI model output provenance: v1 records lack provider/latency/boxes. */
+const modelOutputShape = {
+  model: z.string().nullish().catch(null),
+  confidence: z.number().nullish().catch(null),
+  provider: z.string().nullish().catch(null),
+  latency_ms: z.number().nullish().catch(null),
+};
+
+export const vlmOutputSchema = z
+  .object({
+    ...modelOutputShape,
+    detected: z.record(z.string(), z.unknown()).nullish().catch(null),
+    boxes: tolerantList(evidenceBoxSchema),
+    localisation: z.enum(["box", "zone"]).nullish().catch(null),
+  })
+  .catchall(z.unknown());
+
+export const llmOutputSchema = z
+  .object({
+    ...modelOutputShape,
+    reasoning: z.string().nullish().catch(null),
+  })
+  .catchall(z.unknown());
+
+/** Top-level AI provenance of an /inspect response. */
+export const provenanceSchema = z
+  .enum(["live", "stub", "stub_fallback_live_error"])
+  .nullish()
+  .catch(null);
+
+export type EvidenceBox = z.infer<typeof evidenceBoxSchema>;
+export type NextStep = z.infer<typeof nextStepSchema>;
+export type VlmOutput = z.infer<typeof vlmOutputSchema>;
+export type LlmOutput = z.infer<typeof llmOutputSchema>;
+export type InspectProvenance = z.infer<typeof provenanceSchema>;
+
 const auditRecordSchema = z
   .object({
     record_id: z.string().optional(),
@@ -73,6 +149,9 @@ const auditRecordSchema = z
     inputs: z
       .object({
         truck_id: z.string().optional(),
+        // Persisted from the intake form by a later backend task; absent
+        // on older records.
+        supplier: z.string().nullish().catch(null),
         photo: z
           .object({
             filename: z.string().catch("photo.jpg"),
@@ -105,14 +184,8 @@ const auditRecordSchema = z
       .optional(),
     ai_outputs: z
       .object({
-        llm: z
-          .object({
-            reasoning: z.string().optional(),
-            model: z.string().optional(),
-            confidence: z.number().optional(),
-          })
-          .optional(),
-        vlm: z.object({ confidence: z.number().optional() }).optional(),
+        llm: llmOutputSchema.nullish().catch(null),
+        vlm: vlmOutputSchema.nullish().catch(null),
         // null on records with no gas data (backend: GasOutput | None).
         gas: z
           .object({
@@ -130,6 +203,18 @@ const auditRecordSchema = z
           .nullish(),
       })
       .optional(),
+    // v1 records carry no actions: the list degrades to [].
+    engine_outputs: z
+      .object({
+        recommendation: z
+          .object({ actions: nextStepsSchema })
+          .catchall(z.unknown())
+          .nullish()
+          .catch(null),
+      })
+      .catchall(z.unknown())
+      .nullish()
+      .catch(null),
     verdict: z
       .object({
         decision: decisionSchema.optional(),

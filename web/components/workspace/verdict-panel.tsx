@@ -1,34 +1,72 @@
 "use client";
 
 /**
- * VerdictPanel: the right column: verdict banner (lights only after
- * all five gates resolve), headline, impact counter, gate strip,
- * reasons (dot leaders), caveats, and the audit-record link.
+ * VerdictPanel: verdict banner (lights only after all five gates
+ * resolve) with its provenance badge, headline, gate strip, photo
+ * evidence beside the SOP-cited next steps, impact counter, reasons,
+ * caveats, Pythia, and the audit-record link.
  * States: idle placeholder | evaluating | resolved | error.
  */
 
 import type { ReactNode } from "react";
 import { Panel, PanelHead } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { GateStrip, type GateDisplay, type GatePhase } from "./gate-strip";
 import { ImpactCounter } from "./impact-counter";
 import { AuditModal } from "./audit-modal";
+import { NextSteps } from "./next-steps";
+import { PhotoEvidence } from "./photo-evidence";
 import type { InspectResponse } from "@/lib/inspect-api";
+import { liveProvenance } from "@/lib/format";
+import { useElapsedSeconds } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
-const PROVENANCE_LABEL: Record<string, { text: string; live: boolean }> = {
-  live: { text: "Live AMD", live: true },
-  stub: { text: "Scripted sample", live: false },
-  stub_fallback_live_error: { text: "Scripted sample · live AI offline", live: false },
-};
-
-function ProvenanceBadge({ provenance }: { provenance?: string }) {
-  const entry = provenance ? PROVENANCE_LABEL[provenance] : undefined;
-  if (!entry) return null;
+/**
+ * Where this verdict's AI output came from, stated exactly: the live
+ * provider, model and vision latency, or a scripted sample. The status
+ * dot reuses the service-dot language (ok = live, warn = stub, down =
+ * live failed).
+ */
+function ProvenanceBadge({ data }: { data: InspectResponse }) {
+  const vlm = data.ai_outputs.vlm;
+  let text: string;
+  let dot: string;
+  if (data.provenance === "live") {
+    text = liveProvenance(vlm?.provider ?? "", vlm?.model, vlm?.latency_ms);
+    dot = "bg-dot-ok";
+  } else if (data.provenance === "stub") {
+    text = "Scripted sample";
+    dot = "bg-dot-warn";
+  } else if (data.provenance === "stub_fallback_live_error") {
+    text = "Scripted fallback";
+    dot = "bg-dot-down";
+  } else {
+    return null;
+  }
   return (
-    <Badge variant={entry.live ? "accept" : "default"}>
-      {entry.text}
+    <Badge className="figure font-semibold tracking-[0.2px] whitespace-normal normal-case">
+      <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
+      {text}
     </Badge>
+  );
+}
+
+/** Honest wait copy: live vision calls take ~15 s, scripted ones return at once. */
+function EvaluatingNote({ expectLive }: { expectLive: boolean }) {
+  const seconds = useElapsedSeconds(true);
+  return (
+    <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-muted">
+      <span>
+        {expectLive
+          ? "The live vision model is reading the load photo; this usually takes about 15 s."
+          : "Running the scripted sample through the decision engine."}
+      </span>
+      <span className="figure text-[12px] text-faint" aria-hidden="true">
+        {seconds} s elapsed
+      </span>
+    </p>
   );
 }
 
@@ -169,6 +207,8 @@ export function VerdictPanel({
   onAllResolved,
   onReset,
   error,
+  evidence,
+  expectLive,
   children,
 }: {
   phase: GatePhase;
@@ -185,13 +225,20 @@ export function VerdictPanel({
   /** Reset the stage for the next truck (gate flow is truck-by-truck). */
   onReset?: () => void;
   error: string | null;
-  /** Optional extra above the strip (e.g. record id meta). */
+  /** The photo submitted with this inspection (snapshot at submit). */
+  evidence: { src: string | null; alt: string };
+  /** No demo case was sent, so a live model call (~15 s) is expected. */
+  expectLive: boolean;
+  /** Optional extra below the impact counter (impact note). */
   children?: ReactNode;
 }) {
   const tone = verdictTone(decision);
   const style = VERDICT_STYLE[tone];
   const reasons = collectReasons(data);
   const caveats = dedupeCaveats(collectCaveats(data));
+  const vlm = data?.ai_outputs.vlm ?? null;
+  // Evidence and steps arrive with the verdict word, never before it.
+  const verdictShown = phase === "resolved" && data !== null && bannerLit;
 
   return (
     <Panel className="flex flex-col">
@@ -221,18 +268,12 @@ export function VerdictPanel({
             <span className="text-[20px] font-bold tracking-[4px]">
               {bannerLit ? style.label : "— — —"}
             </span>
-            {phase === "resolved" && data ? (
-              <ProvenanceBadge provenance={data.provenance} />
-            ) : null}
+            {phase === "resolved" && data ? <ProvenanceBadge data={data} /> : null}
           </span>
           {phase === "resolved" && onReset ? (
-            <button
-              type="button"
-              onClick={onReset}
-              className="shrink-0 cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-3 py-1.5 text-[13px] font-semibold tracking-[0.2px] text-ink transition-colors duration-100 hover:border-amber-line hover:bg-seam active:translate-y-px"
-            >
+            <Button type="button" size="sm" onClick={onReset} className="shrink-0 text-[13px]">
               Next truck
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -246,6 +287,23 @@ export function VerdictPanel({
               : "Pick a demo case above, then press Inspect Load."}
         </p>
 
+        {phase === "evaluating" ? <EvaluatingNote expectLive={expectLive} /> : null}
+
+        {/* Live AI failed and the backend fell back to the scripted
+            sample: say so plainly, next to the verdict it affects. */}
+        {phase === "resolved" && data?.provenance === "stub_fallback_live_error" ? (
+          <p
+            role="note"
+            className="m-0 rounded-[10px] border border-amber-line bg-amber-dim px-4 py-2.5 text-[13px] leading-snug text-ink"
+          >
+            <span className="font-semibold text-amber">
+              Live AI failed — scripted fallback shown.
+            </span>{" "}
+            This verdict uses the scripted sample, not a live reading of this
+            photo; re-run the inspection once the live endpoint responds.
+          </p>
+        ) : null}
+
         {/* The interlock gate strip: the decision theater comes before the
             money figure (critique: impact counter outranked the verdict
             evidence at decision time) */}
@@ -254,6 +312,33 @@ export function VerdictPanel({
           phase={phase}
           onAllResolved={onAllResolved}
         />
+
+        {/* Evidence + what to do now: the photo the verdict is about with
+            the contaminants outlined, beside the SOP-cited steps. Shown
+            from submit so the long live wait has the photo on stage. */}
+        {phase !== "idle" ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <PhotoEvidence
+              src={evidence.src}
+              alt={evidence.alt}
+              boxes={vlm?.boxes ?? []}
+              localisation={vlm?.localisation}
+              model={vlm?.model}
+              scripted={data?.provenance !== "live"}
+              pending={!verdictShown}
+            />
+            {verdictShown ? (
+              <NextSteps steps={data.actions} emptyText="The backend returned no next steps." />
+            ) : (
+              <div className="flex flex-col gap-2">
+                <h3 className="smallcaps m-0">Next steps</h3>
+                <p className="m-0 rounded-[10px] border border-dashed border-seam-strong px-3.5 py-3 text-[13px] text-muted">
+                  Steps appear with the verdict, each citing its SOP clause.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {/* Impact counter: demoted below the gates; hidden while idle so
             the empty stage shows one placeholder, not three */}
@@ -339,6 +424,16 @@ export function VerdictPanel({
               ))}
             </ul>
           </div>
+        ) : null}
+
+        {/* Pythia: questions about this truck, answered from the plant
+            documents and this record (keyed so a new truck starts clean) */}
+        {verdictShown ? (
+          <PythiaPanel
+            key={data.record_id ?? "no-record"}
+            recordId={data.record_id}
+            suggestions={pythiaSuggestions(decision)}
+          />
         ) : null}
 
         {/* Audit record link */}

@@ -10,6 +10,8 @@ export interface DemoCase {
   key: "green" | "amber" | "red";
   label: string;
   truck_id: string;
+  /** Hauler named on the waybill (fictional demo names). */
+  supplier: string;
   photo: string;
   photo_caption: string;
   manifest_text: string;
@@ -30,6 +32,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     // (ITATS Surabaya, TPA Benowo weighbridge); RDF gate price
     // Rp 300,000/t (SWITCH-Asia §5d). Plate 'B' = DKI per TNKB codes.
     truck_id: "B 9174 KT",
+    supplier: "CV Sumber Bersih",
     photo: "/demo/green-1.jpg",
     photo_caption:
       "Arm-roll B 9174 KT · RDF feedstock, dry & baled · Bantargebang to SBI Narogong line",
@@ -57,6 +60,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     // (SIPSN 2025): exactly why MBT pre-processing is mandatory before
     // kiln feeding. Plate "B" = Bantargebang/Jakarta corridor.
     truck_id: "B 9282 AP",
+    supplier: "PT Daur Ulang Jaya",
     photo: "/demo/amber-1.jpg",
     photo_caption:
       "Compactor B 9282 AP · wet organics from TPST · 57% moisture measured",
@@ -86,13 +90,14 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     // national MSW composition (SIPSN 2025): the exact fraction screening
     // must catch at the gate. Plate "F" = Bogor (SBI Narogong corridor).
     truck_id: "F 7702 TS",
+    supplier: "UD Sinar Abadi",
     photo: "/demo/red-1.jpg",
     photo_caption:
       "Compactor F 7702 TS · scrap metal found under the bales · weight mismatch",
     manifest_text:
       "WAYBILL / WEIGHBRIDGE TICKET (RDF-MSW): No. SJ: SJ/RDF/2026/10/0003\n" +
       "Plate No.  : F 7702 TS        Date: 2026-10-13   Entry time: 00:45\n" +
-      "Driver     : Hendra           Origin: RDF supplier CV, Bogor (waste source: industrial park skip)\n" +
+      "Driver     : Hendra           Origin: RDF supplier UD Sinar Abadi, Bogor (waste source: industrial park skip)\n" +
       "Destination: cement plant co-processing line\n" +
       "Gross (kg) : 24,800           Tare (kg): 9,300\n" +
       "Net (kg)   : 15,500           Weighbridge operator: Gate A\n" +

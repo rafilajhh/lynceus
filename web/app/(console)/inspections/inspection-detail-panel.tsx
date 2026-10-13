@@ -6,17 +6,22 @@ import {
   fetchInspectionDetail,
   type GateState,
   type InspectionDetail,
+  type PhotoInput,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { formatRupiah, formatWeight, relativeTime } from "@/lib/format";
+import { formatSeconds, formatWeight, liveProvenance, relativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
+import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
+import { NextSteps } from "@/components/workspace/next-steps";
+import { PhotoEvidence } from "@/components/workspace/photo-evidence";
 
 /**
  * Inline detail panel (not a modal): opens beneath the ledger when a row is
  * selected. Fetches GET /inspections/{record_id}, shows digest, gates,
- * inputs, reasoning, and offers the raw audit record as a JSON download.
+ * inputs, photo evidence, next steps, AI provenance, reasoning and Pythia,
+ * and offers the raw audit record as a JSON download.
  */
 
 const GATE_STATE_CLASS: Record<GateState, string> = {
@@ -40,6 +45,31 @@ const GATE_LABEL: Record<string, string> = {
   gas_plausibility: "Gas Plausibility",
   manifest_crosscheck: "Manifest Cross-check",
 };
+
+/** Demo photos are public assets: a record whose photo came from one can
+    show it again. Anything else needs a stored-photo path from the API. */
+const DEMO_PHOTO_PATH = /^\/demo\/[a-z0-9-]+\.(jpe?g|png)$/i;
+
+function photoSrc(photo: PhotoInput | undefined): string | null {
+  if (!photo) return null;
+  if (photo.path) return photo.path;
+  return DEMO_PHOTO_PATH.test(photo.filename) ? photo.filename : null;
+}
+
+type ModelOutput = {
+  model?: string | null;
+  provider?: string | null;
+  latency_ms?: number | null;
+} | null | undefined;
+
+/** One model's provenance, stated from what the record holds. */
+function modelProvenance(out: ModelOutput): string {
+  if (!out?.model) return "Not recorded";
+  if (out.provider) return liveProvenance(out.provider, out.model, out.latency_ms);
+  if (out.model.startsWith("stub")) return `Scripted sample · ${out.model}`;
+  const latency = formatSeconds(out.latency_ms);
+  return `${out.model} · provider not recorded${latency ? ` · ${latency}` : ""}`;
+}
 
 type DetailLoad =
   | { kind: "loading" }
@@ -156,6 +186,10 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
   const gasModelBasis = detail.ai_outputs?.gas?.model_basis;
   const gasSource = detail.inputs?.gas?.source;
   const photo = detail.inputs?.photo;
+  const supplier = detail.inputs?.supplier;
+  const vlm = detail.ai_outputs?.vlm;
+  const llm = detail.ai_outputs?.llm;
+  const steps = detail.engine_outputs?.recommendation?.actions ?? [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -209,6 +243,9 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             <div className="figure text-[13px] text-ink">
               {detail.inputs?.truck_id ?? "—"}
             </div>
+            {supplier ? (
+              <div className="mt-0.5 text-[12px] text-muted">{supplier}</div>
+            ) : null}
           </div>
 
           <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
@@ -260,17 +297,12 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             ) : null}
           </div>
 
-          {/* photo thumbnail: only when the API exposes a relative path */}
-          {photo?.path ? (
+          {/* photo identity: the image itself is shown under Evidence */}
+          {photo ? (
             <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
               <div className="smallcaps mb-1">Photo</div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photo.path}
-                alt={`Load photo for ${detail.record_id}`}
-                className="mt-1 block max-h-[170px] max-w-full rounded-[6px] border border-seam"
-              />
-              <div className="figure mt-1 text-[11px] break-all text-muted">
+              <div className="figure text-[12px] break-all text-ink">{photo.filename}</div>
+              <div className="figure mt-0.5 text-[11px] break-all text-muted">
                 {photo.sha256 ?? ""}
               </div>
             </div>
@@ -304,6 +336,36 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
         ) : null}
       </section>
 
+      {/* ---- evidence + next steps (v1 records degrade to placeholders) ---- */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <section>
+          <h3 className="smallcaps mb-2">Evidence</h3>
+          <PhotoEvidence
+            src={photoSrc(photo)}
+            alt={`Load photo for ${detail.record_id}`}
+            boxes={vlm?.boxes ?? []}
+            localisation={vlm?.localisation}
+            model={vlm?.model}
+            scripted={(vlm?.model ?? "").startsWith("stub")}
+          />
+        </section>
+        <NextSteps
+          steps={steps}
+          emptyText="Not recorded: this record predates SOP-cited next steps."
+        />
+      </div>
+
+      {/* ---- AI provenance: which model produced what, how fast ---- */}
+      <section>
+        <h3 className="smallcaps mb-2">AI provenance</h3>
+        <dl className="figure m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
+          <dt className="text-muted">Vision</dt>
+          <dd className="m-0 break-words text-ink">{modelProvenance(vlm)}</dd>
+          <dt className="text-muted">Waybill</dt>
+          <dd className="m-0 break-words text-ink">{modelProvenance(llm)}</dd>
+        </dl>
+      </section>
+
       {/* ---- reasoning ---- */}
       {reasoning || reasons.length > 0 || uncertainty ? (
         <section>
@@ -324,6 +386,14 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             ) : null}
           </div>
         </section>
+      ) : null}
+
+      {detail.record_id ? (
+        <PythiaPanel
+          key={detail.record_id}
+          recordId={detail.record_id}
+          suggestions={pythiaSuggestions(decision)}
+        />
       ) : null}
 
       {/* ---- actions ---- */}
