@@ -26,8 +26,7 @@ const PROOF_FIGURES = [
     decimals: 0,
     label: "One industrial shredder destroyed by a single metal contaminant",
     labelSuffix: "≈ US$22k",
-    source:
-      "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost · docs/research/realcase-indonesia.md §5b",
+    source: "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost",
     grow: "lg:w-[1.25fr]",
   },
   {
@@ -37,8 +36,7 @@ const PROOF_FIGURES = [
     decimals: 0,
     label: "Cement kiln unplanned downtime, per hour of lost clinker",
     labelSuffix: "≈ Rp 450 jt",
-    source:
-      "oxmaint US cement benchmark ≈ Rp 450 jt/hr @ Rp 16,000/USD · docs/research/realcase-indonesia.md §5a",
+    source: "oxmaint US cement benchmark @ Rp 16,000/USD",
     grow: "lg:w-[1fr]",
   },
   {
@@ -47,9 +45,8 @@ const PROOF_FIGURES = [
     suffix: " t/trip",
     decimals: 1,
     label: "Typical arm-roll load that must be inspected before tipping",
-    labelSuffix: null,
-    source:
-      "ITATS Surabaya, 14 m³ × 372.71 kg/m³, weighed at TPA Benowo weighbridge · docs/research/realcase-indonesia.md §3a",
+    labelSuffix: "TPA Benowo weighbridge",
+    source: "ITATS Surabaya, 14 m³ × 372.71 kg/m³",
     grow: "lg:w-[0.85fr]",
   },
 ] as const;
@@ -95,7 +92,7 @@ export default function LandingPage() {
             visual contaminant detection, waybill cross-check, and a route
             verdict in seconds, sealed to an immutable audit record.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <Link
               href="/app"
               className={buttonVariants({ variant: "primary", size: "lg" })}
@@ -108,17 +105,30 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Proof photo panel: evidence, labeled */}
-        <figure className="panel m-0 flex flex-col">
-          <Image
-            src="/demo/red-2.jpg"
-            alt="Rusted industrial steel bolt — the kind of metal contaminant that destroys an RDF shredder"
-            width={524}
-            height={524}
-            className="h-auto w-full object-cover"
-            priority
-          />
-          <figcaption className="flex flex-col gap-1 px-4 py-3">
+        {/* Proof photo panel: the contaminant, framed like the AI sees it */}
+        <figure className="panel m-0 flex flex-col self-start">
+          <div className="relative">
+            <Image
+              src="/demo/red-2.jpg"
+              alt="Rusted industrial steel bolt — the kind of metal contaminant that destroys an RDF shredder"
+              width={524}
+              height={524}
+              className="block h-auto max-h-[340px] w-full object-cover lg:max-h-[420px]"
+              priority
+            />
+            {/* AI-detection frame: the product's gaze on the evidence */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-[18%] border-2 border-dashed border-verdict-red/70"
+            />
+            <span
+              aria-hidden="true"
+              className="figure absolute top-[12%] left-[12%] rounded-[4px] bg-red-dim px-2 py-0.5 text-[11px] font-semibold tracking-[0.5px] text-verdict-red uppercase"
+            >
+              metal · reject
+            </span>
+          </div>
+          <figcaption className="flex flex-col gap-1 border-t border-seam px-4 py-3">
             <span className="figure text-xs text-muted">
               Metal contaminant, REJECT case: one bolt can kill a shredder
             </span>
@@ -137,8 +147,10 @@ export default function LandingPage() {
         <h2 id="proof-label" className="smallcaps mb-8">
           What one missed truck costs
         </h2>
-        {/* Composition, not cards: unequal columns split by hairline seams. */}
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:gap-0">
+        {/* Composition, not cards: unequal columns split by hairline seams.
+            items-start + mt-auto on the source line keep the three hairline
+            dividers on one baseline despite unequal copy lengths. */}
+        <div className="flex flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-0">
           {PROOF_FIGURES.map((f, i) => (
             <div
               key={f.label}
@@ -163,7 +175,7 @@ export default function LandingPage() {
                   </span>
                 ) : null}
               </p>
-              <p className="figure mt-2 max-w-[42ch] border-t border-seam pt-2 text-[11px] leading-[1.5] text-muted">
+              <p className="figure mt-auto max-w-[42ch] border-t border-seam pt-2 text-[11px] leading-[1.5] text-muted">
                 {f.source}
               </p>
             </div>
@@ -185,17 +197,19 @@ export default function LandingPage() {
               >
                 {s.no}
               </span>
-              <div className="flex flex-col items-start gap-2">
+              {/* h-full + mt-auto on the chip: the three gate pills share one
+                  baseline even though step copy lengths differ */}
+              <div className="flex h-full flex-col items-start gap-2">
                 <h3 className="m-0 text-[17px] font-semibold text-ink">
                   {s.title}
                 </h3>
                 <p className="m-0 text-[14px] leading-[1.6] text-muted">
                   {s.text}
                 </p>
-                <span className="figure mt-1 inline-flex items-center gap-2 rounded-[6px] border border-seam bg-raised px-3 py-1.5 text-[12px] tracking-[0.04em] text-muted">
+                <span className="figure mt-auto inline-flex items-center gap-2 rounded-[6px] border border-seam bg-raised px-3 py-1.5 text-[12px] tracking-[0.04em] text-muted">
                   <span
                     aria-hidden="true"
-                    className="h-[6px] w-[6px] rounded-full bg-verdict-green"
+                    className="h-[6px] w-[6px] rounded-full bg-dot-ok"
                   />
                   {s.gate}
                 </span>
@@ -220,7 +234,7 @@ export default function LandingPage() {
           Three seeded cases — clean, suspicious, contaminated — run live
           through the same gate pipeline, from photo to sealed audit record.
         </p>
-        <div className="mt-7 flex flex-wrap gap-3">
+        <div className="mt-7 flex w-full max-w-[420px] flex-col gap-3 sm:max-w-none sm:flex-row">
           <Link
             href="/app"
             className={buttonVariants({ variant: "primary", size: "lg" })}
