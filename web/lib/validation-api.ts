@@ -1,0 +1,99 @@
+/**
+ * Validation benchmark client: GET /benchmark/latest → the newest committed
+ * summary of the live-on-AMD vision-gate benchmark plus its framing sentence.
+ *
+ * Untrusted JSON, parsed once here with zod. Malformed numbers degrade to
+ * null (rendered as "—"), never to a made-up zero.
+ */
+
+import { z } from "zod";
+
+const count = z.number().int().nonnegative().catch(0);
+const metric = z.number().nullish().catch(null);
+
+export const LABELS = ["reject", "escalate", "accept"] as const;
+export const COLUMNS = [...LABELS, "error"] as const;
+
+const confusionRow = z
+  .object({
+    reject: count,
+    escalate: count,
+    accept: count,
+    error: count,
+  })
+  .catch({ reject: 0, escalate: 0, accept: 0, error: 0 });
+
+const percentiles = z
+  .object({ p50: metric, p95: metric })
+  .catch({ p50: null, p95: null });
+
+const summarySchema = z.object({
+  framing: z.string().min(1),
+  date: z.string().nullish().catch(null),
+  n: count,
+  manifest_n: count,
+  complete: z.boolean().catch(false),
+  errors: count,
+  confusion: z
+    .object({ reject: confusionRow, escalate: confusionRow, accept: confusionRow })
+    .catch({
+      reject: { reject: 0, escalate: 0, accept: 0, error: 0 },
+      escalate: { reject: 0, escalate: 0, accept: 0, error: 0 },
+      accept: { reject: 0, escalate: 0, accept: 0, error: 0 },
+    }),
+  reject: z
+    .object({
+      precision: metric,
+      recall: metric,
+      f1: metric,
+      tp: count,
+      fp: count,
+      fn: count,
+    })
+    .catch({ precision: null, recall: null, f1: null, tp: 0, fp: 0, fn: 0 }),
+  latency_ms: percentiles,
+  total_ms: percentiles,
+  vlm_model: z.string().nullish().catch(null),
+  llm_model: z.string().nullish().catch(null),
+  provider: z.string().nullish().catch(null),
+  provenance: z.array(z.string()).catch([]),
+  per_category: z.record(z.string(), confusionRow).catch({}),
+  manual_check_seconds: z.number().positive().nullish().catch(null),
+  source_url: z.string().nullish().catch(null),
+});
+
+export type BenchmarkSummary = z.infer<typeof summarySchema>;
+
+export class ValidationError extends Error {
+  /** True when no benchmark has been committed (a normal, honest state). */
+  readonly missing: boolean;
+  constructor(message: string, missing = false) {
+    super(message);
+    this.name = "ValidationError";
+    this.missing = missing;
+  }
+}
+
+export async function fetchBenchmark(signal?: AbortSignal): Promise<BenchmarkSummary> {
+  let resp: Response;
+  try {
+    resp = await fetch("/benchmark/latest", {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ValidationError("Backend unreachable: is the Lynceus API running?");
+  }
+  if (resp.status === 404) {
+    throw new ValidationError("No benchmark run has been committed yet.", true);
+  }
+  if (!resp.ok) {
+    throw new ValidationError(`The benchmark summary is unavailable (HTTP ${resp.status}).`);
+  }
+  const parsed = summarySchema.safeParse(await resp.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ValidationError("The backend returned an unreadable benchmark summary.");
+  }
+  return parsed.data;
+}

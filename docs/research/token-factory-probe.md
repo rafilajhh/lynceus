@@ -53,3 +53,24 @@ Rule applied: Gemma needs 3/3 to be chosen; it scored 0/3, so `ASSIST_MODEL = "D
 4. Do not send images to `DeepSeek-V4.1-Flash`; it hangs. Qwen3.8 and Gemma were not probed for vision, as instructed.
 5. Gemma produced garbage in all 3 recorded Pythia-style (system message + question) runs, so avoid it for that task on this endpoint until the deployment is checked.
 6. Raw JSON file holds the replies only (no key, no images).
+
+## Validation benchmark: manual inspection time per truck (searched, not found)
+
+Searched 14 Oct 2026 for a citable figure for how long a manual visual load
+inspection takes per truck at waste / RDF receiving (three web searches:
+"manual visual inspection ... per truck seconds minutes", "tipping floor visual
+load check duration per vehicle", "load inspection takes approximately minutes
+per load"). Every hit describes procedure or sampling frequency; none states a
+duration per truck. What the sources do support:
+
+- New Mexico guidance sets one random load inspection per day or 1 % of incoming
+  loads, whichever is greater
+  (https://www.env.nm.gov/solid-waste/wp-content/uploads/sites/17/2025/04/10_Waste-Screening-Inspection-Plan-Guidance_12.2024.doc).
+- Massachusetts sets monthly minimums of 4 to 20 inspected vehicles by permitted
+  tonnage (https://www.mass.gov/doc/attachment-g-compliance-plan-form-for-facility-operators/download).
+- A random-load inspection means diverting the truck to a separate pad, spreading
+  the load and searching it by hand
+  (https://www.law.cornell.edu/regulations/illinois/Ill-Admin-Code-tit-35-SS-811.323).
+
+No baseline is invented. `/validation` therefore reports Lynceus p50/p95 latency
+only, with no "vs manual" comparison and no `manual_check_seconds` in the summary.
