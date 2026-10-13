@@ -132,6 +132,10 @@ cp ../.env.example .env        # then edit; see the env table below
 python -m lynceus.main         # http://localhost:8020
 ```
 
+If `npm run build` fails with `Cannot find module '../lightningcss.<platform>.node'`,
+npm skipped an optional native package during `npm ci` (seen once on Windows; the
+lockfile does list it). Delete `web/node_modules` and run `npm ci` again.
+
 Open <http://localhost:8020>. The three demo cases (green / amber / red) work
 without any key (offline, deterministic). Live inspections need the Token Factory
 settings below.
@@ -215,7 +219,7 @@ the numbers above were not measured on a self-hosted stack.
 
 ```bash
 cd backend
-PYTHONPATH=src python -m pytest tests/ -q   # 312 passed, 1 skipped
+PYTHONPATH=src python -m pytest tests/ -q   # 313 passed, 1 skipped
 ```
 
 The skipped test is the live smoke module; enable it with `LYNCEUS_LIVE_TESTS=1`
