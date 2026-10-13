@@ -2,7 +2,7 @@
 
 Estimates the Rupiah / USD value of a verdict so the demo UI can show
 "dampak terukur" (measurable impact) next to every inspection.  Every
-number is traceable to ``docs/research-realcase-indonesia.md`` and each
+number is traceable to ``docs/research/realcase-indonesia.md`` and each
 basis entry carries its source URL — no invented figures.
 
 This module is deliberately pure and deterministic: same inputs → same
@@ -17,7 +17,7 @@ __all__ = ["estimate_prevented_loss", "ARM_ROLL_TRIP_KG", "USD_IDR_RATE"]
 
 
 # ---------------------------------------------------------------------------
-# Research-backed constants (docs/research-realcase-indonesia.md §5, §3a)
+# Research-backed constants (docs/research/realcase-indonesia.md §5, §3a)
 # ---------------------------------------------------------------------------
 
 #: Explicit USD→IDR conversion rate used everywhere in this module.
@@ -196,7 +196,7 @@ def estimate_prevented_loss(
                     "USD→Rp conversion rate",
                     f"Rp {USD_IDR_RATE:,.0f}/USD (explicit, research range "
                     "Rp 15,000–16,500)",
-                    "https://docs.research-realcase-indonesia.md",
+                    "https://github.com/rafilajhh/lynceus/blob/main/docs/research/realcase-indonesia.md",
                 ),
             ]
         )

@@ -97,4 +97,4 @@ Output aktual: fase II; CH₄ kumulatif **0.471 kg** (0.657 m³); CO₂ 1.295 kg
 ## Nasib module untuk Lynceus
 - **Langsung adopsi tanpa modifikasi** (9): composition, generation, massbalance, suitability, recommend, pipeline, virtual_sensor, gas_data, assessment — pure & stdlib-only. `gas_defaults.py` (780 ln generated) ikut sebagai data.
 - **Ubah**: string Inggris hardcode di `recommend` → i18n key; caveat "mesh independence" (flag `screening=True`) → ganti redaksi untuk web; backend serialize asdict, frontend memformat.
-- **Buang**: `casegen.py`, `container.py`, `geometry.py`, `mesh.py`, `runner.py`, `post.py`, `scenario.py`, `project.py`, `history.py` (konsep audit-nya diadopsi ulang, lihat research-audit-provenance.md; kode IO/Qt tidak dibawa).
+- **Buang**: `casegen.py`, `container.py`, `geometry.py`, `mesh.py`, `runner.py`, `post.py`, `scenario.py`, `project.py`, `history.py` (konsep audit-nya diadopsi ulang, lihat research/audit-provenance.md; kode IO/Qt tidak dibawa).

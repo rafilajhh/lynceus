@@ -141,7 +141,7 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
 
     When only ``demo_case`` is supplied (no manual data), research-backed
     defaults fill the gaps so the demo tells a true story (see
-    docs/research-realcase-indonesia.md): an arm-roll truck carries
+    docs/research/realcase-indonesia.md): an arm-roll truck carries
     ≈ 5,2 ton/trip (jurnal ITATS Surabaya §3a) and Indonesian MSW runs
     55–60 % moisture (SBI Cilacap §2c).  The InspectRequest contract
     itself is untouched — only the demo defaults are realistic.
@@ -162,7 +162,7 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
             age_h = 48.0
         if not (manifest_text or "").strip():
             # Waybill skeleton per SOP PUPR §4a / praktik jembatan timbang
-            # (docs/research-realcase-indonesia.md §4d) — a demo_case-only
+            # (docs/research/realcase-indonesia.md §4d) — a demo_case-only
             # payload still carries an honest scripted waybill.
             manifest_text = (
                 "SURAT JALAN / TIKET TIMBANG (RDF-MSW)\n"
@@ -361,13 +361,13 @@ def _run_inspection_with_audit(
 
     # Presentation-layer measurable impact — NOT part of the audit schema:
     # it derives from the verdict + VLM result with explicit research
-    # provenance (docs/research-realcase-indonesia.md) and sits in the
+    # provenance (docs/research/realcase-indonesia.md) and sits in the
     # response JSON parallel to the frozen audit_record.
     impact_estimate = impact.estimate_prevented_loss(
         verdict, vlm_result, request.weight_kg
     )
     impact_estimate["provenance"] = (
-        "docs/research-realcase-indonesia.md (dampak Rp, §5) — "
+        "docs/research/realcase-indonesia.md (dampak Rp, §5) — "
         "every basis row carries its source URL"
     )
     response = {

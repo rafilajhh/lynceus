@@ -2,7 +2,7 @@
  * API client + contract types for the inspection ledger.
  *
  * TODO(backend): GET /inspections and GET /inspections/{record_id} are not
- * implemented yet in backend/lynceus/api.py. The frontend is written against
+ * implemented yet in backend/src/lynceus/api.py. The frontend is written against
  * the agreed contract:
  *
  *   GET /inspections →

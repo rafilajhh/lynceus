@@ -3,7 +3,7 @@
 Covers: REJECT + hard contaminant → prevented loss > 0 with sourced basis,
 ACCEPT → positive RDF load value, ESCALATE without contaminant → combustion
 penalty, and determinism (same inputs → identical output).  All figures
-must trace to docs/research-realcase-indonesia.md.
+must trace to docs/research/realcase-indonesia.md.
 """
 
 from __future__ import annotations

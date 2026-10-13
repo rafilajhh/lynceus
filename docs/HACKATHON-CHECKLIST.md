@@ -18,7 +18,7 @@
 | [ ] | Kartu kredit valid untuk ADC | Pembuatan akun ADC (amd.digitalocean.com) butuh kartu kredit valid; kredit hangus jika kartu invalid | ___ | ___ | Sebelum create VM pertama |
 | [ ] | Snapshot kontak panitia | Screenshot kanal Discord untuk troubleshooting submission (manual submission butuh persetujuan panitia) | ___ | ___ | 14 Okt |
 
-**Catatan kredit GPU** (dari `research-amd-gpu-stack.md` §1.2): kredit hanya berlaku untuk MI300X; VM **tetap ditagih walau dimatikan** — destroy instance setelah selesai; storage snapshot tidak ditanggung kredit.
+**Catatan kredit GPU** (dari `research/amd-gpu-stack.md` §1.2): kredit hanya berlaku untuk MI300X; VM **tetap ditagih walau dimatikan** — destroy instance setelah selesai; storage snapshot tidak ditanggung kredit.
 
 ---
 
@@ -67,8 +67,8 @@
 |---|---|---|---|---|
 | **Application of Technology** | Integrasi model AMD dalam *working product* | (1) Endpoint AMD live — vLLM serve Qwen2.5-VL di MI300X (ADC), `curl` smoke test terdokumentasi; (2) diagram arsitektur di slide + README; (3) log inferensi nyata (timestamp, model identity, latency per request) | [ ] | ___ |
 | **Presentation** | Video <5 menit: problem → demo → impact; plus market analysis & future plans | Script video 4 menit: 0:00–0:40 problem (downtime kiln), 0:40–3:00 demo live inspeksi truk → verdict → audit record, 3:00–4:00 impact + market + roadmap. Slide memuat market analysis & future plans eksplisit | [ ] | ___ |
-| **Business Value** | Angka dampak & biaya cegah vs biaya rugi | Downtime **US$28.000/jam** (shutdown kiln semen AS; 68% akibat maintenance terlewat) dan **US$125.000/jam** (survey ABB/Sapio 3.215 responden) — sumber lengkap di `research-demo-assets.md` §(a). Pitch andalan: satu shredder RDF industri ratusan juta rupiah vs satu jam kiln mati ±Rp450 juta → inspeksi otomatis = "biaya cegah" yang jauh lebih murah | [ ] | ___ |
-| **Originality** | Bukan chatbot generik | AI vision + **decision engine berbasis regulasi** (ISO 21640, EN 15359) + **audit trail immutable ber-SHA-256** (pola engine: snapshot beku, refuse-to-answer, gates closed-enum — lihat `research-audit-provenance.md`). Fusion multi-modal: foto + OCR manifes + berat + gas | [ ] | ___ |
+| **Business Value** | Angka dampak & biaya cegah vs biaya rugi | Downtime **US$28.000/jam** (shutdown kiln semen AS; 68% akibat maintenance terlewat) dan **US$125.000/jam** (survey ABB/Sapio 3.215 responden) — sumber lengkap di `research/demo-assets.md` §(a). Pitch andalan: satu shredder RDF industri ratusan juta rupiah vs satu jam kiln mati ±Rp450 juta → inspeksi otomatis = "biaya cegah" yang jauh lebih murah | [ ] | ___ |
+| **Originality** | Bukan chatbot generik | AI vision + **decision engine berbasis regulasi** (ISO 21640, EN 15359) + **audit trail immutable ber-SHA-256** (pola engine: snapshot beku, refuse-to-answer, gates closed-enum — lihat `research/audit-provenance.md`). Fusion multi-modal: foto + OCR manifes + berat + gas | [ ] | ___ |
 
 **Checklist bukti:**
 
@@ -87,7 +87,7 @@
 | [ ] | Pitch/video menyatakan hal yang sama | Slide provenance + 1 kalimat di voice-over video | ___ | ___ |
 | [ ] | Tidak ada API key / secret ter-commit | Audit `git log -p` + scan repo; kunci hanya via env var / `.env.example` tanpa nilai riil | ___ | ___ |
 | [ ] | Lisensi repo MIT | File `LICENSE` di root repo | ___ | ___ |
-| [ ] | Klaim sesuai batas | Semua angka bisnis di pitch punya sumber (`research-demo-assets.md` §a); tidak ada klaim benchmark yang tidak kita ukur sendiri | ___ | ___ |
+| [ ] | Klaim sesuai batas | Semua angka bisnis di pitch punya sumber (`research/demo-assets.md` §a); tidak ada klaim benchmark yang tidak kita ukur sendiri | ___ | ___ |
 
 ---
 
@@ -128,7 +128,7 @@ Urutan verifikasi — kerjakan berurutan, **jangan klik Submit sebelum semua ✅
 
 ## Referensi internal
 
-- `docs/research-demo-assets.md` — angka business value + sumber, standar RDF, pitch andalan
-- `docs/research-amd-gpu-stack.md` — stack vLLM/ROCm/MI300X, kredit ADC/ADP, langkah deploy
-- `docs/research-audit-provenance.md` — pola audit trail & provenance engine
-- `docs/research-engine-map.md` — peta komponen engine
+- `docs/research/demo-assets.md` — angka business value + sumber, standar RDF, pitch andalan
+- `docs/research/amd-gpu-stack.md` — stack vLLM/ROCm/MI300X, kredit ADC/ADP, langkah deploy
+- `docs/research/audit-provenance.md` — pola audit trail & provenance engine
+- `docs/research/engine-map.md` — peta komponen engine

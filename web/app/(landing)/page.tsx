@@ -12,7 +12,7 @@ export const metadata = { title: "One hidden metal chunk can stop a cement kiln"
  * graphite-dark ground, hairline seams, IBM Plex, one amber accent,
  * mono figures. Every number on screen answers "from where?" with a
  * source line (PRODUCT.md principle #1): figures come from
- * docs/research-realcase-indonesia.md.
+ * docs/research/realcase-indonesia.md.
  *
  * No kicker/eyebrow, no hero-metric grid: the first viewport states
  * the problem, not the product name.
@@ -26,7 +26,7 @@ const PROOF_FIGURES = [
     decimals: 0,
     label: "One industrial shredder destroyed by a single metal contaminant",
     source:
-      "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost · docs/research-realcase-indonesia.md §5b",
+      "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost · docs/research/realcase-indonesia.md §5b",
     grow: "lg:w-[1.25fr]",
   },
   {
@@ -36,7 +36,7 @@ const PROOF_FIGURES = [
     decimals: 0,
     label: "Cement kiln unplanned downtime, per hour of lost clinker",
     source:
-      "oxmaint US cement benchmark ≈ Rp 450 jt/hr @ Rp 16,000/USD · docs/research-realcase-indonesia.md §5a",
+      "oxmaint US cement benchmark ≈ Rp 450 jt/hr @ Rp 16,000/USD · docs/research/realcase-indonesia.md §5a",
     grow: "lg:w-[1fr]",
   },
   {
@@ -46,7 +46,7 @@ const PROOF_FIGURES = [
     decimals: 1,
     label: "Typical arm-roll load that must be inspected before tipping",
     source:
-      "ITATS Surabaya, 14 m³ × 372.71 kg/m³, weighed at TPA Benowo weighbridge · docs/research-realcase-indonesia.md §3a",
+      "ITATS Surabaya, 14 m³ × 372.71 kg/m³, weighed at TPA Benowo weighbridge · docs/research/realcase-indonesia.md §3a",
     grow: "lg:w-[0.85fr]",
   },
 ] as const;

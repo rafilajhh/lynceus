@@ -1,7 +1,7 @@
 """Lynceus audit record module — immutable, append-only inspection records.
 
 Implements the audit-provenance design from
-``docs/research-audit-provenance.md`` §(b).  Each truck inspection
+``docs/research/audit-provenance.md`` §(b).  Each truck inspection
 (foto, manifest teks, berat, gas) produces exactly one ``inspection-NNN``
 directory holding a single ``audit.json`` written **twice, atomically**:
 

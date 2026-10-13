@@ -8,12 +8,12 @@ web
 
 ## Stack
 
-Static web (`web/`: vanilla HTML/CSS/JS, no build step) served by FastAPI static mount + JSON API backend (`backend/lynceus/`). Existing codebase answers this.
+Next.js 15 (App Router, React 19, Tailwind v4) in `web/` built to a static export (`npm run build` → `web/out/`) served by FastAPI static mount + JSON API backend (`backend/src/lynceus/`). Existing codebase answers this.
 
 ## Users
 
 1. **Judges of AMD Developer Hackathon ACT III** (lablab.ai, international) — open the demo URL, evaluate in minutes against the Intelligent Industry brief: real problem, working product, operator-understandable results, measurable improvement. *(inferred from hackathon context)*
-2. **Weighbridge operators at RDF co-processing cement plants in Indonesia** (e.g. Semen Gresik, SBI Cilacap lines) — inspect incoming waste trucks in under 30 seconds before tipping into the shredder line. *(confirmed via research: docs/research-realcase-indonesia.md)*
+2. **Weighbridge operators at RDF co-processing cement plants in Indonesia** (e.g. Semen Gresik, SBI Cilacap lines) — inspect incoming waste trucks in under 30 seconds before tipping into the shredder line. *(confirmed via research: docs/research/realcase-indonesia.md)*
 
 ## Product Purpose
 
@@ -47,8 +47,8 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 
 ## Evidence on Hand
 
-- `docs/research-realcase-indonesia.md` — sourced figures (SIPSN, ITATS, SBI Cilacap, RDI reports) for demo data and impact numbers.
-- `docs/research-amd-gpu-stack.md` — AMD stack, benchmarks, deploy steps.
+- `docs/research/realcase-indonesia.md` — sourced figures (SIPSN, ITATS, SBI Cilacap, RDI reports) for demo data and impact numbers.
+- `docs/research/amd-gpu-stack.md` — AMD stack, benchmarks, deploy steps.
 - `web/demo/` — 9 real RealWaste photos + ATTRIBUTION.md (CC BY 4.0).
 - `docs/PLAN.md`, `docs/HACKATHON-CHECKLIST.md` — plan, judging criteria mapping, submission checklist.
 - Absences that must not be fabricated: no real customer logos, no real deployment, no measured accuracy on production data (label demo numbers as sourced estimates).

@@ -102,7 +102,7 @@ _DEMO_PAYLOADS = [
 ]
 
 # Expected prevented-loss figures from the documented formulas
-# (lynceus.impact docstrings + docs/research-realcase-indonesia.md):
+# (lynceus.impact docstrings + docs/research/realcase-indonesia.md):
 # accept → tonnes × RDF price; reject w/ hard contaminant → shredder +
 # 1 h kiln downtime priced at the research USD rate.
 _EXPECTED_ACCEPT_IDR = round(18_500 / 1000 * impact.RDF_PRICE_IDR_PER_TONNE)

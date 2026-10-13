@@ -2,7 +2,7 @@
  * Demo cases: ported from legacy web/app.js (research-backed data).
  *
  * Every field carries its research source in comments
- * (docs/research-realcase-indonesia.md). photo paths point at
+ * (docs/research/realcase-indonesia.md). photo paths point at
  * public/demo/*.jpg (RealWaste photos: see public/demo/ATTRIBUTION.md).
  */
 

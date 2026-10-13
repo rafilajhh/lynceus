@@ -1,8 +1,8 @@
 # PLAN.md — Rencana Penuh Pengembangan Lynceus (A–Z)
 
 > Dokumen rencana hackathon AMD Act 3. Semua angka kunci berasal dari file riset di `docs/`:
-> `research-demo-assets.md` (business value & aset demo), `research-engine-map.md` (pemetaan engine),
-> `research-amd-gpu-stack.md` (stack AI di AMD GPU), `research-audit-provenance.md` (audit & provenance).
+> `research/demo-assets.md` (business value & aset demo), `research/engine-map.md` (pemetaan engine),
+> `research/amd-gpu-stack.md` (stack AI di AMD GPU), `research/audit-provenance.md` (audit & provenance).
 
 ---
 
@@ -83,7 +83,7 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Detail skema audit record: `docs/research-audit-provenance.md` §(b).
+Detail skema audit record: `docs/research/audit-provenance.md` §(b).
 
 ---
 
@@ -93,7 +93,7 @@ Detail skema audit record: `docs/research-audit-provenance.md` §(b).
 
 **Engine keputusan** adalah bagian dari Lynceus, dikembangkan sebagai library di backend (`backend/src/lynceus_engine/`). Bersama layer VLM/LLM di AMD GPU, fusion layer, decision engine verdict truk, dan web app operator, semuanya dibangun untuk hackathon ini.
 
-### 4.2 Tabel nasib module (dari `research-engine-map.md`)
+### 4.2 Tabel nasib module (dari `research/engine-map.md`)
 
 | Module engine | Nasib | Penggunaan di Lynceus |
 |---|---|---|
@@ -107,7 +107,7 @@ Detail skema audit record: `docs/research-audit-provenance.md` §(b).
 | `gas_data.py` | **Diambil utuh** | Katalog gas AP-42 terkutib; `citation()` → tooltip provenance |
 | `gas_defaults.py` | **Diambil utuh** (data generated, 780 ln) | Data default gas |
 | `assessment.py` | **Diambil utuh** | Evaluasi gas readings vs threshold; endpoint gas screening report |
-| `casegen.py`, `container.py`, `geometry.py`, `mesh.py`, `runner.py`, `post.py`, `scenario.py`, `project.py`, `history.py` | **Dibuang** (kode IO/Qt/CFD tidak dibawa) | Konsep audit `history.py` diadopsi ulang sebagai skema audit record Lynceus (lihat `research-audit-provenance.md`) |
+| `casegen.py`, `container.py`, `geometry.py`, `mesh.py`, `runner.py`, `post.py`, `scenario.py`, `project.py`, `history.py` | **Dibuang** (kode IO/Qt/CFD tidak dibawa) | Konsep audit `history.py` diadopsi ulang sebagai skema audit record Lynceus (lihat `research/audit-provenance.md`) |
 
 ### 4.3 Perubahan spesifik
 
@@ -117,7 +117,7 @@ Detail skema audit record: `docs/research-audit-provenance.md` §(b).
 
 ---
 
-## 5. Stack Teknologi (dari `research-amd-gpu-stack.md`)
+## 5. Stack Teknologi (dari `research/amd-gpu-stack.md`)
 
 | Komponen | Pilihan | Justifikasi |
 |---|---|---|

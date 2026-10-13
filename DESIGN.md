@@ -432,7 +432,7 @@ Problem-first, no kicker/eyebrow, no hero-metric grid:
    three unequal columns (`lg:w-[1.25fr]` etc.) split by `lg:border-l
    border-seam`, each a `CountUpFigure` + label + source line under a
    `border-t border-seam` hairline. Figures: Rp 350 jt shredder, US$ 28k/hr
-   kiln (sourced to docs/research-realcase-indonesia.md).
+   kiln (sourced to docs/research/realcase-indonesia.md).
 3. **How it works** — "How a truck is cleared, gate by gate": three steps,
    mono step numerals in `text-faint`, each with a gate chip (`.figure …
    rounded-[6px] border border-seam bg-raised px-3 py-1.5` + green dot).

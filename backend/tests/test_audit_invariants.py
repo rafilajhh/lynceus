@@ -4,7 +4,7 @@ The body runs the same 57 invariant checks as a single test; a failed
 check raises AssertionError with the check name so pytest reports it.
 """
 import pytest
-"""Live verification of every invariant in backend/lynceus/audit.py."""
+"""Live verification of every invariant in backend/src/lynceus/audit.py."""
 import json, shutil, sys, tempfile
 from pathlib import Path
 

@@ -38,25 +38,47 @@ were all built for this project.
 ## Repository layout
 
 ```
-backend/   FastAPI app: engine adapter, AI pipeline (vLLM client), audit records
-web/       Operator dashboard (static, no build step)
-docs/      Plan, hackathon checklist, and research notes
+backend/            FastAPI app: engine adapter, AI pipeline (vLLM client), audit records
+  src/lynceus/        the service package (api, pipeline, decision, audit, impact)
+  src/lynceus_engine/ the vendored decision engine (pure Python, MIT)
+  tests/              pytest suite (57 audit-invariant checks + API tests)
+  scripts/            demo seeding utility
+web/                Operator dashboard — Next.js 15 (App Router) static export
+  app/                routes: / (landing), /app (workspace), /inspections (ledger)
+  components/         ui/ primitives, shell/ chrome, workspace/ inspection flow
+  lib/                API clients (zod contracts), demo cases, formatting
+  public/demo/        RealWaste demo photos (CC BY 4.0)
+  scripts/            dev utilities (mock API server)
+docs/               Plan, hackathon checklist, design review
+  research/           sourced research notes (AMD stack, Indonesia case, audit, datasets)
 ```
 
 ## Quickstart
 
-Requirements: Python 3.12+, FastAPI deps. The decision engine
+Requirements: Python 3.12+, Node.js 20+, FastAPI deps. The decision engine
 (`lynceus_engine`) is vendored in `backend/src/lynceus_engine/` — no
 separate install needed.
 
 ```bash
+# 1. Build the web dashboard (Next.js static export → web/out/)
+cd web
+npm install
+npm run build
+cd ..
+
+# 2. Run the backend (serves API + the built web UI)
 pip install fastapi "uvicorn[standard]" pydantic httpx pytest
 cd backend
+pip install -e .
 python -m lynceus.main          # serves API + web UI at http://localhost:8020
 ```
 
 Then open <http://localhost:8020> — the dashboard loads with three demo cases
 (green / amber / red).
+
+> The frontend is a Next.js app built to a **fully static export** (`web/out/`)
+> that FastAPI serves — no Node runtime needed in production, but producing
+> the bundle does require `npm run build`.
 
 ### Configuration (environment variables)
 
@@ -81,7 +103,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct    --host 0.0.0.0 --port 8001
 ```
 
 Full deployment notes (AMD Developer Cloud, credits, tuning flags):
-see `docs/research-amd-gpu-stack.md`.
+see `docs/research/amd-gpu-stack.md`.
 
 ## Tests
 
