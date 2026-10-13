@@ -96,3 +96,40 @@ def test_valid_measured_at_is_kept_invalid_is_dropped(monkeypatch):
 def test_non_object_instrument_is_dropped(monkeypatch):
     _mock_gateway(monkeypatch, {"readings_ppm": {"ch4": 1}, "instrument": "x"})
     assert "instrument" not in gas_ingest.fetch_live_readings()
+
+
+def test_instrument_is_whitelisted_to_string_fields(monkeypatch):
+    _mock_gateway(
+        monkeypatch,
+        {
+            "readings_ppm": {"ch4": 1},
+            "instrument": {
+                "model": "X",
+                "technology": "TDLAS",
+                "x": float("nan"),
+                "nested": {"a": 1},
+                "serial": 123,
+            },
+        },
+    )
+    assert gas_ingest.fetch_live_readings()["instrument"] == {
+        "model": "X",
+        "technology": "TDLAS",
+    }
+
+
+def test_instrument_without_string_fields_is_dropped(monkeypatch):
+    _mock_gateway(
+        monkeypatch,
+        {"readings_ppm": {"ch4": 1}, "instrument": {"model": 5, "x": float("nan")}},
+    )
+    assert "instrument" not in gas_ingest.fetch_live_readings()
+
+
+@pytest.mark.parametrize(
+    "url", ["http://[::1", "http://", "ftp://gate-sensor.invalid/r", "not a url"]
+)
+def test_misconfigured_url_returns_none(monkeypatch, url):
+    # Real httpx here (no mock): InvalidURL / UnsupportedProtocol must not escape.
+    monkeypatch.setenv(gas_ingest.GAS_SENSOR_URL_ENV, url)
+    assert gas_ingest.fetch_live_readings() is None

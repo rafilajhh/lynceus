@@ -17,9 +17,9 @@ Contract expected from the sensor gateway (``GET {LYNCEUS_GAS_SENSOR_URL}``):
       "measured_at_utc": "2026-10-13T09:00:00Z"
     }
 
-``readings_ppm`` is the only mandatory key; ``instrument`` (an object)
-and a valid ISO 8601 UTC ``measured_at_utc`` enrich the audit record
-when present.  Every reading must be a finite, non-negative number —
+``readings_ppm`` is the only mandatory key; ``instrument`` (only its string
+``model`` / ``technology`` fields are kept) and a valid ISO 8601 UTC
+``measured_at_utc`` enrich the audit record when present.  Every reading must be a finite, non-negative number —
 anything else rejects the whole payload and the twin takes over.
 """
 
@@ -47,6 +47,9 @@ LIVE_GAS_SOURCE = "sentinel_gate_sensor"
 
 _TIMEOUT_S = 5.0
 
+#: Gateway ``instrument`` fields copied into the audit record (strings only).
+_INSTRUMENT_FIELDS = ("model", "technology")
+
 
 def fetch_live_readings(
     settings_url: Optional[str] = None, timeout_s: float = _TIMEOUT_S
@@ -66,26 +69,41 @@ def fetch_live_readings(
         response = httpx.get(url.rstrip("/"), timeout=timeout_s)
         response.raise_for_status()
         payload: Dict[str, Any] = response.json()
-    except (httpx.HTTPError, ValueError):
-        # Unreachable gateway, non-JSON body, HTTP error — twin takes over.
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError):
+        # Unreachable gateway, misconfigured URL, non-JSON body, HTTP
+        # error — twin takes over.
         return None
     if not isinstance(payload, dict):
         return None
     readings = _clean_readings(payload.get("readings_ppm"))
     if readings is None:
         return None
-    result: Dict[str, Any] = dict(payload)
-    result["readings_ppm"] = readings
-    result["source"] = LIVE_GAS_SOURCE
-    # Optional enrichments: keep only well-formed values so a sloppy
-    # gateway can never make the audit record undecodable.
-    if not isinstance(result.get("instrument"), dict):
-        result.pop("instrument", None)
+    # Only whitelisted, well-formed values reach the audit record: a
+    # sloppy gateway (NaN, nested junk, wrong types) must never be able
+    # to make the record unwritable.
+    result: Dict[str, Any] = {"readings_ppm": readings, "source": LIVE_GAS_SOURCE}
+    instrument = _clean_instrument(payload.get("instrument"))
+    if instrument:
+        result["instrument"] = instrument
+    measured_at = payload.get("measured_at_utc")
     try:
-        audit.validate_timestamp(result.get("measured_at_utc"), "measured_at_utc")
+        result["measured_at_utc"] = audit.validate_timestamp(
+            measured_at, "measured_at_utc"
+        )
     except audit.AuditError:
-        result.pop("measured_at_utc", None)
+        pass
     return result
+
+
+def _clean_instrument(instrument: Any) -> Dict[str, str]:
+    """Keep only the string ``model`` / ``technology`` fields of the block."""
+    if not isinstance(instrument, dict):
+        return {}
+    return {
+        key: instrument[key]
+        for key in _INSTRUMENT_FIELDS
+        if isinstance(instrument.get(key), str)
+    }
 
 
 def _clean_readings(readings: Any) -> Optional[Dict[str, float]]:

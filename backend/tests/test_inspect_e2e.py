@@ -491,3 +491,39 @@ def test_inspect_with_live_gate_sensor_stamps_measured_source(
     assert rec.inputs.gas.source == "sentinel_gate_sensor"
     assert rec.inputs.gas.measured_at_utc == "2026-10-13T09:00:00Z"
     assert rec.ai_outputs.gas.source == "sentinel_gate_sensor"
+
+
+def test_inspect_with_nan_in_gateway_instrument_completes(
+    client, tmp_path, monkeypatch
+):
+    from lynceus import gas_ingest
+
+    class _Gateway:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "readings_ppm": {"ch4": 54.1, "co2": 56.4},
+                "instrument": {"model": "X", "x": float("nan")},
+            }
+
+    monkeypatch.setenv(gas_ingest.GAS_SENSOR_URL_ENV, "http://gate-sensor.invalid/r")
+    monkeypatch.setattr(gas_ingest.httpx, "get", lambda *a, **k: _Gateway())
+    resp = client.post("/inspect", json=DEMO_CASES["green"]["payload"])
+    assert resp.status_code == 200, resp.text
+    rec = _load_audit_record(tmp_path, resp.json()["record_id"])
+    assert rec.execution_status == audit.ExecutionStatus.COMPLETED
+    assert rec.ai_outputs.gas.instrument == {"model": "X"}
+
+
+def test_inspect_with_invalid_sensor_url_falls_back_to_twin(
+    client, tmp_path, monkeypatch
+):
+    from lynceus import gas_ingest
+
+    monkeypatch.setenv(gas_ingest.GAS_SENSOR_URL_ENV, "http://[::1")
+    resp = client.post("/inspect", json=DEMO_CASES["green"]["payload"])
+    assert resp.status_code == 200, resp.text
+    rec = _load_audit_record(tmp_path, resp.json()["record_id"])
+    assert rec.inputs.gas.source == "digital_twin"
