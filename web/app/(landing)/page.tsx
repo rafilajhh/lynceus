@@ -62,7 +62,7 @@ const STEPS = [
   {
     no: "02",
     title: "Analyze",
-    text: "A vision-language model on AMD Instinct MI300X reads the load for contaminants and moisture, cross-checks the waybill claim, and a physics digital twin tests gas and weight plausibility.",
+    text: "A vision-language model on AMD GPUs reads the load for contaminants and moisture, a language model cross-checks the waybill claim, and a physics digital twin simulates the gate gas readings while the weighbridge weight is checked against the waybill.",
     gate: "gate · VLM + twin resolved",
   },
   {
@@ -91,7 +91,7 @@ export default function LandingPage() {
           <p className="mt-5 max-w-[56ch] text-[15px] leading-[1.65] text-muted sm:text-[17px]">
             Lynceus inspects every RDF truck at the gate, before tipping:
             visual contaminant detection, waybill cross-check, and a route
-            verdict in seconds, sealed to a tamper-evident audit record.
+            verdict in under a minute, sealed to a tamper-evident audit record.
           </p>
           <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <Link
@@ -233,8 +233,10 @@ export default function LandingPage() {
             Watch it reject the truck that would have stopped the kiln.
           </h2>
           <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
-            Three seeded cases (clean, suspicious, contaminated) run live
-            through the same gate pipeline, from photo to sealed audit record.
+            Three scripted sample cases (clean, suspicious, contaminated) run
+            instantly through the same decision engine. &ldquo;Run live on
+            AMD&rdquo; sends the same photo to the live AMD pipeline, which
+            takes roughly 15 to 50 seconds, from photo to sealed audit record.
           </p>
           <div className="mt-7 flex w-full max-w-[420px] flex-col gap-3 sm:max-w-none sm:flex-row">
             <Link
