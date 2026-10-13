@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   fetchInspectionDetail,
   type GateState,
   type InspectionDetail,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { formatRupiah, formatWeight, relativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,12 +49,31 @@ type DetailLoad =
 export function InspectionDetailPanel({
   recordId,
   onClose,
+  className,
 }: {
   recordId: string;
   onClose: () => void;
+  className?: string;
 }) {
   const [state, setState] = useState<DetailLoad>({ kind: "loading" });
+  const [retryCount, setRetryCount] = useState(0);
+  const panelRef = useRef<HTMLElement>(null);
 
+  /* P1b: Move focus into panel on open; P0b: scroll into view (nearest), honoring reduced motion */
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({
+      block: "nearest",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
+    el.focus({ preventScroll: true });
+  }, [recordId]);
+
+  /* P0a: Re-fetch when recordId or retryCount changes */
   useEffect(() => {
     let cancelled = false;
     setState({ kind: "loading" });
@@ -72,10 +92,10 @@ export function InspectionDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [recordId]);
+  }, [recordId, retryCount]);
 
   return (
-    <Panel>
+    <Panel ref={panelRef} tabIndex={-1} className={cn("focus:outline-none", className)}>
       <PanelHead
         title={`Record · ${recordId}`}
         meta={state.kind === "ready" ? "audit record" : "loading"}
@@ -108,7 +128,7 @@ export function InspectionDetailPanel({
             </p>
             <Button
               size="sm"
-              onClick={() => setState({ kind: "loading" })}
+              onClick={() => setRetryCount((c) => c + 1)}
             >
               Retry
             </Button>
@@ -144,28 +164,26 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       {detail.gates ? (
         <section>
           <h3 className="smallcaps mb-2">Gates</h3>
-          {/* Five gates: balanced wrap (3+2 / one row when wide) instead of
-              auto-fill's 4+1 orphan */}
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
             {Object.entries(detail.gates).map(([name, gate]) => (
               <div
                 key={name}
-                className={`rounded-[6px] border bg-raised px-3 py-2 ${GATE_STATE_CLASS[gate.state]}`}
+                className={`min-w-0 rounded-[6px] border bg-raised px-3 py-2 ${GATE_STATE_CLASS[gate.state]}`}
               >
-                <div className="text-[12px] font-bold tracking-[0.6px] uppercase">
+                <div className="text-[12px] font-bold tracking-[0.6px] uppercase break-words">
                   {GATE_LABEL[name] ?? name}
                 </div>
                 <div className="mt-0.5 text-[12.5px] font-bold">
                   {GATE_STATE_LABEL[gate.state]}
                 </div>
                 {gate.value !== null ? (
-                  <div className="figure mt-0.5 text-[11px] text-muted">
+                  <div className="figure mt-0.5 text-[11px] text-muted break-words">
                     value {gate.value}
                     {gate.threshold !== null ? ` · threshold ${gate.threshold}` : ""}
                   </div>
                 ) : null}
                 {gate.reason ? (
-                  <div className="mt-1 text-[13px] leading-snug text-muted">
+                  <div className="mt-1 text-[13px] leading-snug text-muted break-words">
                     {gate.reason}
                   </div>
                 ) : null}
@@ -178,7 +196,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       {/* ---- inputs ---- */}
       <section>
         <h3 className="smallcaps mb-2">Inputs</h3>
-        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
             <div className="smallcaps mb-1">Truck</div>
             <div className="figure text-[13px] text-ink">

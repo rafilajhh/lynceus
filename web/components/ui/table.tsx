@@ -61,10 +61,11 @@ const TableRow = React.forwardRef<
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
   React.ThHTMLAttributes<HTMLTableCellElement>
->(function TableHead({ className, ...props }, ref) {
+>(function TableHead({ className, scope = "col", ...props }, ref) {
   return (
     <th
       ref={ref}
+      scope={scope}
       className={cn(
         "bg-raised px-4 py-2.5 text-left align-middle text-[12px] font-bold tracking-[1.2px] whitespace-nowrap text-muted uppercase",
         className,

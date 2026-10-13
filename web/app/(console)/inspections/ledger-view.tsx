@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ApiError,
@@ -28,8 +28,6 @@ type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "ready"; inspections: InspectionSummary[] };
-
-
 
 const FILTERS: readonly { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
@@ -64,9 +62,13 @@ function recordNumber(recordId: string): number {
 type SortColumn = "record" | "when";
 type SortDir = "asc" | "desc";
 
+const PAGE_SIZE = 25;
+
 export function LedgerView() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ column: SortColumn; dir: SortDir }>({
     column: "record",
     dir: "desc",
@@ -116,10 +118,24 @@ export function LedgerView() {
   }, [ready]);
 
   const rows = useMemo(() => {
-    const filtered =
+    const filteredByVerdict =
       filter === "all"
         ? ready
         : ready.filter((item) => item.decision === filter);
+    const term = search.trim().toLowerCase();
+    const normTerm = term.replace(/[-\s]/g, "");
+    const matchesSearch = (val: string) => {
+      const lower = val.toLowerCase();
+      if (lower.includes(term)) return true;
+      if (normTerm && lower.replace(/[-\s]/g, "").includes(normTerm)) return true;
+      return false;
+    };
+    const filtered = term
+      ? filteredByVerdict.filter(
+          (item) =>
+            matchesSearch(item.record_id) || matchesSearch(item.truck_id),
+        )
+      : filteredByVerdict;
     const direction = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
       if (sort.column === "record") {
@@ -127,25 +143,80 @@ export function LedgerView() {
       }
       return (Date.parse(a.decided_at_utc) - Date.parse(b.decided_at_utc)) * direction;
     });
-  }, [ready, filter, sort]);
+  }, [ready, filter, search, sort]);
 
-  function toggleSort(column: SortColumn) {
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+  const startIdx = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE;
+  const endIdx = rows.length === 0 ? 0 : Math.min(startIdx + PAGE_SIZE, rows.length);
+  const pagedRows = rows.slice(startIdx, endIdx);
+
+  const onFilterChange = (nextFilter: FilterKey) => {
+    setFilter(nextFilter);
+    setPage(1);
+  };
+
+  const onSearchChange = (nextSearch: string) => {
+    setSearch(nextSearch);
+    setPage(1);
+  };
+
+  const toggleSort = (column: SortColumn) => {
     setSort((prev) =>
       prev.column === column
         ? { column, dir: prev.dir === "asc" ? "desc" : "asc" }
         : { column, dir: "desc" },
     );
-  }
+    setPage(1);
+  };
 
   function sortIndicator(column: SortColumn): string {
     if (sort.column !== column) return "↕";
     return sort.dir === "asc" ? "▲" : "▼";
   }
 
-  function onRowClick(recordId: string) {
-    // Clicking the selected row again collapses the detail panel.
-    setSelectedId((prev) => (prev === recordId ? null : recordId));
-  }
+  const closeDetail = useCallback(() => {
+    const closingId = selectedId;
+    setSelectedId(null);
+    if (closingId) {
+      const focusRow = () => {
+        const targets = document.querySelectorAll<HTMLElement>(
+          `[data-record-id="${closingId}"]`,
+        );
+        for (const el of targets) {
+          if (el.getClientRects().length > 0) {
+            el.focus();
+            return;
+          }
+        }
+        if (targets[0]) targets[0].focus();
+      };
+      focusRow();
+      requestAnimationFrame(focusRow);
+    }
+  }, [selectedId]);
+
+  const onRowClick = (recordId: string) => {
+    if (selectedId === recordId) {
+      closeDetail();
+    } else {
+      setSelectedId(recordId);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeDetail();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedId, closeDetail]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -182,37 +253,57 @@ export function LedgerView() {
               </span>
             </div>
 
-            {/* ---- filter chips ---- */}
-            <div
-              className="flex flex-wrap gap-2 px-4 py-3"
-              role="group"
-              aria-label="Filter inspections by verdict"
-            >
-              {FILTERS.map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={filter === key}
-                  onClick={() => setFilter(key)}
-                  className={`cursor-pointer rounded-full border px-3 py-1 text-[12.5px] font-semibold transition-colors duration-100 ${
-                    filter === key
-                      ? "border-amber bg-amber-soft text-ink"
-                      : "border-seam text-muted hover:border-seam-strong hover:text-ink"
-                  }`}
-                >
-                  {label}
-                  <span className="figure ml-1.5 text-[12px] text-muted">
-                    {counts[key] ?? 0}
-                  </span>
-                </button>
-              ))}
+            {/* ---- filter chips + search ---- */}
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div
+                className="flex flex-wrap items-center gap-2"
+                role="group"
+                aria-label="Filter inspections by verdict"
+              >
+                {FILTERS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={filter === key}
+                    onClick={() => onFilterChange(key)}
+                    className={`cursor-pointer rounded-full border px-3 py-1 text-[12.5px] font-semibold transition-colors duration-100 ${
+                      filter === key
+                        ? "border-amber bg-amber-soft text-ink"
+                        : "border-seam text-muted hover:border-seam-strong hover:text-ink"
+                    }`}
+                  >
+                    {label}
+                    <span className="figure ml-1.5 text-[12px] text-muted">
+                      {counts[key] ?? 0}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="w-full sm:w-auto sm:ml-auto">
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  placeholder="Search record or plate…"
+                  aria-label="Search record or plate"
+                  className="input w-full max-w-full sm:max-w-[260px] text-[13px]"
+                />
+              </div>
             </div>
 
             {/* ---- ledger table (desktop) ---- */}
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-raised">
-                  <TableHead>
+                  <TableHead
+                    aria-sort={
+                      sort.column === "record"
+                        ? sort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     <SortButton
                       active={sort.column === "record"}
                       indicator={sortIndicator("record")}
@@ -223,7 +314,15 @@ export function LedgerView() {
                   </TableHead>
                   <TableHead>Truck</TableHead>
                   <TableHead>Verdict</TableHead>
-                  <TableHead>
+                  <TableHead
+                    aria-sort={
+                      sort.column === "when"
+                        ? sort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     <SortButton
                       active={sort.column === "when"}
                       indicator={sortIndicator("when")}
@@ -236,55 +335,67 @@ export function LedgerView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.record_id}
-                    onClick={() => onRowClick(row.record_id)}
-                    tabIndex={0}
-                    role="button"
-                    aria-expanded={selectedId === row.record_id}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onRowClick(row.record_id);
-                      }
-                    }}
-                    className={`cursor-pointer ${
-                      selectedId === row.record_id
-                        ? "bg-raised shadow-[inset_3px_0_0_0_var(--color-amber)]"
-                        : ""
-                    }`}
-                  >
-                    <TableCell className="figure text-[12.5px] text-ink">
-                      {row.record_id}
-                    </TableCell>
-                    <TableCell className="figure text-[12.5px] text-muted">
-                      {row.truck_id}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={DECISION_BADGE[row.decision]}>
-                        <span
-                          aria-hidden="true"
-                          className="h-1.5 w-1.5 rounded-full bg-current"
-                        />
-                        {VERDICT_LABEL[row.decision]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-[12.5px] whitespace-nowrap text-muted">
-                      {relativeTime(row.decided_at_utc)}
-                    </TableCell>
-                    <TableCell
-                      className={`figure text-right text-[12.5px] ${
-                        row.prevented_loss_idr > 0
-                          ? "text-verdict-green"
-                          : "text-muted"
+                {pagedRows.map((row) => (
+                  <Fragment key={row.record_id}>
+                    <TableRow
+                      data-record-id={row.record_id}
+                      onClick={() => onRowClick(row.record_id)}
+                      tabIndex={0}
+                      role="button"
+                      aria-expanded={selectedId === row.record_id}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRowClick(row.record_id);
+                        }
+                      }}
+                      className={`cursor-pointer ${
+                        selectedId === row.record_id
+                          ? "bg-raised shadow-[inset_3px_0_0_0_var(--color-amber)]"
+                          : ""
                       }`}
                     >
-                      {formatRupiah(row.prevented_loss_idr)}
-                    </TableCell>
-                  </TableRow>
+                      <TableCell className="figure text-[12.5px] text-ink">
+                        {row.record_id}
+                      </TableCell>
+                      <TableCell className="figure text-[12.5px] text-muted">
+                        {row.truck_id}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={DECISION_BADGE[row.decision]}>
+                          <span
+                            aria-hidden="true"
+                            className="h-1.5 w-1.5 rounded-full bg-current"
+                          />
+                          {VERDICT_LABEL[row.decision]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-[12.5px] whitespace-nowrap text-muted">
+                        {relativeTime(row.decided_at_utc)}
+                      </TableCell>
+                      <TableCell
+                        className={`figure text-right text-[12.5px] ${
+                          row.prevented_loss_idr > 0
+                            ? "text-verdict-green"
+                            : "text-muted"
+                        }`}
+                      >
+                        {formatRupiah(row.prevented_loss_idr)}
+                      </TableCell>
+                    </TableRow>
+                    {selectedId === row.record_id ? (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={5} className="p-2 sm:p-3">
+                          <InspectionDetailPanel
+                            recordId={row.record_id}
+                            onClose={closeDetail}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
                 ))}
-                {rows.length === 0 ? (
+                {pagedRows.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell
                       colSpan={5}
@@ -299,58 +410,88 @@ export function LedgerView() {
 
             {/* ---- stacked cards (mobile) ---- */}
             <div className="flex flex-col gap-2 p-3 md:hidden">
-              {rows.map((row) => (
-                <button
-                  key={row.record_id}
-                  type="button"
-                  onClick={() => onRowClick(row.record_id)}
-                  aria-expanded={selectedId === row.record_id}
-                  className={`cursor-pointer rounded-[10px] border border-seam bg-raised p-3 text-left transition-colors duration-100 ${
-                    selectedId === row.record_id
-                      ? "border-amber-line"
-                      : "hover:border-seam-strong"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="figure text-[12.5px] text-ink">
-                      {row.record_id}
-                    </span>
-                    <Badge variant={DECISION_BADGE[row.decision]}>
-                      {VERDICT_LABEL[row.decision]}
-                    </Badge>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px] text-muted">
-                    <span className="figure">{row.truck_id}</span>
-                    <span>{relativeTime(row.decided_at_utc)}</span>
-                  </div>
-                  <div
-                    className={`mt-1 text-right figure text-[12px] ${
-                      row.prevented_loss_idr > 0
-                        ? "text-verdict-green"
-                        : "text-muted"
+              {pagedRows.map((row) => (
+                <Fragment key={row.record_id}>
+                  <button
+                    type="button"
+                    data-record-id={row.record_id}
+                    onClick={() => onRowClick(row.record_id)}
+                    aria-expanded={selectedId === row.record_id}
+                    className={`cursor-pointer rounded-[10px] border border-seam bg-raised p-3 text-left transition-colors duration-100 ${
+                      selectedId === row.record_id
+                        ? "border-amber-line"
+                        : "hover:border-seam-strong"
                     }`}
                   >
-                    {formatRupiah(row.prevented_loss_idr)}
-                  </div>
-                </button>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="figure text-[12.5px] text-ink">
+                        {row.record_id}
+                      </span>
+                      <Badge variant={DECISION_BADGE[row.decision]}>
+                        {VERDICT_LABEL[row.decision]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px] text-muted">
+                      <span className="figure">{row.truck_id}</span>
+                      <span>{relativeTime(row.decided_at_utc)}</span>
+                    </div>
+                    <div
+                      className={`mt-1 text-right figure text-[12px] ${
+                        row.prevented_loss_idr > 0
+                          ? "text-verdict-green"
+                          : "text-muted"
+                      }`}
+                    >
+                      {formatRupiah(row.prevented_loss_idr)}
+                    </div>
+                  </button>
+                  {selectedId === row.record_id ? (
+                    <div className="py-1">
+                      <InspectionDetailPanel
+                        recordId={row.record_id}
+                        onClose={closeDetail}
+                      />
+                    </div>
+                  ) : null}
+                </Fragment>
               ))}
-              {rows.length === 0 ? (
+              {pagedRows.length === 0 ? (
                 <p className="py-8 text-center text-[13px] text-muted">
                   No inspections match this filter.
                 </p>
               ) : null}
             </div>
+
+            {/* ---- pagination footer ---- */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-seam px-4 py-3">
+              <span className="figure text-[12.5px] text-muted">
+                Showing{" "}
+                {rows.length === 0
+                  ? "0 of 0"
+                  : `${startIdx + 1}–${endIdx} of ${rows.length}`}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </>
         )}
       </Panel>
-
-      {/* ---- detail panel (inline, not a modal) ---- */}
-      {selectedId ? (
-        <InspectionDetailPanel
-          recordId={selectedId}
-          onClose={() => setSelectedId(null)}
-        />
-      ) : null}
     </div>
   );
 }
@@ -388,11 +529,15 @@ function SortButton({
 
 function LedgerLoading() {
   return (
-    <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+    <div
+      role="status"
+      className="flex flex-col items-center gap-3 px-4 py-12 text-center"
+    >
       <span
         aria-hidden="true"
         className="h-6 w-6 animate-spin rounded-full border-2 border-seam border-t-amber"
       />
+      <span className="sr-only">Loading</span>
       <p className="text-[13px] text-muted">Loading inspection records…</p>
     </div>
   );
