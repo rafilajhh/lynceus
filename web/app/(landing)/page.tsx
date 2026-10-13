@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { LIVE_LATENCY_COPY } from "@/lib/format";
 import { CountUpFigure } from "@/components/landing/count-up-figure";
 
 export const metadata = { title: "One hidden metal chunk can stop a cement kiln" };
@@ -235,8 +236,12 @@ export default function LandingPage() {
           <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
             Three scripted sample cases (clean, suspicious, contaminated) run
             instantly through the same decision engine. &ldquo;Run live on
-            AMD&rdquo; sends the same photo to the live AMD pipeline, which
-            takes roughly 15 to 50 seconds, from photo to sealed audit record.
+            AMD&rdquo; sends the same photo to the live AMD pipeline, from
+            photo to sealed audit record in {LIVE_LATENCY_COPY} (
+            <Link href="/validation" className="text-amber underline underline-offset-2">
+              measured over 80 live runs
+            </Link>
+            ).
           </p>
           <div className="mt-7 flex w-full max-w-[420px] flex-col gap-3 sm:max-w-none sm:flex-row">
             <Link

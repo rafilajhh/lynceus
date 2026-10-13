@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 
 /**
  * Whole seconds since `active` became true; 0 while inactive. Drives the
- * honest "n s elapsed" readout on long live-model waits (the vision model
- * takes ~15 s on the shared endpoint): a real clock, not a fake progress
+ * honest "n s elapsed" readout on long live-model waits (a full live inspection
+ * takes ~20 s on the shared endpoint): a real clock, not a fake progress
  * bar.
  */
 export function useElapsedSeconds(active: boolean): number {

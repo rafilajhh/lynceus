@@ -15,8 +15,10 @@ pattern 14):
    >= 0.6, weight mismatch > 10 %, or VLM confidence < 0.3 (unsafe).
 3. ``escalate_human`` — light/ambiguous contamination, moisture conflict
    between the VLM visual estimate and the waybill claim, or a failed
-   manifest cross-check that is not already a big weight mismatch.
-4. ``accept`` — no red flags and the engine recommendation is actionable.
+   manifest cross-check that is not already a big weight mismatch, or an
+   engine ranking whose top two routes are tied within 0.02.
+4. ``accept`` — no red flags and the engine recommendation is actionable
+   and not tied.
 
 Only the audit enums are used so the fused output slots straight into
 ``audit.finish_record`` without any mapping layer.
@@ -447,6 +449,16 @@ def decide(
             for item in recommendation["missing"]:
                 reasons.append(f"Engine missing input: {item}.")
         return Decision.REFUSE_INSUFFICIENT_INPUT, gates, reasons
+
+    # A tied engine ranking cannot pick a route, so a clean load is not
+    # waved through: the audit route is hold_for_review and the verdict
+    # must say the same (reject/refuse above keep their precedence).
+    if recommendation.get("tied"):
+        return (
+            Decision.ESCALATE_HUMAN,
+            gates,
+            ["Engine routes tied within 0.02; hold for supervisor review."],
+        )
 
     reasons.append(
         "No red flags: no hard contamination, weight within tolerance, VLM confidence "

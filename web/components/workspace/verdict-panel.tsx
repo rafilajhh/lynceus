@@ -19,7 +19,7 @@ import { AuditModal } from "./audit-modal";
 import { NextSteps } from "./next-steps";
 import { PhotoEvidence } from "./photo-evidence";
 import type { InspectResponse } from "@/lib/inspect-api";
-import { liveProvenance } from "@/lib/format";
+import { LIVE_LATENCY_COPY, liveProvenance } from "@/lib/format";
 import { useElapsedSeconds } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
@@ -68,8 +68,8 @@ export interface ResultError {
 const EVALUATING_COPY: Record<RunMode, string> = {
   scripted: "Running the scripted sample through the decision engine.",
   live:
-    "Live run requested on AMD: the vision model usually takes about 15 s. " +
-    "The badge on the result states what actually ran.",
+    `Live run requested on AMD: a full inspection takes ${LIVE_LATENCY_COPY} ` +
+    "(measured on the Validation page). The badge on the result states what actually ran.",
   other: "Running the inspection…",
 };
 

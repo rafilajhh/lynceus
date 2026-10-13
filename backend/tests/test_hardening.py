@@ -395,3 +395,74 @@ def test_ledger_splits_prevented_loss_from_admitted_value(client, tmp_path):
     assert rows["accept"]["admitted_value_idr"] > 0
     assert rows["reject"]["prevented_loss_idr"] > 0
     assert rows["reject"]["admitted_value_idr"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tie must not leave an ACCEPT verdict beside a hold_for_review route.
+# ---------------------------------------------------------------------------
+
+_TIE_REASON = "Engine routes tied within 0.02; hold for supervisor review."
+
+
+def _tied_engine(monkeypatch):
+    real = engine_adapter.run_assessment
+
+    def tied(waste_stream, tonnage_t, moisture, age_h):
+        out = real(waste_stream, tonnage_t, moisture, age_h)
+        out["recommendation"]["tied"] = True
+        return out
+
+    monkeypatch.setattr(engine_adapter, "run_assessment", tied)
+
+
+def test_tied_clean_load_escalates_instead_of_accepting(client, tmp_path, monkeypatch):
+    _tied_engine(monkeypatch)
+    resp = client.post("/inspect", json={**_BASE, "photo_base64": _b64(_JPEG_HEAD + b"x")})
+    assert resp.status_code == 200, resp.text[:300]
+    body = resp.json()
+    assert body["verdict"]["decision"] == "escalate_human"
+    assert body["reasons"] == [_TIE_REASON]
+    assert body["engine_outputs"]["recommendation"]["route"] == audit.Route.HOLD_FOR_REVIEW
+    assert [(a["order"], a["sop_ref"]) for a in body["actions"]] == [(1, "SOP-RDF-5.2")]
+    # The persisted record decodes strictly and says the same thing.
+    record = audit.load_record(tmp_path / body["record_id"] / audit.RECORD_FILENAME)
+    assert record.verdict.decision == "escalate_human"
+    assert record.engine_outputs.recommendation.route == audit.Route.HOLD_FOR_REVIEW
+
+
+def _decide_inputs():
+    from lynceus import decision
+
+    payload = {
+        "truck_id": "T-1",
+        "demo_case": "green",
+        "manifest_text": "Declared weight: 18,400 kg. Moisture declared: 10% (dry).",
+        "weight_kg": 18500,
+        "moisture": 0.095,
+    }
+    vlm = {"detected": {"contamination": "none detected", "moisture": 0.10}, "confidence": 0.9}
+    llm = {"reasoning": "ok", "confidence": 0.9, "crosscheck_failed": False}
+    return decision, payload, vlm, llm
+
+
+def test_tie_does_not_override_reject():
+    decision, payload, vlm, llm = _decide_inputs()
+    vlm["detected"]["hard_contaminants"] = ["metal"]
+    engine = {"recommendation": {"tied": True, "actionable": True}}
+    verdict, _, reasons = decision.decide(payload, vlm, llm, engine)
+    assert verdict == audit.Decision.REJECT
+    assert _TIE_REASON not in reasons
+
+
+def test_tie_does_not_override_engine_refusal():
+    decision, payload, vlm, llm = _decide_inputs()
+    engine = {"recommendation": {"tied": True, "insufficient": True, "actionable": False}}
+    verdict, _, _ = decision.decide(payload, vlm, llm, engine)
+    assert verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT
+
+
+def test_untied_clean_load_still_accepts():
+    decision, payload, vlm, llm = _decide_inputs()
+    engine = {"recommendation": {"tied": False, "actionable": True, "route": "rdf"}}
+    verdict, _, _ = decision.decide(payload, vlm, llm, engine)
+    assert verdict == audit.Decision.ACCEPT

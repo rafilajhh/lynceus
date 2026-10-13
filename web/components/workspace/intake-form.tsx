@@ -148,7 +148,8 @@ export function IntakeForm({
           </Button>
         ))}
         {/* Live run: the selected case's photo and inputs, sent WITHOUT
-            demo_case so the backend runs the live AMD pipeline (~15 s).
+            demo_case so the backend runs the live AMD pipeline (~20 s typical,
+            p95 34 s: Validation page).
             Needs a demo photo; uploads go through Inspect Load. The
             hairline separates it from the scripted cases it is not. */}
         <span aria-hidden="true" className="h-5 w-px shrink-0 bg-seam-strong" />
