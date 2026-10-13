@@ -22,6 +22,10 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["lynceus*", "lynceus_engine*"]
+
+[tool.setuptools.package-data]
+lynceus = ["knowledge/*.md"]
+
 [tool.pytest.ini_options]
 markers = [
     "live: live smoke tests against a real endpoint (opt-in via LYNCEUS_LIVE_TESTS=1)",
