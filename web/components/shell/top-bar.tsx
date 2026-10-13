@@ -13,8 +13,10 @@ const NAV = [
  * Used by console layout where navigation lives in the side navbar.
  * @param showWordmark — when false, renders status chip only (no brand).
  * Used by console layout where brand lives in the side navbar.
+ * @param showStatus — when false, drops the status chip (landing: the demo
+ * backend's health is not the visitor's task status — critique finding).
  */
-export function TopBar({ showNav = true, showWordmark = true }: { showNav?: boolean; showWordmark?: boolean }) {
+export function TopBar({ showNav = true, showWordmark = true, showStatus = true }: { showNav?: boolean; showWordmark?: boolean; showStatus?: boolean }) {
   return (
     <header className="sticky top-0 z-50 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-seam bg-panel px-6 py-3 backdrop-blur">
       {showWordmark ? (
@@ -34,7 +36,7 @@ export function TopBar({ showNav = true, showWordmark = true }: { showNav?: bool
       ) : null}
 
       {showNav ? (
-        <nav aria-label="Primary" className="flex items-center gap-1">
+        <nav aria-label="Primary" className="ml-auto flex items-center gap-1">
           {NAV.map((item) => (
             <Link
               key={item.href}
@@ -47,10 +49,11 @@ export function TopBar({ showNav = true, showWordmark = true }: { showNav?: bool
         </nav>
       ) : null}
 
-      {/* Status chip: always right-aligned */}
-      <div className="ml-auto">
-        <StatusChip />
-      </div>
+      {showStatus ? (
+        <div className={showNav ? "" : "ml-auto"}>
+          <StatusChip />
+        </div>
+      ) : null}
     </header>
   );
 }

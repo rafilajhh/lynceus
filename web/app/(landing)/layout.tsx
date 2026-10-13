@@ -10,7 +10,7 @@ export default function LandingLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <>
-      <TopBar />
+      <TopBar showStatus={false} />
       <main className="mx-auto w-full max-w-[1320px] flex-1 px-6 py-6 pb-14">
         {children}
       </main>
