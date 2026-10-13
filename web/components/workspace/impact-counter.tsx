@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ImpactCounter: prevented-loss figure that counts up when a verdict
+ * ImpactCounter: impact figure that counts up when a verdict
  * arrives (triggered by runKey, not viewport: the workspace is the
  * stage). "Rp 798.000.000" Indonesian grouping + small USD figure.
  * Honesty contract: the end value is the backend's real estimate;
@@ -15,12 +15,16 @@ export function ImpactCounter({
   preventedLossIdr,
   preventedLossUsd,
   runKey,
+  label = "Prevented loss",
   className,
 }: {
   preventedLossIdr: number;
   preventedLossUsd: number;
   /** Increment on each new verdict; 0 = no result yet. */
   runKey: number;
+  /** What the figure is: "Prevented loss" for reject/escalate, but an
+      accepted load's figure is its market value, never a prevented loss. */
+  label?: string;
   className?: string;
 }) {
   const [display, animating] = useCountUp(preventedLossIdr, runKey);
@@ -31,7 +35,7 @@ export function ImpactCounter({
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <span className="smallcaps">Prevented loss</span>
+      <span className="smallcaps">{label}</span>
       {/* a11y (critique, Sam): the rAF count-up would be announced dozens
           of times by aria-live. Hide intermediates from AT; announce the
           final value once via the sr-only live region below. */}

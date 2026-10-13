@@ -85,7 +85,8 @@ export function GateStrip({
   staggerMs?: number;
 }) {
   const [litCount, setLitCount] = useState(0);
-  const allResolved = phase === "resolved" && litCount >= gates.length;
+  const gateCount = gates.length;
+  const allResolved = phase === "resolved" && litCount >= gateCount;
 
   useEffect(() => {
     if (phase !== "resolved") {
@@ -94,16 +95,18 @@ export function GateStrip({
     }
     // Snap the lights on one by one, 120ms apart: the interlock.
     const timers: ReturnType<typeof setTimeout>[] = [];
-    gates.forEach((_, i) => {
+    for (let i = 0; i < gateCount; i += 1) {
       timers.push(setTimeout(() => setLitCount(i + 1), i * staggerMs));
-    });
-    const done = setTimeout(() => onAllResolved?.(), gates.length * staggerMs);
+    }
+    const done = setTimeout(() => onAllResolved?.(), gateCount * staggerMs);
     return () => {
       timers.forEach(clearTimeout);
       clearTimeout(done);
     };
+    // Keyed on the gate COUNT, not the array: a re-render that hands in a
+    // new array of the same gates must not replay the interlock.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, gates, staggerMs]);
+  }, [phase, gateCount, staggerMs]);
 
   const evaluating = phase === "evaluating";
 

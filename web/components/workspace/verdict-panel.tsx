@@ -58,6 +58,13 @@ function ProvenanceBadge({ data }: { data: InspectResponse }) {
     actually ran is stated afterwards by the provenance badge. */
 export type RunMode = "scripted" | "live" | "other";
 
+/** Why the inspection request failed (see InspectError in lib/inspect-api). */
+export interface ResultError {
+  /** "network": backend never reached; "http": backend answered with an error. */
+  kind: "network" | "http";
+  message: string;
+}
+
 const EVALUATING_COPY: Record<RunMode, string> = {
   scripted: "Running the scripted sample through the decision engine.",
   live:
@@ -233,7 +240,7 @@ export function VerdictPanel({
   onAllResolved: () => void;
   /** Reset the stage for the next truck (gate flow is truck-by-truck). */
   onReset?: () => void;
-  error: string | null;
+  error: ResultError | null;
   /** The photo submitted with this inspection (snapshot at submit). */
   evidence: { src: string | null; alt: string };
   /** How this inspection was submitted (drives the wait copy only). */
@@ -362,6 +369,7 @@ export function VerdictPanel({
             preventedLossIdr={preventedLossIdr}
             preventedLossUsd={preventedLossUsd}
             runKey={bannerLit ? impactRunKey : 0}
+            label={tone === "accept" ? "RDF value admitted" : "Prevented loss"}
           />
         ) : null}
 
@@ -385,14 +393,17 @@ export function VerdictPanel({
             className="rounded-[10px] border border-verdict-red/60 bg-red-dim px-4 py-3"
           >
             <p className="m-0 text-[13.5px] font-semibold text-verdict-red">
-              Backend unreachable: is the server running?
+              {error.kind === "network"
+                ? "Backend unreachable: is the server running?"
+                : "Inspection could not run"}
             </p>
             <p className="figure m-0 mt-1 text-[13px] leading-relaxed break-words text-muted">
-              {error}
+              {error.message}
             </p>
             <p className="m-0 mt-1.5 text-[12px] text-muted">
-              Start the FastAPI backend (it serves this app as static files),
-              then press Inspect Load again.
+              {error.kind === "network"
+                ? "Start the FastAPI backend (it serves this app as static files), then press Inspect Load again."
+                : "Fix the input above if needed, then press Inspect Load again."}
             </p>
           </div>
         ) : null}

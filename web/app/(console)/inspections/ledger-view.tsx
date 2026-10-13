@@ -102,11 +102,17 @@ export function LedgerView() {
     const rejected = ready.filter(
       (item) => item.decision === "reject",
     ).length;
+    // Two different things, never summed: loss avoided by rejecting or
+    // escalating, and the market value of loads that were let through.
     const prevented = ready.reduce(
       (total, item) => total + item.prevented_loss_idr,
       0,
     );
-    return { total: ready.length, rejected, prevented };
+    const admitted = ready.reduce(
+      (total, item) => total + item.admitted_value_idr,
+      0,
+    );
+    return { total: ready.length, rejected, prevented, admitted };
   }, [ready]);
 
   const counts = useMemo(() => {
@@ -254,7 +260,14 @@ export function LedgerView() {
               </span>
               <span className="figure whitespace-nowrap text-verdict-green">
                 {formatRupiah(summary.prevented)}{" "}
-                <span className="text-muted">prevented</span>
+                <span className="text-muted">prevented loss</span>
+              </span>
+              <span aria-hidden="true" className="text-faint">
+                ·
+              </span>
+              <span className="figure whitespace-nowrap text-ink">
+                {formatRupiah(summary.admitted)}{" "}
+                <span className="text-muted">RDF value admitted</span>
               </span>
             </div>
 
@@ -329,6 +342,7 @@ export function LedgerView() {
                     </SortButton>
                   </TableHead>
                   <TableHead className="text-right">Prevented loss</TableHead>
+                  <TableHead className="text-right">RDF value admitted</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -379,10 +393,17 @@ export function LedgerView() {
                       >
                         {formatRupiah(row.prevented_loss_idr)}
                       </TableCell>
+                      <TableCell
+                        className={`figure text-right text-[12.5px] ${
+                          row.admitted_value_idr > 0 ? "text-ink" : "text-muted"
+                        }`}
+                      >
+                        {formatRupiah(row.admitted_value_idr)}
+                      </TableCell>
                     </TableRow>
                     {selectedId === row.record_id ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={5} className="p-2 sm:p-3">
+                        <TableCell colSpan={6} className="p-2 sm:p-3">
                           <InspectionDetailPanel
                             recordId={row.record_id}
                             onClose={closeDetail}
@@ -395,7 +416,7 @@ export function LedgerView() {
                 {pagedRows.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-10 text-center text-[13px] text-muted"
                     >
                       No inspections match this filter.
@@ -436,10 +457,14 @@ export function LedgerView() {
                       className={`mt-1 text-right figure text-[12px] ${
                         row.prevented_loss_idr > 0
                           ? "text-verdict-green"
-                          : "text-muted"
+                          : row.admitted_value_idr > 0
+                            ? "text-ink"
+                            : "text-muted"
                       }`}
                     >
-                      {formatRupiah(row.prevented_loss_idr)}
+                      {row.admitted_value_idr > 0
+                        ? `${formatRupiah(row.admitted_value_idr)} RDF value admitted`
+                        : `${formatRupiah(row.prevented_loss_idr)} prevented loss`}
                     </div>
                   </button>
                   {selectedId === row.record_id ? (

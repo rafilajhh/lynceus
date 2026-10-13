@@ -77,10 +77,3 @@ export function liveProvenance(
     .filter(Boolean)
     .join(" · ");
 }
-
-/** Short SHA: "9e8ed093…" for inline display; full digest elsewhere. */
-export function shortSha(shaField: string | undefined, len = 10): string {
-  const hex = (shaField ?? "").replace(/^sha256:/, "");
-  if (!hex) return "—";
-  return `${hex.slice(0, len)}…`;
-}

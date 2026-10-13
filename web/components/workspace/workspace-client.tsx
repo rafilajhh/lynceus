@@ -11,29 +11,26 @@
  *       audit modal.
  *
  * Logic ported from legacy web/app.js: same API contract
- * (POST /inspect, /assess fallback), same demo-case data, same
- * race-guarded photo base64 fetching.
+ * (POST /inspect), same demo-case data, same race-guarded photo
+ * base64 fetching.
  */
 
 import { cn } from "@/lib/utils";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Panel, PanelHead } from "@/components/ui/panel";
 import {
   IntakeForm,
   type IntakeValues,
   type UploadSlot,
 } from "./intake-form";
-import {
-  VerdictPanel,
-  verdictTone,
-  type RunMode,
-} from "./verdict-panel";
+import { VerdictPanel, type ResultError, type RunMode } from "./verdict-panel";
 import { normalizeGates, type GateDisplay, type GatePhase } from "./gate-strip";
 import { DEMO_CASES } from "@/lib/demo-cases";
 import {
   inspectLoad,
   fetchPhotoBase64,
   blobToBase64,
+  InspectError,
   type InspectResponse,
 } from "@/lib/inspect-api";
 
@@ -50,7 +47,7 @@ const EMPTY_FORM: IntakeValues = {
 export function WorkspaceClient() {
   const [values, setValues] = useState<IntakeValues>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
-  const [resultError, setResultError] = useState<string | null>(null);
+  const [resultError, setResultError] = useState<ResultError | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<InspectResponse | null>(null);
   const [phase, setPhase] = useState<GatePhase>("idle");
@@ -129,7 +126,13 @@ export function WorkspaceClient() {
     [pickFile, waybillUpload],
   );
 
-  const gates: GateDisplay[] = normalizeGates(data?.gates);
+  // Memoised: GateStrip restarts its lighting stagger whenever the array
+  // identity changes, so a fresh array per render (typing in the form, say)
+  // would replay the interlock.
+  const gates: GateDisplay[] = useMemo(
+    () => normalizeGates(data?.gates),
+    [data?.gates],
+  );
   const decision = data?.verdict?.decision ?? data?.decision;
   const impact = data?.impact;
 
@@ -274,11 +277,17 @@ export function WorkspaceClient() {
       // calls onAllResolved after the last stagger step).
       setBannerLit(false);
     } catch (err) {
-      // Network-level failure → inline error with recovery hint.
+      // "network": the backend was never reached. "http": it answered
+      // with an error and said why: show that message, not "unreachable".
       setPhase("idle");
       setData(null);
       setResultError(
-        err instanceof Error ? err.message : String(err ?? "unknown error"),
+        err instanceof InspectError
+          ? { kind: err.kind, message: err.message }
+          : {
+              kind: "http",
+              message: err instanceof Error ? err.message : "Unexpected error.",
+            },
       );
     } finally {
       setLoading(false);
@@ -329,7 +338,7 @@ export function WorkspaceClient() {
       <input
         id="load-photo-upload"
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png"
         className="sr-only"
         disabled={loading}
         onChange={(e) => onLoadPhoto(e.target.files?.[0] ?? null)}

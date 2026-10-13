@@ -23,7 +23,6 @@ export function useCountUp(
   const rafRef = useRef(0);
 
   useEffect(() => {
-    const el = document.documentElement;
     const prefersReduced =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;

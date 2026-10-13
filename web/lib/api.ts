@@ -1,13 +1,13 @@
 /**
  * API client + contract types for the inspection ledger.
  *
- * TODO(backend): GET /inspections and GET /inspections/{record_id} are not
- * implemented yet in backend/src/lynceus/api.py. The frontend is written against
- * the agreed contract:
+ * Written against the backend contract (backend/src/lynceus/api.py):
  *
  *   GET /inspections →
  *     { inspections: [{ record_id, truck_id, decision, decided_at_utc,
- *                        prevented_loss_idr, gate_states }] }
+ *                        prevented_loss_idr, admitted_value_idr,
+ *                        gate_states }] }
+ *   (prevented_loss_idr: reject/escalate only; admitted_value_idr: accept only)
  *
  *   GET /inspections/{record_id} → the full audit record (shape of
    *   backend/runs/inspection-<id>/audit.json): digest.record_sha256, gates,
@@ -45,7 +45,10 @@ const inspectionSummarySchema = z.object({
   truck_id: z.string().catch("—"),
   decision: decisionSchema,
   decided_at_utc: z.string().catch(""),
+  /** Loss avoided by rejecting/escalating; 0 for accepted loads. */
   prevented_loss_idr: z.coerce.number().catch(0),
+  /** Market value of an accepted load (NOT a prevented loss); 0 otherwise. */
+  admitted_value_idr: z.coerce.number().catch(0),
   gate_states: z.record(z.string(), gateStateSchema).catch({}),
 });
 

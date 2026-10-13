@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
-import { TopBar } from "@/components/shell/top-bar";
-import { SiteFooter } from "@/components/shell/site-footer";
 
 const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],

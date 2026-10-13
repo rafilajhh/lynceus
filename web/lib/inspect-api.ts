@@ -1,7 +1,6 @@
 /**
- * Inspect API client: POST /inspect with POST /assess fallback.
- * Ported from legacy web/app.js (same-origin base, legacy error
- * contract). The ledger client (GET /inspections) lives in api.ts.
+ * Inspect API client: POST /inspect (same-origin base). The ledger client
+ * (GET /inspections) lives in api.ts.
  */
 
 import {
@@ -69,61 +68,95 @@ export interface InspectResponse {
 }
 
 /**
- * POST JSON with the legacy error contract:
- * - network failure → rethrows TypeError (caller renders "backend unreachable")
- * - !ok → Error("Backend returned HTTP <status> <statusText>: <detail>")
+ * Why an inspection request failed, split by what the operator can do:
+ * - "network": the request never reached the backend (server down, offline);
+ * - "http": the backend answered with a 4xx/5xx and said why (its own
+ *   `detail.message`, e.g. "photo exceeds the 8 MB limit.").
  */
+export class InspectError extends Error {
+  kind: "network" | "http";
+  status: number | null;
+
+  constructor(kind: "network" | "http", message: string, status: number | null) {
+    super(message);
+    this.name = "InspectError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+/** Human message from a FastAPI error body (object detail, string, or 422 list). */
+function detailMessage(body: unknown): string {
+  if (!body || typeof body !== "object") return "";
+  const { detail } = body as { detail?: unknown };
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    // Pydantic validation errors: [{loc: [...], msg: "..."}]
+    return detail
+      .map((d) => {
+        if (!d || typeof d !== "object") return "";
+        const { loc, msg } = d as { loc?: unknown; msg?: unknown };
+        const field = Array.isArray(loc) ? loc.slice(1).join(".") : "";
+        return [field, typeof msg === "string" ? msg : ""]
+          .filter(Boolean)
+          .join(": ");
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    const { message, error } = detail as { message?: unknown; error?: unknown };
+    if (typeof message === "string" && message) return message;
+    if (typeof error === "string") return error;
+  }
+  return "";
+}
+
+/** POST JSON; network failures and HTTP errors surface as InspectError. */
 async function postJSON<T>(url: string, payload: unknown): Promise<T> {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new InspectError(
+      "network",
+      "The request never reached the backend.",
+      null,
+    );
+  }
   if (!resp.ok) {
-    let detail = "";
+    let message = "";
     try {
-      const body: unknown = await resp.json();
-      if (body && typeof body === "object") {
-        const obj = body as { detail?: unknown; message?: unknown };
-        detail = String(obj.detail ?? obj.message ?? JSON.stringify(body));
-      } else {
-        detail = JSON.stringify(body);
-      }
+      message = detailMessage(await resp.json());
     } catch {
-      detail = await resp.text().catch(() => "");
+      // Non-JSON error body (e.g. a proxy page): fall through to the status.
     }
-    throw new Error(
-      `Backend returned HTTP ${resp.status} ${resp.statusText}` +
-        (detail ? `: ${detail}` : ""),
+    throw new InspectError(
+      "http",
+      message || `HTTP ${resp.status} ${resp.statusText}`.trim(),
+      resp.status,
     );
   }
   return (await resp.json()) as T;
 }
 
-/**
- * Inspect a truck: POST /inspect; on a 404 (endpoint missing on an
- * older backend) falls back to POST /assess: legacy app.js contract.
- */
+/** Inspect a truck: POST /inspect. */
 export async function inspectLoad(
   payload: InspectPayload,
 ): Promise<InspectResponse> {
-  let raw: Record<string, unknown>;
-  try {
-    raw = await postJSON<Record<string, unknown>>("/inspect", payload);
-  } catch (err) {
-    if (err instanceof Error && /HTTP 404/.test(err.message)) {
-      raw = await postJSON<Record<string, unknown>>("/assess", payload);
-    } else {
-      throw err;
-    }
-  }
-  return normaliseInspectResponse(raw);
+  return normaliseInspectResponse(
+    await postJSON<Record<string, unknown>>("/inspect", payload),
+  );
 }
 
 /**
  * Parse the evidence/provenance fields at the boundary (untrusted JSON):
  * missing or malformed values degrade to null / [] instead of throwing,
- * so an older backend (or /assess) still renders a verdict.
+ * so an older backend still renders a verdict.
  */
 function normaliseInspectResponse(raw: Record<string, unknown>): InspectResponse {
   const ai =
