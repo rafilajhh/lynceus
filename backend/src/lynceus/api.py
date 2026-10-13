@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from lynceus import __version__
+from lynceus import actions
 from lynceus import audit
 from lynceus import decision
 from lynceus import engine_adapter
@@ -324,6 +325,22 @@ def _run_inspection_with_audit(
         engine_recommendation["insufficient"] = True
         engine_recommendation["missing"] = gates.get("missing", [])
 
+    # Deterministic next-step card; every step cites a clause of the
+    # reference gate SOP (knowledge/sop-rdf-gate.md).
+    missing_inputs = list(gates.get("missing") or [])
+    if not missing_inputs and verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT:
+        missing_inputs = list(
+            ((engine_result or {}).get("recommendation") or {}).get("missing") or []
+        )
+    next_steps = actions.next_steps(
+        verdict,
+        gates,
+        vlm_result.get("detected") or {},
+        missing_inputs,
+        record_id,
+    )
+    engine_recommendation["actions"] = next_steps
+
     suitability = {
         "classification": audit.Classification.SCREENING_ESTIMATE,
         "score": float(vlm_result.get("confidence", 0.0)),
@@ -406,6 +423,7 @@ def _run_inspection_with_audit(
         "impact": impact_estimate,
         "gates": audit_gates,
         "reasons": reasons,
+        "actions": next_steps,
         "provenance": ai.get("provenance"),
         "ai_outputs": ai_outputs,
         "engine_outputs": engine_outputs,
