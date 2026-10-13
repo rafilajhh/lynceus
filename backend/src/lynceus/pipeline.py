@@ -49,6 +49,7 @@ __all__ = [
     "VLLMClient",
     "StubAIClients",
     "resolve_clients",
+    "resolve_assist_client",
     "run_inspection",
 ]
 
@@ -509,6 +510,34 @@ def resolve_clients(
     if _vlm_reachable(settings):
         return VLLMClient(settings=settings)
     return StubAIClients(demo_case=demo_case, provenance="stub")
+
+
+def _assist_reachable(settings: Settings, timeout_s: float = 2.0) -> bool:
+    """Cheap liveness probe of the assist endpoint (``GET /models``)."""
+    try:
+        response = httpx.get(
+            f"{settings.assist_url.rstrip('/')}/models",
+            headers=VLLMClient(settings=settings)._auth_headers(),
+            timeout=timeout_s,
+        )
+        return response.status_code < 500
+    except httpx.HTTPError:
+        return False
+
+
+def resolve_assist_client(
+    settings: Optional[Settings] = None,
+) -> Optional[VLLMClient]:
+    """The live Pythia client, or ``None`` when the assist endpoint is down.
+
+    ``None`` selects the extractive stub in :func:`lynceus.assist.answer`.  A
+    live failure on an individual question is *not* routed to the stub; that
+    would present a canned answer as a model one.
+    """
+    settings = settings or get_settings()
+    if _assist_reachable(settings):
+        return VLLMClient(settings=settings)
+    return None
 
 
 def _gate_gas_readings(

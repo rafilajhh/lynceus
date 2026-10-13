@@ -4,6 +4,7 @@ Routes:
     GET  /health   — liveness plus engine availability.
     POST /assess   — one batch assessment through the Lynceus decision engine.
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
+    POST /assist   — Pythia: cited answers over plant documents and an audit record.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from lynceus import __version__
 from lynceus import actions
+from lynceus import assist
 from lynceus import audit
 from lynceus import decision
 from lynceus import engine_adapter
@@ -139,6 +141,47 @@ class InspectRequest(BaseModel):
         if self.moisture is not None and self.moisture > 1.0:
             object.__setattr__(self, "moisture", self.moisture / 100.0)
         return self
+
+
+class AssistRequest(BaseModel):
+    """One question to Pythia, optionally about a stored inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=500)
+    record_id: str | None = None
+
+    @model_validator(mode="after")
+    def _question_not_blank(self) -> "AssistRequest":
+        if not self.question.strip():
+            raise ValueError("question must not be blank")
+        return self
+
+
+def _load_record_or_http(record_id: str) -> audit.AuditRecord:
+    """Validate ``record_id`` (422) and strict-load its record (404)."""
+    if not audit.RECORD_ID_RE.match(record_id):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_record_id",
+                "message": (
+                    "record_id must match 'inspection-NNN' "
+                    f"(got {record_id!r})"
+                ),
+            },
+        )
+    settings = get_settings()
+    record_path = Path(settings.storage_dir) / record_id / audit.RECORD_FILENAME
+    try:
+        return audit.load_record(record_path)
+    except audit.AuditError as exc:
+        # Missing file (IO_ERROR) and strict-decode failures both mean
+        # "no servable record here" — 404, not a 500 crash.
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "record_not_found", "message": str(exc)},
+        ) from exc
 
 
 def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
@@ -613,6 +656,19 @@ def create_app() -> FastAPI:
         rows.sort(key=lambda row: row["record_id"], reverse=True)
         return {"inspections": rows}
 
+    @app.post("/assist")
+    def post_assist(request: AssistRequest) -> dict[str, Any]:
+        """Pythia: a cited answer from plant documents and, optionally, a record.
+
+        Bad ``record_id`` is 422, an unknown one 404 (same rules as
+        ``GET /inspections/{record_id}``).
+        """
+        record = None
+        if request.record_id is not None:
+            record = _load_record_or_http(request.record_id).model_dump()
+        client = pipeline.resolve_assist_client(get_settings())
+        return assist.answer(request.question, record, client)
+
     @app.get("/inspections/{record_id}")
     def get_inspection(record_id: str) -> dict[str, Any]:
         """Full audit record for one inspection (strict decode).
@@ -621,33 +677,7 @@ def create_app() -> FastAPI:
         before it ever reaches the filesystem — ``../etc/passwd`` and
         friends are rejected with 422, not probed on disk.
         """
-        if not audit.RECORD_ID_RE.match(record_id):
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "invalid_record_id",
-                    "message": (
-                        "record_id must match 'inspection-NNN' "
-                        f"(got {record_id!r})"
-                    ),
-                },
-            )
-        settings = get_settings()
-        record_path = (
-            Path(settings.storage_dir) / record_id / audit.RECORD_FILENAME
-        )
-        try:
-            record = audit.load_record(record_path)
-        except audit.AuditError as exc:
-            # Missing file (IO_ERROR) and strict-decode failures both mean
-            # "no servable record here" — 404, not a 500 crash.
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "record_not_found",
-                    "message": str(exc),
-                },
-            ) from exc
+        record = _load_record_or_http(record_id)
         return record.model_dump()
 
 
