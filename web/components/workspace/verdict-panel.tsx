@@ -103,6 +103,7 @@ export function VerdictPanel({
   impactRunKey,
   bannerLit,
   onAllResolved,
+  onReset,
   error,
   children,
 }: {
@@ -117,6 +118,8 @@ export function VerdictPanel({
   /** Verdict banner may only light after all gates resolve. */
   bannerLit: boolean;
   onAllResolved: () => void;
+  /** Reset the stage for the next truck (gate flow is truck-by-truck). */
+  onReset?: () => void;
   error: string | null;
   /** Optional extra above the strip (e.g. record id meta). */
   children?: ReactNode;
@@ -130,7 +133,7 @@ export function VerdictPanel({
     <Panel className="flex flex-col">
       <PanelHead
         title="Inspection verdict"
-        meta={data?.record_id ? `record: ${data.record_id}` : "route: /app"}
+        meta={data?.record_id ? `record: ${data.record_id}` : "gate A · live"}
       />
 
       <div className="flex flex-col gap-4 px-4 py-4">
@@ -156,30 +159,49 @@ export function VerdictPanel({
           </span>
         </div>
 
-        {/* Headline */}
-        <p className="m-0 text-[15px] font-semibold leading-snug text-ink">
+        {/* Headline: directive sentence sits just under the verdict word
+            (critique: 15px was too quiet for the rushed operator) */}
+        <p className="m-0 text-[17px] font-semibold leading-snug text-ink">
           {phase === "resolved" && data
             ? headlineFor(decision, data)
             : phase === "evaluating"
               ? "Evaluating interlock…"
-              : "Awaiting inspection."}
+              : "Pick a demo case on the left, then press Inspect Load."}
         </p>
 
-        {/* Impact counter */}
-        <ImpactCounter
-          preventedLossIdr={preventedLossIdr}
-          preventedLossUsd={preventedLossUsd}
-          runKey={bannerLit ? impactRunKey : 0}
-        />
-
-        {/* The interlock gate strip */}
+        {/* The interlock gate strip: the decision theater comes before the
+            money figure (critique: impact counter outranked the verdict
+            evidence at decision time) */}
         <GateStrip
           gates={gates}
           phase={phase}
           onAllResolved={onAllResolved}
         />
 
+        {/* Impact counter: demoted below the gates; hidden while idle so
+            the empty stage shows one placeholder, not three */}
+        {phase !== "idle" ? (
+          <ImpactCounter
+            preventedLossIdr={preventedLossIdr}
+            preventedLossUsd={preventedLossUsd}
+            runKey={bannerLit ? impactRunKey : 0}
+          />
+        ) : null}
+
         {children}
+
+        {/* Next-truck reset: gate flow is truck-by-truck (critique Q1) */}
+        {phase === "resolved" && onReset ? (
+          <div className="flex justify-end border-t border-seam pt-3">
+            <button
+              type="button"
+              onClick={onReset}
+              className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-4 py-2 text-[13px] font-semibold tracking-[0.2px] text-ink transition-colors duration-100 hover:bg-seam hover:border-amber-line active:translate-y-px"
+            >
+              Clear for next truck →
+            </button>
+          </div>
+        ) : null}
 
         {/* REFUSED: explain what refuse_insufficient_input means
             (review finding 5: unexplained term) */}

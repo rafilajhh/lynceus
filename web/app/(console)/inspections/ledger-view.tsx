@@ -150,7 +150,7 @@ export function LedgerView() {
   return (
     <div className="flex flex-col gap-4">
       <Panel>
-        <PanelHead title="Ledger · Read" meta="route: /inspections" />
+        <PanelHead title="Audit trail" meta="immutable ledger" />
 
         {/* ---- states: loading / error ---- */}
         {state.kind === "loading" ? (
@@ -410,7 +410,7 @@ function LedgerEmpty() {
       <p className="max-w-[46ch] text-[13.5px] text-muted">
         No inspections yet: run one in the{" "}
         <Link href="/app" className="text-amber underline underline-offset-2">
-          Live Demo
+          Inspection console
         </Link>
         .
       </p>

@@ -173,6 +173,15 @@ export function WorkspaceClient() {
     setBannerLit(true);
   }, []);
 
+  // Gate flow is truck-by-truck: reset clears the verdict stage (not the
+  // intake form, which the next demo case will overwrite anyway).
+  const onReset = useCallback(() => {
+    setData(null);
+    setPhase("idle");
+    setBannerLit(false);
+    setResultError(null);
+  }, []);
+
   const photoSlot = heroPhoto ? (
     <figure className="m-0 border-b border-seam px-4 py-4">
       {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
@@ -216,6 +225,7 @@ export function WorkspaceClient() {
         impactRunKey={impactRunKey}
         bannerLit={bannerLit}
         onAllResolved={onAllResolved}
+        onReset={onReset}
         error={resultError}
       >
         {phase === "resolved" && impact ? (

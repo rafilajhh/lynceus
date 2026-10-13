@@ -6,9 +6,8 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/app", label: "Demo", icon: "▶" },
+  { href: "/app", label: "Inspection", icon: "▶" },
   { href: "/inspections", label: "Audit Trail", icon: "≡" },
-  { href: "/settings", label: "Settings", icon: "⚙" },
 ] as const;
 
 /**
@@ -36,8 +35,9 @@ export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed
           collapsed ? "w-16" : "w-60"
         )}
       >
-        {/* Brand: wordmark with amber glyph, links to landing */}
-        <Link href="/" className="flex h-14 items-center gap-3 border-b border-seam px-4 transition-colors duration-100 hover:bg-seam">
+        {/* Brand: wordmark with amber glyph, links to landing. No hover
+            treatment: it is identity, not an interactive control. */}
+        <Link href="/" className="flex h-14 items-center gap-3 border-b border-seam px-4">
           <span className="text-amber text-xl" aria-hidden="true">◉</span>
           {!collapsed && (
             <div className="flex flex-col">

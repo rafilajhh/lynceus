@@ -144,7 +144,9 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       {detail.gates ? (
         <section>
           <h3 className="smallcaps mb-2">Gates</h3>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2">
+          {/* Five gates: balanced wrap (3+2 / one row when wide) instead of
+              auto-fill's 4+1 orphan */}
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
             {Object.entries(detail.gates).map(([name, gate]) => (
               <div
                 key={name}
@@ -286,7 +288,6 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
         <Button variant="default" size="sm" onClick={() => downloadJSON(detail)}>
           Download JSON
         </Button>
-        {detail.inputs?.truck_id ? null : null}
         <span className="self-center text-[12px] text-muted">
           Immutable audit record: saved as {detail.record_id}.json
         </span>

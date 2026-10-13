@@ -97,7 +97,7 @@ export default function LandingPage() {
               href="/app"
               className={buttonVariants({ variant: "primary", size: "lg" })}
             >
-              Open Live Demo
+              Open Inspection Console
             </Link>
             <Link href="/inspections" className={buttonVariants({ size: "lg" })}>
               View Audit Trail

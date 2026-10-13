@@ -106,7 +106,7 @@ export function IntakeForm({
 
         <div>
           <label htmlFor="manifest_text" className="smallcaps mb-1 block">
-            Waybill <span className="text-muted normal-case">/ surat jalan</span>
+            Waybill
           </label>
           <textarea
             id="manifest_text"

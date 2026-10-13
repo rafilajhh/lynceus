@@ -39,7 +39,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
       "Driver     : Sukarno          Origin: TPST Bantargebang RDF plant (waste source: TPS district 4)\n" +
       "Destination: SBI Narogong cement plant (RDF co-processing line)\n" +
       "Gross (kg) : 10,000           Tare (kg): 4,800\n" +
-      "Netto (kg) : 5,200            Weighbridge operator: Gate A\n" +
+      "Net (kg)   : 5,200            Weighbridge operator: Gate A\n" +
       "Load type  : RDF fluff, pre-sorted, baled\n" +
       "Declared weight: 5,200 kg\n" +
       "Moisture declared: 10% (dry, stored under cover)\n" +
@@ -66,7 +66,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
       "Driver     : Rustam           Origin: TPST Bantargebang (waste source: TPS district 4)\n" +
       "Destination: RDF processing plant -> cement plant co-processing\n" +
       "Gross (kg) : 12,250           Tare (kg): 4,850\n" +
-      "Netto (kg) : 7,400            Weighbridge operator: Gate A\n" +
+      "Net (kg)   : 7,400            Weighbridge operator: Gate A\n" +
       "Load type  : organic-rich, source-separated biowaste\n" +
       "Declared weight: 7,400 kg\n" +
       "Moisture declared: 30%\n" +
@@ -95,7 +95,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
       "Driver     : Hendra           Origin: RDF supplier CV, Bogor (waste source: industrial park skip)\n" +
       "Destination: cement plant co-processing line\n" +
       "Gross (kg) : 24,800           Tare (kg): 9,300\n" +
-      "Netto (kg) : 15,500           Weighbridge operator: Gate A\n" +
+      "Net (kg)   : 15,500           Weighbridge operator: Gate A\n" +
       "Load type  : clean RDF fluff, dry, no contamination\n" +
       "Declared weight: 15,500 kg\n" +
       "Moisture declared: 12%\n" +

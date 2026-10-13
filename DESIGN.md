@@ -234,25 +234,19 @@ Status line under the strip: `.figure text-[12px] tracking-[0.5px]` —
 "Evaluating interlock…" (`text-amber`) → "Interlock resolved — verdict issued."
 (`text-muted`), in an `aria-live="polite"` container.
 
-### Status chip (top bar, 2-dot) — `web/components/shell/status-chip.tsx`
+### Status chip (top bar, single-dot) — `web/components/shell/status-chip.tsx`
 ```
 <span role="status" aria-live="polite" aria-atomic="true"
-  class="inline-flex items-center gap-3 whitespace-nowrap rounded-full border
+  class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border
          bg-raised px-3 py-1.5 text-[12px] font-bold tracking-[0.8px] uppercase
          {tone}">
-  <span class="inline-flex items-center gap-1.5">
-    <span class="h-2 w-2 shrink-0 rounded-full {engineDot}"/> ENGINE ONLINE
-  </span>
-  <span class="text-seam-strong" aria-hidden="true">|</span>
-  <span class="inline-flex items-center gap-1.5">
-    <span class="h-2 w-2 shrink-0 rounded-full {aiDot}"/> AI LIVE
-  </span>
+  <span class="h-2 w-2 shrink-0 rounded-full {engineDot}"/> ENGINE ONLINE
 </span>
 ```
 Tone: `text-verdict-red border-[rgba(231,76,60,0.4)]` when down;
 `text-verdict-green border-[rgba(46,204,113,0.4)]` when ok; `text-muted` while
 checking. Honest degradation — never a fake green (labels: ENGINE ONLINE /
-ENGINE DOWN / BACKEND DOWN; AI LIVE / AI STUB).
+ENGINE DOWN / BACKEND DOWN).
 
 ### Table ledger — `web/components/ui/table.tsx` + `ledger-view.tsx`
 - `Table`: wrapper `w-full overflow-x-auto`, table `w-full caption-bottom
@@ -419,18 +413,21 @@ From `web/app/globals.css` (all themed, none browser-default):
 
 ## 9. Surfaces
 
-Persistent shell (`web/app/layout.tsx`): `body` = `flex min-h-screen flex-col
-bg-ground font-sans text-ink`; sticky `TopBar` (wordmark ◉ LYNCEUS · AI GATE
-INSPECTOR, nav Demo/Inspections, StatusChip) above `main.mx-auto
-w-full max-w-[1320px] flex-1 px-6 py-6 pb-14`, `SiteFooter` below.
+Two shells: the landing group (`web/app/(landing)/layout.tsx`) keeps the sticky
+`TopBar` (wordmark ◉ LYNCEUS · AI GATE INSPECTOR, one nav link, single-dot
+StatusChip); the console group (`web/app/(console)/layout.tsx`) replaces it
+with the `SideNavbar` (brand ◉ → `/`, items **Inspection** `/app` and **Audit
+Trail** `/inspections` — one noun per route, enforced everywhere) plus a
+status-only TopBar (no wordmark/nav, StatusChip right-aligned).
 
 ### `/` — landing (Persuade) — `web/app/page.tsx`
 Problem-first, no kicker/eyebrow, no hero-metric grid:
 1. **Hero** (`lg:grid-cols-[1.15fr_0.85fr]`): headline "One hidden metal chunk
-   can stop a cement kiln." (`max-w-[16ch]`), one paragraph, CTAs **Open Live
-   Demo** (`primary lg`) → `/app` and **View Audit Trail** (`default lg`) →
-   `/inspections`; right: proof photo `figure.panel` with labeled mono captions
-   (real REJECT-case waste photo, RealWaste CC BY 4.0 credit).
+   can stop a cement kiln." (`max-w-[16ch]`), one paragraph, CTAs **Open
+   Inspection Console** (`primary lg`) → `/app` and **View Audit Trail**
+   (`default lg`) → `/inspections`; right: proof photo `figure.panel` with
+   labeled mono captions (real REJECT-case waste photo, RealWaste CC BY 4.0
+   credit).
 2. **Proof strip** — "What one missed truck costs" (`smallcaps` head):
    three unequal columns (`lg:w-[1.25fr]` etc.) split by `lg:border-l
    border-seam`, each a `CountUpFigure` + label + source line under a
@@ -453,16 +450,22 @@ lg):
   `.input` token, Inspect Load button (`primary`). First viewport is never
   empty: the green case's photo + values preload.
 - **RIGHT — "Inspection Verdict"** (`VerdictPanel` + `PanelHead
-  meta="record: …"`): verdict banner (lights only after gates), headline,
-  ImpactCounter (count-up Rp figure + ≈ US$ line), GateStrip (five-gate
-  interlock), reasons (amber-dot list), caveats, impact note + provenance,
-  REFUSED explainer when applicable, inline red error panel with recovery, and
-  "View audit record" → AuditModal.
+  meta="record: …"`; idle meta `"gate A · live"` — the meta slot carries
+  gate context or a record id, never a URL path): verdict banner (lights only
+  after gates), directive headline (17px), GateStrip (five-gate interlock),
+  ImpactCounter (count-up Rp figure + ≈ US$ line, **below** the gates and
+  hidden while idle — the money must not outrank the evidence), reasons
+  (amber-dot list), caveats, impact note + provenance, REFUSED explainer when
+  applicable, inline red error panel with recovery, "View audit record" →
+  AuditModal, and a **Clear for next truck →** reset (gate flow is
+  truck-by-truck). Idle guidance: the headline reads "Pick a demo case on the
+  left, then press Inspect Load." — one directive line, no duplicated
+  placeholder.
 
 ### `/inspections` — audit ledger (Read/Operate) — `app/inspections/page.tsx` → `LedgerView`
-- `Panel` + `PanelHead title="Ledger · Read" meta="route: /inspections"`.
-- State views: loading (amber-top spinner), empty (≡ glyph + link to Live
-  Demo), error (red ✕ + Retry button).
+- `Panel` + `PanelHead title="Audit trail" meta="immutable ledger"`.
+- State views: loading (amber-top spinner), empty (≡ glyph + link to the
+  Inspection console), error (red ✕ + Retry button).
 - **Summary hairline**: total / rejected / prevented figures in mono with
   verdict colors.
 - **Filter chips**: ALL / ACCEPT / ESCALATE / REJECT / REFUSED with live

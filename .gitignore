@@ -33,3 +33,10 @@ rf.html
 rf1.json
 runs-live-test/
 runs-e2e-real*/
+
+# Impeccable critique snapshots (local-only backlog)
+.impeccable/critique/
+
+# Screenshot artifacts from visual QA / agent runs
+.playwright-mcp/
+assessB-*.png
