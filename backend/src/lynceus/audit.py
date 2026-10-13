@@ -960,6 +960,10 @@ def _cleanup_empty_dir(path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+#: Rescans allowed when concurrent inspections race for the same number.
+_ALLOCATION_ATTEMPTS = 20
+
+
 def allocate_inspection_id(storage_dir: "str | os.PathLike[str]") -> "tuple[str, Path]":
     """Reserve the next ``inspection-NNN`` directory and return
     ``(record_id, inspection_path)``.
@@ -968,29 +972,34 @@ def allocate_inspection_id(storage_dir: "str | os.PathLike[str]") -> "tuple[str,
     allocation rule, history.py:104-110): directories matching ``inspection-NNN``
     are counted even when their record is corrupt or missing, so an ID is
     never reused even after a crash or application restart.  The directory is
-    created with ``mkdir(exist_ok=False)`` — a lost race is a hard error.
+    created with ``mkdir(exist_ok=False)``, which is atomic: when two
+    concurrent inspections pick the same number, exactly one wins and the
+    loser rescans and takes the next free number (bounded retries; running out
+    is a hard error).
     """
     storage = Path(storage_dir)
     storage.mkdir(parents=True, exist_ok=True)
-    next_n = 1
-    for entry in storage.iterdir():
-        if not entry.is_dir():
-            continue
-        m = INSPECTION_DIR_RE.match(entry.name)
-        if m:
-            next_n = max(next_n, int(m.group(1)) + 1)
-    record_id = f"inspection-{next_n:06d}"
-    inspection_path = storage / record_id
-    try:
-        inspection_path.mkdir(exist_ok=False)
-    except FileExistsError as exc:
-        raise _err(
-            _ERR_STATE,
-            record_id,
-            "inspection directory already exists — ID allocation race; "
-            "retry allocation",
-        ) from exc
-    return record_id, inspection_path
+    for _attempt in range(_ALLOCATION_ATTEMPTS):
+        next_n = 1
+        for entry in storage.iterdir():
+            if not entry.is_dir():
+                continue
+            m = INSPECTION_DIR_RE.match(entry.name)
+            if m:
+                next_n = max(next_n, int(m.group(1)) + 1)
+        record_id = f"inspection-{next_n:06d}"
+        inspection_path = storage / record_id
+        try:
+            inspection_path.mkdir(exist_ok=False)
+        except FileExistsError:
+            continue  # lost the race for this number; rescan
+        return record_id, inspection_path
+    raise _err(
+        _ERR_STATE,
+        record_id,
+        "inspection directory already exists — ID allocation race lost "
+        f"{_ALLOCATION_ATTEMPTS} times",
+    )
 
 
 # ---------------------------------------------------------------------------
