@@ -21,25 +21,22 @@ git clone <your repo url> lynceus && cd lynceus
 git checkout feat/lynceus-1.0          # or the branch / tag you are deploying
 ```
 
-Create `/etc/lynceus.env` (outside the repo, so it cannot be committed), mode 600:
+Create `/etc/lynceus.env` (outside the repo, so it cannot be committed) from the
+Docker template `deploy/lynceus.env.example`, mode 600:
 
 ```bash
-sudo install -m 600 /dev/null /etc/lynceus.env
-sudo tee /etc/lynceus.env >/dev/null <<'EOF'
-VLLM_VLM_URL=https://developer.amd.com.cn/radeon/api/v1
-VLLM_LLM_URL=https://developer.amd.com.cn/radeon/api/v1
-VLM_MODEL=MiniCPM-V-4.7-35B-A3B
-LLM_MODEL=DeepSeek-V4-Flash
-ASSIST_URL=https://developer.amd.com.cn/radeon/api/v1
-ASSIST_MODEL=DeepSeek-V4-Flash
-LOCALISATION_MODE=box
-VLLM_API_KEY=PASTE-THE-TEAM-KEY-HERE
-# Hosted demo: when the live AI fails, answer HTTP 503 instead of silently showing
-# the offline stub. The scripted demo buttons (green/amber/red) keep working.
-LYNCEUS_ALLOW_STUB_FALLBACK=0
-EOF
-sudo nano /etc/lynceus.env             # paste the real key
+sudo install -m 600 deploy/lynceus.env.example /etc/lynceus.env
+sudo nano /etc/lynceus.env             # replace PASTE-THE-TEAM-KEY-HERE with the real key
 ```
+
+The template holds the Token Factory endpoints and models, `LOCALISATION_MODE=box`
+and `LYNCEUS_ALLOW_STUB_FALLBACK=0` (hosted demo: a live-AI failure answers HTTP 503
+instead of silently showing the offline stub; the scripted green/amber/red buttons
+keep working). It deliberately does not set `LYNCEUS_STORAGE_DIR`,
+`LYNCEUS_WEB_DIR` or `LYNCEUS_BENCHMARK_DIR`: the image already points them at the
+volume and the staged assets. Never feed the dev `.env.example` / `backend/.env` to
+`--env-file`: it would override the storage path (the entrypoint exits with a clear
+error if the storage dir is not writable).
 
 Do not use quotes around values and do not put the key in the shell history or
 in the Dockerfile.
@@ -94,9 +91,12 @@ sudo systemctl reload caddy
 
 Caddy obtains and renews the certificate itself. **Keep the proxy read timeout
 at 120 s or more**: a live inspection takes about 20-35 s typically and up to
-about 90 s in the worst case we measured (retries under rate limiting). A
-default 30-60 s proxy timeout will cut those requests off. With nginx the
-equivalent is `proxy_read_timeout 150s;`.
+about 90 s in the worst case we measured (retries under rate limiting). Caddy
+has no default read timeout, so the `read_timeout 150s` above is an explicit cap,
+not a fix for a default. Proxies and load balancers with short defaults do cut
+these requests off: nginx (`proxy_read_timeout`, default 60 s; set
+`proxy_read_timeout 150s;`) and cloud load balancers (idle timeouts are often
+30-60 s; raise them to at least 120 s).
 
 ## Updating
 

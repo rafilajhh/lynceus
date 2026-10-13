@@ -26,8 +26,8 @@ endpoint catalogue, running on AMD GPUs), reached with one team API key:
 
 | Role | Model | Why (measured in `docs/research/token-factory-probe.md`) |
 |---|---|---|
-| Vision: contaminants, wet/dry, hazard boxes | `MiniCPM-V-4.7-35B-A3B` | the only vision model whose boxes overlapped the metal on the test photo in 3/3 runs |
-| Waybill cross-check and Pythia | `DeepSeek-V4-Flash` | passed the assistant JSON contract 3/3; the other candidates timed out or failed it |
+| Vision: contaminants, wet/dry, hazard boxes | `MiniCPM-V-4.7-35B-A3B` | the only vision model whose boxes overlapped the metal on the test photo in 3/3 runs (`DeepSeek-V4.1-Flash` image requests timed out in 3/3 runs at the 90 s per-read timeout; `DeepSeek-V4-Flash-Vision-Exp` returned no boxes, 0/3) |
+| Waybill cross-check and Pythia | `DeepSeek-V4-Flash` | passed the assistant citation contract 3/3 (`Gemma-4-31B-IT` failed it 0/3) |
 
 It is **not** a self-hosted vLLM on an Instinct MI300X. Self-hosting remains a
 supported option (the endpoints are plain OpenAI-compatible URLs, see
@@ -140,11 +140,18 @@ settings below.
 
 ```bash
 docker build -t lynceus .
+cp deploy/lynceus.env.example deploy/lynceus.env   # git-ignored; paste the Token Factory key
 docker run -d --name lynceus -p 8020:8020 \
-  --env-file backend/.env \
+  --env-file deploy/lynceus.env \
   -v lynceus-runs:/data/runs \
   lynceus
 ```
+
+Use the Docker template, not `.env.example` or `backend/.env`: those are for local
+development and set `LYNCEUS_STORAGE_DIR`, which would override the container's
+`/data/runs` volume path (the entrypoint exits with an error if the storage dir is
+not writable). The template carries the Token Factory endpoints and models and never
+sets `LYNCEUS_STORAGE_DIR`, `LYNCEUS_WEB_DIR` or `LYNCEUS_BENCHMARK_DIR`.
 
 On first start (empty storage) the container seeds the 24-truck sample shift,
 then serves on `${PORT:-8020}`. Records persist in the `lynceus-runs` volume. The
@@ -172,7 +179,7 @@ Full server guide (HTTPS, updates, backups, judging-day checklist):
 | `PORT` | `8020` | Listening port of `python -m lynceus.main` |
 | `AUDIT_FORMAT_VERSION` | `1` | Audit record schema version |
 
-Token Factory settings (put them in `backend/.env`, never commit the key; get the
+Token Factory settings (local dev: put them in `backend/.env`; Docker: `deploy/lynceus.env`; never commit the key; get the
 team key at `notebooks.amd.com/tokenfactory`):
 
 ```bash

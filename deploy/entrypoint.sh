@@ -12,7 +12,10 @@ export LYNCEUS_STORAGE_DIR
 : "${PORT:=8020}"
 export PORT
 
-mkdir -p "$LYNCEUS_STORAGE_DIR"
+if ! mkdir -p "$LYNCEUS_STORAGE_DIR" 2>/dev/null || [ ! -w "$LYNCEUS_STORAGE_DIR" ]; then
+    echo "lynceus: ERROR: LYNCEUS_STORAGE_DIR=$LYNCEUS_STORAGE_DIR is not writable by uid $(id -u); unset it in your env file (the image default is /data/runs) or point it at the mounted volume" >&2
+    exit 1
+fi
 
 if ls -d "$LYNCEUS_STORAGE_DIR"/inspection-* >/dev/null 2>&1; then
     echo "lynceus: records found in $LYNCEUS_STORAGE_DIR, not seeding"

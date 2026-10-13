@@ -49,3 +49,6 @@ critique-*.png
 
 # Benchmark scratch audit records (the committed results live in backend/benchmark/results/)
 backend/benchmark/runs/
+
+# Local Docker env file (holds the key)
+deploy/lynceus.env
