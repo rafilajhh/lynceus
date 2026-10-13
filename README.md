@@ -110,6 +110,32 @@ vllm serve Qwen/Qwen2.5-7B-Instruct    --host 0.0.0.0 --port 8001
 Full deployment notes (AMD Developer Cloud, credits, tuning flags):
 see `docs/research/amd-gpu-stack.md`.
 
+### Running live on AMD Token Factory (no self-host needed)
+
+Token Factory is AMD's free shared endpoint catalog (OpenAI-compatible,
+runs on AMD GPUs). It needs no instance — just a team API key from
+`notebooks.amd.com/tokenfactory`. Point both model roles at the same base
+URL in `backend/.env` (never commit the key):
+
+```bash
+VLLM_VLM_URL=https://developer.amd.com.cn/radeon/api/v1
+VLLM_LLM_URL=https://developer.amd.com.cn/radeon/api/v1
+VLM_MODEL=DeepSeek-V4.1-Flash   # vision: coherent structured output (validated)
+LLM_MODEL=DeepSeek-V4-Flash     # text waybill cross-check
+VLLM_API_KEY=rc-your-team-key
+```
+
+Then `python -m lynceus.main` and submit an inspection **without** a
+`demo_case` — the response carries `provenance: "live"`. The verdict panel
+labels it `Live AMD`; scripted demo cases are labelled `Scripted sample`.
+
+Model choice is empirical, not arbitrary: `Gemma-4-31B-IT` returns incoherent
+ASCII noise for vision JSON on this endpoint, and `Qwen3.8` thinking burns
+`max_tokens` (empty content) — `DeepSeek-V4.1-Flash` is the only VLM that
+returned coherent structured analysis of the demo photos. The client honours
+`Retry-After` on HTTP 429 (the team key is rate-limited per key, shared
+across teammates).
+
 ## Tests
 
 ```bash

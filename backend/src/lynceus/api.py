@@ -25,7 +25,7 @@ from lynceus import impact
 from lynceus import pipeline
 from lynceus.config import get_settings
 
-_WEB_DIR = Path(__file__).resolve().parents[2] / "web" / "out"
+_WEB_DIR = Path(__file__).resolve().parents[3] / "web" / "out"
 
 # No OCR is performed on the waybill; this is the fixed confidence attached
 # to operator-typed manifest text, not an OCR score.
