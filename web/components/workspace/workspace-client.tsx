@@ -281,51 +281,53 @@ export function WorkspaceClient() {
   const photoSlot = heroPhoto ? (
     <figure className="m-0 flex flex-col px-4 py-4">
       {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
-      {/* 16px radius matches --radius-card-lg: hero evidence panel uses the larger card radius.
-          aspect-[4/3] crop: the raw photos are near-square; a wider, shorter
-          frame kills the dead space under the caption (user feedback). */}
-      <img
-        src={loadUpload.previewUrl ?? heroPhoto.path}
-        alt={loadUpload.filename ?? heroPhoto.caption}
-        className="aspect-[4/3] w-full rounded-[16px] border border-seam object-cover"
+      {/* Click-to-upload (user direction): the photo itself is the upload
+          target — hover reveals a hint, picking a file replaces the image.
+          aspect-[4/3] crop kills the dead space under the caption. */}
+      <input
+        id="load-photo-upload"
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        disabled={loading}
+        onChange={(e) => onLoadPhoto(e.target.files?.[0] ?? null)}
       />
-      {/* Footer row: caption left (truncated), upload control right — the
-          two-line mono caption stacked over the button read as misaligned
-          (user feedback). */}
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <figcaption className="figure min-w-0 truncate text-[11px] leading-relaxed text-muted">
-          {loadUpload.filename
-            ? `Uploaded photo · ${loadUpload.filename}`
-            : heroPhoto.caption}
-        </figcaption>
-        <input
-          id="load-photo-upload"
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          disabled={loading}
-          onChange={(e) => onLoadPhoto(e.target.files?.[0] ?? null)}
+      <label
+        htmlFor="load-photo-upload"
+        className={cn(
+          "group relative block cursor-pointer overflow-hidden rounded-[16px] border border-seam transition-colors duration-100 hover:border-amber-line",
+          loading && "pointer-events-none opacity-50",
+        )}
+        title={loadUpload.filename ? "Replace photo" : "Upload photo"}
+      >
+        <img
+          src={loadUpload.previewUrl ?? heroPhoto.path}
+          alt={loadUpload.filename ?? heroPhoto.caption}
+          className="aspect-[4/3] w-full object-cover transition-opacity duration-150 group-hover:opacity-60"
         />
-        <label
-          htmlFor="load-photo-upload"
-          className={cn(
-            "inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-[6px] border border-seam-strong bg-raised px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam",
-            loading && "pointer-events-none opacity-50",
-          )}
+        {/* Hover veil: the only affordance for click-to-upload */}
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-[0.6px] text-ink uppercase opacity-0 transition-opacity duration-150 group-hover:opacity-100"
         >
-          {loadUpload.filename ? "Replace" : "Upload"}
-        </label>
-        {loadUpload.filename ? (
-          <button
-            type="button"
-            onClick={() => onLoadPhoto(null)}
-            disabled={loading}
-            className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
+          {loadUpload.filename ? "Replace photo" : "Upload photo"}
+        </span>
+      </label>
+      <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
+        {loadUpload.filename
+          ? `Uploaded photo · ${loadUpload.filename}`
+          : heroPhoto.caption}
+      </figcaption>
+      {loadUpload.filename ? (
+        <button
+          type="button"
+          onClick={() => onLoadPhoto(null)}
+          disabled={loading}
+          className="mt-1 self-start cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
+        >
+          Clear upload
+        </button>
+      ) : null}
     </figure>
   ) : null;
 
