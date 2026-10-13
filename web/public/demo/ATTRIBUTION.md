@@ -9,16 +9,28 @@ material types, collected within an authentic landfill environment.
 - **Dataset URL:** https://archive.ics.uci.edu/dataset/908/realwaste
 - **Download:** https://archive.ics.uci.edu/static/public/908/realwaste.zip
 - **DOI:** 10.24432/C5SS4G
-- **License:** [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/)
+- **License:** see [Licence](#licence) below. The UCI page states
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), but the README inside
+  the dataset zip states CC BY-NC-SA 4.0; the statements disagree.
 - **Creators:** Sam Single, Saeid Iranmanesh, Raad Raad
 - **Paper:** *RealWaste: A Novel Real-Life Data Set for Landfill Waste
   Classification Using Deep Learning* —
   https://www.mdpi.com/2078-2489/14/12/633
 
 The images in this directory are copies (re-encoded as JPEG, quality 82, no
-resizing) of photographs from the RealWaste dataset. Under CC BY 4.0 they may
-be redistributed and adapted provided the source is credited, which this file
-does.
+resizing) of photographs from the RealWaste dataset. The source is credited
+here; see Licence for the terms that are assumed.
+
+## Licence
+
+- The UCI dataset page states **CC BY 4.0** (https://creativecommons.org/licenses/by/4.0/).
+- The README bundled in the dataset's zip (`realwaste-main/README.md`, same
+  download) instead says **CC BY-NC-SA 4.0**.
+- The two statements disagree. Until the authors clarify, treat the more
+  restrictive terms as binding: attribution, non-commercial use, share-alike.
+  These images are used only to illustrate and validate the gate. They are
+  excluded from this repository's MIT licence and remain under the dataset's
+  own terms.
 
 ## Photos
 
