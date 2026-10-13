@@ -245,8 +245,12 @@ def test_resolve_assist_client_is_none_for_malformed_url(monkeypatch):
     assert pipeline.resolve_assist_client(get_settings()) is None
 
 
-def test_inspect_with_malformed_vlm_url_degrades_to_stub(tmp_path, monkeypatch):
+def test_inspect_with_malformed_vlm_url_degrades_to_labelled_fallback(
+    tmp_path, monkeypatch
+):
     # No reachability stub here: the real probe runs against a malformed URL.
+    # A non-demo request with an unreachable endpoint is never plain "stub"
+    # (that label is for scripted demo cases): it is the marked fallback.
     monkeypatch.setenv(LYNCEUS_STORAGE_DIR_ENV, str(tmp_path))
     monkeypatch.setenv("VLLM_VLM_URL", "http://host:abc/v1")
     body = {k: v for k, v in _BASE.items() if k != "demo_case"}
@@ -254,7 +258,7 @@ def test_inspect_with_malformed_vlm_url_degrades_to_stub(tmp_path, monkeypatch):
         "/inspect", json={**body, "photo_base64": _b64(_JPEG_HEAD + b"x")}
     )
     assert resp.status_code == 200, resp.text[:300]
-    assert resp.json()["provenance"] == "stub"
+    assert resp.json()["provenance"] == "stub_fallback_live_error"
 
 
 # ---------------------------------------------------------------------------

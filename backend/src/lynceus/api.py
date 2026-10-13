@@ -15,6 +15,7 @@ import base64
 import binascii
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -179,6 +180,7 @@ class InspectRequest(BaseModel):
     )
     supplier: str | None = Field(
         default=None,
+        max_length=120,
         description="Supplier / hauler named on the waybill (shift report grouping).",
     )
     demo_case: str | None = Field(
@@ -269,6 +271,14 @@ def _load_record_or_http(record_id: str) -> audit.AuditRecord:
             status_code=404,
             detail={"error": "record_not_found", "message": str(exc)},
         ) from exc
+
+
+#: Process-wide cap on concurrent LIVE inspections (non-demo ``/inspect``).
+#: The AMD endpoint is a shared, rate-limited key and the public URL is open:
+#: a third concurrent live request gets a fast 503 instead of queueing behind
+#: 90 s model calls.  Scripted ``demo_case`` requests never take a slot.
+MAX_LIVE_INSPECTIONS = 2
+_LIVE_SLOTS = threading.BoundedSemaphore(MAX_LIVE_INSPECTIONS)
 
 
 def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
@@ -372,6 +382,11 @@ def _run_inspection_with_audit(
     }
     application = {"name": "lynceus", "version": __version__}
 
+    # Resolve the AI clients before the record is begun: an unreachable live
+    # endpoint with stub fallback disabled raises LiveAIUnavailableError here
+    # (HTTP 503) and leaves no ``inspection-*`` shell behind.
+    ai_clients = pipeline.resolve_clients(payload, settings)
+
     # Invariant 1: an honest in_progress record exists before AI runs.
     begin = audit.begin_record(
         settings.storage_dir, application, inputs, input_digests
@@ -380,7 +395,7 @@ def _run_inspection_with_audit(
 
     ai = pipeline.run_inspection(
         payload,
-        pipeline.resolve_clients(payload, settings),
+        ai_clients,
         record_id,
         allow_stub_fallback=settings.allow_stub_fallback,
     )
@@ -676,6 +691,19 @@ def create_app() -> FastAPI:
     @app.post("/inspect")
     def inspect(request: InspectRequest) -> dict[str, Any]:
         settings = get_settings()
+        # Ruling 40: cap concurrent live pipelines (before any record exists).
+        live = not request.demo_case
+        if live and not _LIVE_SLOTS.acquire(blocking=False):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "busy",
+                    "message": (
+                        "The live AMD pipeline is busy — try again in a "
+                        "moment or use a scripted case."
+                    ),
+                },
+            )
         try:
             return _run_inspection_with_audit(request, settings)
         except PhotoError as exc:
@@ -710,6 +738,9 @@ def create_app() -> FastAPI:
                 status_code=503,
                 detail={"error": "live_ai_unavailable", "message": str(exc)},
             ) from exc
+        finally:
+            if live:
+                _LIVE_SLOTS.release()
 
     @app.get("/inspections", response_model=None)
     def list_inspections(request: Request) -> dict[str, Any] | FileResponse:

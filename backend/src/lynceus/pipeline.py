@@ -494,7 +494,13 @@ class StubAIClients:
     the stub never invents a random verdict.
     """
 
-    def __init__(self, demo_case: Optional[str] = None, provenance: str = "stub") -> None:
+    def __init__(
+        self,
+        demo_case: Optional[str] = None,
+        provenance: str = "stub",
+        fallback_reason: Optional[str] = None,
+    ) -> None:
+        self.fallback_reason = fallback_reason
         self._demo_case = (demo_case or "green").strip().lower()
         if self._demo_case not in _STUB_VLM:
             self._demo_case = "green"
@@ -535,12 +541,20 @@ class StubAIClients:
 
 
 def _vlm_reachable(settings: Settings, timeout_s: float = 2.0) -> bool:
-    """Cheap liveness probe of the vLLM VLM endpoint (``GET /models``)."""
+    """Cheap liveness probe of the vLLM VLM endpoint (``GET /models``).
+
+    Only "nobody answered" counts as unreachable (refused, DNS, connect
+    timeout, malformed URL).  A *slow* answer (read/pool timeout) means the
+    host is up and merely busy — the real call decides, so a loaded shared
+    endpoint is not mistaken for a dead one.
+    """
     try:
         response = httpx.get(
             f"{settings.vllm_vlm_url.rstrip('/')}/models", timeout=timeout_s
         )
         return response.status_code < 500
+    except (httpx.ReadTimeout, httpx.PoolTimeout):
+        return True
     except (httpx.HTTPError, httpx.InvalidURL):
         # InvalidURL (a malformed configured URL) is not an HTTPError.
         return False
@@ -551,10 +565,16 @@ def resolve_clients(
 ) -> AIClients:
     """Choose the live client or the honest stub for this inspection.
 
-    The stub wins when the payload sets ``demo_case`` (scripted demo) or when
-    the vLLM VLM endpoint is unreachable.  A live failure *during* the
-    pipeline is handled by :func:`run_inspection`, which then falls back to
-    the stub with the explicit ``stub_fallback_live_error`` provenance.
+    * ``demo_case`` set → the scripted stub (provenance ``"stub"``).
+    * Otherwise the live client — unless the endpoint is unreachable.  Then
+      the request must not be answered with the GREEN script as if it were an
+      analysis: with ``allow_stub_fallback`` off it raises
+      :class:`LiveAIUnavailableError` (the API's 503); with it on it returns a
+      stub marked ``stub_fallback_live_error`` carrying a ``fallback_reason``.
+
+    A live failure *during* the pipeline is handled by :func:`run_inspection`
+    with the same two outcomes.  The cheap probe stays: it turns a dead or
+    blackholed endpoint into an answer in 2 s instead of a 90 s read budget.
     """
     settings = settings or get_settings()
     demo_case = payload.get("demo_case")
@@ -562,7 +582,12 @@ def resolve_clients(
         return StubAIClients(demo_case=demo_case)
     if _vlm_reachable(settings):
         return VLLMClient(settings=settings)
-    return StubAIClients(demo_case=demo_case, provenance="stub")
+    reason = f"live endpoint unreachable ({settings.vllm_vlm_url})"
+    if not settings.allow_stub_fallback:
+        raise LiveAIUnavailableError(f"{reason}; stub fallback disabled")
+    return StubAIClients(
+        provenance="stub_fallback_live_error", fallback_reason=reason
+    )
 
 
 def _assist_reachable(settings: Settings, timeout_s: float = 2.0) -> bool:
@@ -707,10 +732,14 @@ def run_inspection(
             }
         raise
 
-    return {
+    result = {
         "vlm": vlm_result,
         "llm": llm_result,
         "gas": gas_result,
         "provenance": ai_clients.provenance,
     }
+    fallback_reason = getattr(ai_clients, "fallback_reason", None)
+    if fallback_reason:
+        result["fallback_reason"] = fallback_reason
+    return result
 
