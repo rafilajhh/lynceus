@@ -11,7 +11,7 @@ LOCALISATION_MODE = "box"
 ASSIST_MODEL      = "DeepSeek-V4-Flash"
 ```
 
-**`backend/.env` currently sets `VLM_MODEL=DeepSeek-V4.1-Flash`. In the recorded probe its image requests timed out at the 90 s per-read timeout in 3/3 runs (slow vs. unsupported was not distinguished; see below), so it is not usable as the VLM; change it to `MiniCPM-V-4.7-35B-A3B`.**
+**At probe time `backend/.env` set `VLM_MODEL=DeepSeek-V4.1-Flash`; it now uses `MiniCPM-V-4.7-35B-A3B` (see Decisions). In the recorded probe its image requests timed out at the 90 s per-read timeout in 3/3 runs (slow vs. unsupported was not distinguished; see below), so it is not usable as the VLM.**
 
 ## Method
 

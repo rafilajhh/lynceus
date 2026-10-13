@@ -60,7 +60,7 @@ export function providerName(provider: string): string {
  * VLM call p50 16.5 s (docs/research/token-factory-probe.md: p50 14.5 s over
  * 9 calls). Shown on the /validation page.
  */
-export const LIVE_LATENCY_COPY = "about 20 s typically, 34 s at the 95th percentile";
+export const LIVE_LATENCY_COPY = "about 20 s typically, 34 s at the 95th percentile of completed runs";
 
 /** Latency in seconds, one decimal: 14523 → "14.5 s". */
 export function formatSeconds(ms: number | null | undefined): string | null {

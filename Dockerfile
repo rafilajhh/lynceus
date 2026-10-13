@@ -1,7 +1,7 @@
 # Lynceus single-container image: FastAPI backend + statically exported Next.js UI.
 #
 #   docker build -t lynceus .
-#   docker run -d --name lynceus -p 8020:8020 --env-file .env -v lynceus-runs:/data/runs lynceus
+#   docker run -d --name lynceus -p 8020:8020 --env-file deploy/lynceus.env -v lynceus-runs:/data/runs lynceus
 #
 # The AMD Token Factory key is supplied at run time (--env-file / -e) and is never
 # copied into the image (.dockerignore excludes every .env).

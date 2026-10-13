@@ -152,10 +152,11 @@ docker run -d --name lynceus -p 8020:8020 \
 ```
 
 Use the Docker template, not `.env.example` or `backend/.env`: those are for local
-development and set `LYNCEUS_STORAGE_DIR`, which would override the container's
-`/data/runs` volume path (the entrypoint exits with an error if the storage dir is
-not writable). The template carries the Token Factory endpoints and models and never
-sets `LYNCEUS_STORAGE_DIR`, `LYNCEUS_WEB_DIR` or `LYNCEUS_BENCHMARK_DIR`.
+development, with localhost vLLM URLs and models, whereas the template carries the
+Token Factory endpoints and models and `LYNCEUS_ALLOW_STUB_FALLBACK=0`. It never sets
+`LYNCEUS_STORAGE_DIR`, `LYNCEUS_WEB_DIR` or `LYNCEUS_BENCHMARK_DIR`, so the container's
+`/data/runs` volume path stays in force (the entrypoint exits with an error if the
+storage dir is not writable).
 
 On first start (empty storage) the container seeds the 24-truck sample shift,
 then serves on `${PORT:-8020}`. Records persist in the `lynceus-runs` volume. The
@@ -181,7 +182,6 @@ Full server guide (HTTPS, updates, backups, judging-day checklist):
 | `LYNCEUS_WEB_DIR` | `<repo>/web/out` (`/app/web/out` in the image) | Static web export to serve |
 | `LYNCEUS_BENCHMARK_DIR` | `<repo>/backend/benchmark` (`/app/backend/benchmark` in the image) | Benchmark manifest and results for `/benchmark/latest` |
 | `PORT` | `8020` | Listening port of `python -m lynceus.main` |
-| `AUDIT_FORMAT_VERSION` | `1` | Audit record schema version |
 
 Token Factory settings (local dev: put them in `backend/.env`; Docker: `deploy/lynceus.env`; never commit the key; get the
 team key at `notebooks.amd.com/tokenfactory`):
@@ -219,7 +219,7 @@ the numbers above were not measured on a self-hosted stack.
 
 ```bash
 cd backend
-PYTHONPATH=src python -m pytest tests/ -q   # 313 passed, 1 skipped
+PYTHONPATH=src python -m pytest tests/ -q   # 340 passed, 1 skipped
 ```
 
 The skipped test is the live smoke module; enable it with `LYNCEUS_LIVE_TESTS=1`
