@@ -254,8 +254,8 @@ export function LedgerView() {
             </div>
 
             {/* ---- search + verdict filter ---- */}
-            <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-              <div className="w-full sm:w-auto sm:max-w-[260px] sm:flex-initial flex-1">
+            <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
+              <div className="w-full sm:w-[260px]">
                 <input
                   type="search"
                   value={search}
@@ -265,7 +265,7 @@ export function LedgerView() {
                   className="input w-full text-[13px]"
                 />
               </div>
-              <div className="sm:ml-auto">
+              <div>
                 <select
                   value={filter}
                   onChange={(e) => onFilterChange(e.target.value as FilterKey)}
