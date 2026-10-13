@@ -112,11 +112,15 @@ export function InspectionDetailPanel({
         </button>
 
         {state.kind === "loading" ? (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div
+            role="status"
+            className="flex flex-col items-center gap-3 py-10 text-center"
+          >
             <span
               aria-hidden="true"
               className="h-6 w-6 animate-spin rounded-full border-2 border-seam border-t-amber"
             />
+            <span className="sr-only">Loading</span>
             <p className="text-[13px] text-muted">
               Fetching audit record {recordId}…
             </p>
@@ -178,7 +182,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
                 </div>
                 {gate.value !== null ? (
                   <div className="figure mt-0.5 text-[11px] text-muted break-words">
-                    value {gate.value}
+                    value {typeof gate.value === "number" ? gate.value.toFixed(3) : gate.value}
                     {gate.threshold !== null ? ` · threshold ${gate.threshold}` : ""}
                   </div>
                 ) : null}
