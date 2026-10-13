@@ -48,6 +48,11 @@ const PROVIDER_NAMES: Record<string, string> = {
   "openai-compatible": "OpenAI-compatible endpoint",
 };
 
+/** Display name of a backend provider id ("amd-token-factory" → "AMD Token Factory"). */
+export function providerName(provider: string): string {
+  return PROVIDER_NAMES[provider] ?? provider;
+}
+
 /** Latency in seconds, one decimal: 14523 → "14.5 s". */
 export function formatSeconds(ms: number | null | undefined): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;

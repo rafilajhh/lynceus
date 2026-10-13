@@ -1,4 +1,4 @@
-"""Seed the demo ledger with one green / amber / red inspection record.
+"""Seed the demo ledger: three demo cases, or a 24-truck sample shift.
 
 Design review finding 2: the default storage dir filled up with dozens of
 smoke-test records — the same truck rejected 9× whose "prevented" losses
@@ -10,6 +10,13 @@ Usage (from ``backend/``)::
 
     python scripts/seed_demo.py            # add 3 records (append-only)
     python scripts/seed_demo.py --reset    # wipe old inspection-* records first
+    python scripts/seed_demo.py --reset --shift   # 24-truck sample shift instead
+
+``--shift`` writes a scripted 8-hour shift across the three demo suppliers
+(exactly one flagged by the shift report) with photo provenance ``"sample"``,
+so the shift report labels it "Sample shift — scripted data".  Arrival times
+and gate durations are scripted too: a scripted clock replaces the wall clock
+while seeding, and the shift ends at the current time.
 
 The AI layer is pinned to the offline stub (no network, deterministic), so
 the seeded verdicts are always ACCEPT / ESCALATE_HUMAN / REJECT.  The
@@ -25,6 +32,7 @@ import argparse
 import os
 import shutil
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Make ``import lynceus`` work when run as ``python scripts/seed_demo.py``.
@@ -108,6 +116,152 @@ EXPECTED_VERDICTS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Sample shift (--shift)
+# ---------------------------------------------------------------------------
+
+#: The scripted shift in arrival order: (demo_case, supplier).  Suppliers are
+#: the demo stories' (web/lib/demo-cases.ts).  Per supplier:
+#: CV Sumber Bersih 9 trucks (8 accept, 1 escalate → risk 0.06);
+#: PT Daur Ulang Jaya 8 (6 accept, 2 escalate → 0.125, rounds to 0.12);
+#: UD Sinar Abadi 7 (3 reject, 1 escalate, 3 accept → 0.5, the one flagged).
+SHIFT_PLAN = [
+    ("green", "CV Sumber Bersih"),
+    ("green", "PT Daur Ulang Jaya"),
+    ("green", "UD Sinar Abadi"),
+    ("green", "CV Sumber Bersih"),
+    ("amber", "PT Daur Ulang Jaya"),
+    ("red", "UD Sinar Abadi"),
+    ("green", "CV Sumber Bersih"),
+    ("green", "PT Daur Ulang Jaya"),
+    ("green", "CV Sumber Bersih"),
+    ("amber", "UD Sinar Abadi"),
+    ("green", "PT Daur Ulang Jaya"),
+    ("green", "CV Sumber Bersih"),
+    ("red", "UD Sinar Abadi"),
+    ("green", "PT Daur Ulang Jaya"),
+    ("amber", "CV Sumber Bersih"),
+    ("green", "UD Sinar Abadi"),
+    ("green", "CV Sumber Bersih"),
+    ("amber", "PT Daur Ulang Jaya"),
+    ("green", "PT Daur Ulang Jaya"),
+    ("red", "UD Sinar Abadi"),
+    ("green", "CV Sumber Bersih"),
+    ("green", "UD Sinar Abadi"),
+    ("green", "PT Daur Ulang Jaya"),
+    ("green", "CV Sumber Bersih"),
+]
+
+SHIFT_HOURS = 8
+#: Scripted gate time per truck in seconds, cycled; inside the measured live
+#: VLM range of 12.9–19.8 s (docs/research/token-factory-probe.md).
+_SHIFT_DURATIONS_S = (13, 16, 14, 18, 15, 14, 17, 13)
+_PLATE_AREAS = ("B", "D", "F", "T", "E")
+_PLATE_SUFFIX = ("KT", "WR", "TS", "AB", "JY", "SB", "UD", "PL")
+_SHIFT_WASTE = {
+    "green": ("SRF / RDF fluff, pre-sorted, baled", "10%"),
+    "amber": ("organic-rich source-separated biowaste", "30%"),
+    "red": ("clean RDF fluff, dry, no contamination", "12%"),
+}
+
+
+class ScriptedClock:
+    """Stands in for ``audit.now_utc`` while the sample shift is seeded."""
+
+    def __init__(self, start: datetime) -> None:
+        self.current = start
+
+    def __call__(self) -> str:
+        return self.current.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def shift_payloads() -> list[dict]:
+    """The 24 scripted inspection payloads, in arrival order."""
+    templates = {p["demo_case"]: p for p in SEED_RECORDS}
+    payloads = []
+    for i, (case, supplier) in enumerate(SHIFT_PLAN):
+        base = templates[case]
+        weight = int(base["weight_kg"]) - 400 + (i * 137) % 900
+        # Green/amber waybills declare 100 kg under the weighbridge (well
+        # inside tolerance); the red story keeps its large under-declaration.
+        declared = int(weight * 0.8) if case == "red" else weight - 100
+        waste, moisture = _SHIFT_WASTE[case]
+        payloads.append(
+            {
+                "truck_id": (
+                    f"{_PLATE_AREAS[i % len(_PLATE_AREAS)]}-{4100 + (i * 263) % 5000}-"
+                    f"{_PLATE_SUFFIX[i % len(_PLATE_SUFFIX)]}"
+                ),
+                "supplier": supplier,
+                "demo_case": case,
+                "manifest_text": (
+                    "DUTY OF CARE — WASTE TRANSFER NOTE\n"
+                    f"Supplier: {supplier}\n"
+                    f"Waste type: {waste}\n"
+                    f"Declared weight: {declared:,} kg\n"
+                    f"Moisture declared: {moisture}"
+                ),
+                "weight_kg": weight,
+                "waste_stream": base["waste_stream"],
+                "moisture": base["moisture"],
+                "age_h": base["age_h"],
+            }
+        )
+    return payloads
+
+
+def seed_shift(storage_dir: Path, end: datetime | None = None) -> int:
+    """Write the sample shift; return 0, or 1 when a verdict is off-script.
+
+    Each truck arrives on a scripted clock spread over the last
+    ``SHIFT_HOURS`` hours; the clock advances by the truck's scripted gate
+    time while the (offline stub) pipeline runs, so ``started_at_utc`` /
+    ``finished_at_utc`` carry the scripted durations.
+    """
+    end = end or datetime.now(timezone.utc).replace(microsecond=0)
+    start = end - timedelta(hours=SHIFT_HOURS)
+    step = timedelta(hours=SHIFT_HOURS) / len(SHIFT_PLAN)
+    clock = ScriptedClock(start)
+    gate_seconds = {"value": 0}
+    real_now, real_run = audit.now_utc, pipeline_mod.run_inspection
+
+    def timed_run(*args, **kwargs):
+        result = real_run(*args, **kwargs)
+        clock.current += timedelta(seconds=gate_seconds["value"])
+        return result
+
+    audit.now_utc = clock
+    pipeline_mod.run_inspection = timed_run
+    try:
+        print(f"seeding sample shift ({len(SHIFT_PLAN)} trucks) into {storage_dir}")
+        for i, payload in enumerate(shift_payloads()):
+            clock.current = start + step * i + timedelta(minutes=(i * 7) % 11)
+            gate_seconds["value"] = _SHIFT_DURATIONS_S[i % len(_SHIFT_DURATIONS_S)]
+            request = InspectRequest.model_validate(payload)
+            response = _run_inspection_with_audit(
+                request, get_settings(), photo_provenance="sample"
+            )
+            record_id = response.get("record_id")
+            decision = (response.get("verdict") or {}).get("decision")
+            expected = EXPECTED_VERDICTS[payload["demo_case"]]
+            print(
+                f"  {record_id}  {payload['truck_id']:<11} "
+                f"{payload['supplier']:<19} -> {decision}"
+            )
+            if decision != expected:
+                print(
+                    f"ERROR: expected verdict '{expected}' for demo_case "
+                    f"'{payload['demo_case']}', got '{decision}'",
+                    file=sys.stderr,
+                )
+                return 1
+            audit.load_record(storage_dir / record_id / audit.RECORD_FILENAME)
+    finally:
+        audit.now_utc, pipeline_mod.run_inspection = real_now, real_run
+    print("done: sample shift seeded (photo provenance 'sample')")
+    return 0
+
+
 def reset_storage(storage_dir: Path) -> int:
     """Delete every ``inspection-*`` directory; return how many went."""
     removed = 0
@@ -136,6 +290,11 @@ def main(argv: list[str] | None = None) -> int:
         help="delete existing inspection-* records in the storage dir first",
     )
     parser.add_argument(
+        "--shift",
+        action="store_true",
+        help="seed the 24-truck sample shift instead of the three demo cases",
+    )
+    parser.add_argument(
         "--storage-dir",
         default=None,
         help=(
@@ -161,6 +320,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.reset:
         removed = reset_storage(storage_dir)
         print(f"reset: removed {removed} old inspection record(s) in {storage_dir}")
+
+    if args.shift:
+        return seed_shift(storage_dir)
 
     print(f"seeding 3 demo record(s) into {storage_dir}")
     for payload in SEED_RECORDS:

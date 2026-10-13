@@ -5,6 +5,7 @@ Routes:
     POST /assess   — one batch assessment through the Lynceus decision engine.
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
     POST /assist   — Pythia: cited answers over plant documents and an audit record.
+    GET  /shift-report — shift aggregation with supplier risk and explanations.
 """
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ from lynceus import engine_adapter
 from lynceus import gas_twin
 from lynceus import impact
 from lynceus import pipeline
-from lynceus.config import get_settings
+from lynceus import shift
+from lynceus.config import get_settings, provider_for_url
 
 _WEB_DIR = Path(__file__).resolve().parents[3] / "web" / "out"
 
@@ -93,6 +95,10 @@ class InspectRequest(BaseModel):
 
     truck_id: str | None = Field(
         default=None, description="Truck / vehicle ID at the weighbridge."
+    )
+    supplier: str | None = Field(
+        default=None,
+        description="Supplier / hauler named on the waybill (shift report grouping).",
     )
     demo_case: str | None = Field(
         default=None,
@@ -233,9 +239,16 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
 
 
 def _run_inspection_with_audit(
-    request: InspectRequest, settings: Any
+    request: InspectRequest,
+    settings: Any,
+    *,
+    photo_provenance: str | None = None,
 ) -> dict[str, Any]:
-    """Full inspection: audit begin → AI + engine + decision → audit finish."""
+    """Full inspection: audit begin → AI + engine + decision → audit finish.
+
+    ``photo_provenance`` overrides the recorded photo provenance; only the
+    seeding script uses it (``"sample"`` for the scripted sample shift).
+    """
     payload = _inspect_payload(request)
 
     manifest_text = request.manifest_text or ""
@@ -256,7 +269,7 @@ def _run_inspection_with_audit(
             "filename": photo_filename,
             "sha256": audit.sha256_field(photo_bytes),
             "captured_at_utc": now,
-            "provenance": request.demo_case or "user_upload",
+            "provenance": photo_provenance or request.demo_case or "user_upload",
         },
         "manifest_text": {
             "source": "manual_text",
@@ -270,6 +283,7 @@ def _run_inspection_with_audit(
             "measured_at_utc": now,
         },
         "gas": gas_input,
+        "supplier": (request.supplier or "").strip() or None,
     }
     input_digests = {
         "photo": audit.sha256_field(photo_bytes),
@@ -668,6 +682,73 @@ def create_app() -> FastAPI:
             record = _load_record_or_http(request.record_id).model_dump()
         client = pipeline.resolve_assist_client(get_settings())
         return assist.answer(request.question, record, client)
+
+    @app.get("/shift", include_in_schema=False)
+    def serve_shift_page() -> FileResponse:
+        """The static export is a flat ``shift.html``; serve it on ``/shift``
+        (same hard-reload fix as ``/app``)."""
+        page = _web_file("shift.html")
+        if not page.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "shift_page_not_found",
+                    "message": "web/out/shift.html is missing — build the web export.",
+                },
+            )
+        return FileResponse(page, media_type="text/html")
+
+    @app.get("/shift-report")
+    def shift_report(since: str | None = None, until: str | None = None) -> dict[str, Any]:
+        """Shift aggregation over completed records started in ``[since, until)``.
+
+        Both bounds are optional ISO 8601 UTC ``Z`` timestamps (422 otherwise).
+        Flagged supplier rows carry ``explanation`` plus ``explanation_source``:
+        ``"model"`` when the assist model's text passed the number check,
+        ``"rule"`` for the deterministic sentence.
+        """
+        settings = get_settings()
+        records: list[audit.AuditRecord] = []
+        for entry in audit.list_inspections(settings.storage_dir):
+            if not entry.get("ok"):
+                continue
+            try:
+                records.append(
+                    audit.load_record(
+                        Path(settings.storage_dir) / entry["record_id"] / audit.RECORD_FILENAME
+                    )
+                )
+            except audit.AuditError:
+                continue
+        try:
+            report = shift.build_report(records, since, until)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "invalid_window", "message": str(exc)},
+            ) from exc
+
+        flagged = [row for row in report["suppliers"] if row["flagged"]]
+        # Probe the assist endpoint only when some row still needs the model:
+        # cached explanations must not cost a request per page load.
+        client = (
+            pipeline.resolve_assist_client(settings)
+            if any(shift.needs_model(row) for row in flagged)
+            else None
+        )
+        model_used = False
+        for row in flagged:
+            text = shift.explain_supplier(row, client)
+            row["explanation"] = text
+            row["explanation_source"] = (
+                "rule" if text == shift.fallback_explanation(row) else "model"
+            )
+            model_used = model_used or row["explanation_source"] == "model"
+        report["explanation_model"] = settings.assist_model if model_used else None
+        report["explanation_provider"] = (
+            provider_for_url(settings.assist_url) if model_used else None
+        )
+        return report
 
     @app.get("/inspections/{record_id}")
     def get_inspection(record_id: str) -> dict[str, Any]:
