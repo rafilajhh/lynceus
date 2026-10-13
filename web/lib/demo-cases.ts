@@ -93,7 +93,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     supplier: "UD Sinar Abadi",
     photo: "/demo/red-1.jpg",
     photo_caption:
-      "Compactor F 7702 TS · scrap metal found under the bales · weight mismatch",
+      "Compactor F 7702 TS · crumpled metal containers in the load · weight mismatch",
     manifest_text:
       "WAYBILL / WEIGHBRIDGE TICKET (RDF-MSW): No. SJ: SJ/RDF/2026/10/0003\n" +
       "Plate No.  : F 7702 TS        Date: 2026-10-13   Entry time: 00:45\n" +
@@ -104,8 +104,8 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
       "Load type  : clean RDF fluff, dry, no contamination\n" +
       "Declared weight: 15,500 kg\n" +
       "Moisture declared: 12%\n" +
-      "NOTE (driver): drum of scrap metal and concrete rubble loaded on " +
-      "top of the bales at the last minute.\n" +
+      "NOTE (driver): scrap metal containers loaded on top at the last " +
+      "minute.\n" +
       "Checks     : non-hazardous, non-medical, moisture/calorific value (RDF)",
     // Weighbridge far above declared 15,500 kg: the crosscheck trigger.
     weight_kg: 19300,

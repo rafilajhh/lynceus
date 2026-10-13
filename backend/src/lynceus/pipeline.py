@@ -397,9 +397,11 @@ _STUB_VLM: Dict[str, Dict[str, Any]] = {
     },
     "red": {
         "detected": {
-            "contamination": "metal drum and concrete rubble on top of the bales",
+            # Matches what the red demo photos show (aluminium trays, a
+            # bolt): metal only, nothing the camera did not see.
+            "contamination": "crumpled metal containers on top of the load",
             "moisture": 0.14,
-            "hard_contaminants": ["metal", "concrete"],
+            "hard_contaminants": ["metal"],
             "light_contaminants": [],
         },
         "confidence": 0.83,
@@ -424,7 +426,7 @@ _STUB_LLM: Dict[str, Dict[str, Any]] = {
     },
     "red": {
         "reasoning": "Waybill claims clean dry RDF but the driver note admits "
-        "scrap metal and concrete rubble loaded on top; weighbridge weight is "
+        "scrap metal loaded on top; weighbridge weight is "
         "far above the declared weight.",
         "confidence": 0.88,
         "crosscheck_notes": "declared weight and contamination contradict the "
