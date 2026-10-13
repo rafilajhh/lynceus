@@ -14,7 +14,7 @@
  */
 
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Panel, PanelHead } from "@/components/ui/panel";
 import {
   IntakeForm,
@@ -55,17 +55,13 @@ export function WorkspaceClient() {
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
-  // Photo state: demo case photo (path + race-guarded base64): a user
-  // upload would replace it, but the demo surface only loads demo cases.
-  // The first viewport never shows an empty stage: the green case's photo
-  // is the initial hero, its form fields the initial values.
+  // Photo state: nothing is preloaded (user direction): the stage starts
+  // empty and a truck arrives only when the operator picks a demo case or
+  // uploads a photo. demoPhotoBase64/demoPhotoPath hold the demo bytes.
   const [heroPhoto, setHeroPhoto] = useState<{
     path: string;
     caption: string;
-  } | null>({
-    path: DEMO_CASES.green.photo,
-    caption: DEMO_CASES.green.photo_caption,
-  });
+  } | null>(null);
   const demoPhotoBase64 = useRef<string | null>(null);
   const demoPhotoPath = useRef<string | null>(null);
 
@@ -116,16 +112,6 @@ export function WorkspaceClient() {
       pickFile(file, setWaybillUpload, waybillBase64, waybillUpload),
     [pickFile, waybillUpload],
   );
-
-  // Prefetch the initial hero's bytes so the first submit already sends
-  // real image data even before any demo button is pressed.
-  useEffect(() => {
-    const p = DEMO_CASES.green.photo;
-    demoPhotoPath.current = p;
-    fetchPhotoBase64(p).then((b64) => {
-      if (demoPhotoPath.current === p) demoPhotoBase64.current = b64;
-    });
-  }, []);
 
   const gates: GateDisplay[] = normalizeGates(data?.gates);
   const decision = data?.verdict?.decision ?? data?.decision;
@@ -202,10 +188,10 @@ export function WorkspaceClient() {
     setData(null);
     // User direction: pressing Inspect takes the operator straight to the
     // verdict panel (the gate strip is the show while it evaluates).
-    // Scroll the panel body into view — with block:"start" the top of a
-    // below-fold panel lands flush at the viewport top and reads as
-    // "not moving"; centering guarantees visible travel.
-    verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Scroll so the panel sits flush under the sticky topbar (scroll-mt
+    // on the wrapper clears the ~60px bar) — the whole verdict, from its
+    // head down, is the new viewport.
+    verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
     try {
       const resp = await inspectLoad({
@@ -242,24 +228,18 @@ export function WorkspaceClient() {
     setBannerLit(true);
   }, []);
 
-  // Gate flow is truck-by-truck. Reset is symmetric (critique P1): the
-  // stage must not say "pick a demo case" while still showing the last
-  // truck — reload the default green case so both panels agree.
+  // Gate flow is truck-by-truck. Reset clears EVERYTHING (user
+  // direction): verdict stage, form, demo selection, uploads, photo —
+  // the gate stands empty for the next truck.
   const onReset = useCallback(() => {
     setData(null);
     setPhase("idle");
     setBannerLit(false);
     setResultError(null);
-    const c = DEMO_CASES.green;
-    setValues({
-      truck_id: c.truck_id,
-      manifest_text: c.manifest_text,
-      weight_kg: String(c.weight_kg),
-      stream: c.stream,
-      moisture_pct: String(c.moisture_pct),
-      age_h: String(c.age_h),
-    });
-    setActiveDemo("green");
+    setFormError(null);
+    setValues(EMPTY_FORM);
+    setActiveDemo(null);
+    setHeroPhoto(null);
     setLoadUpload((prev) => {
       if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
       return { previewUrl: null, filename: null };
@@ -271,15 +251,13 @@ export function WorkspaceClient() {
     loadBase64.current = null;
     waybillBase64.current = null;
     demoPhotoBase64.current = null;
-    demoPhotoPath.current = c.photo;
-    setHeroPhoto({ path: c.photo, caption: c.photo_caption });
-    fetchPhotoBase64(c.photo).then((b64) => {
-      if (demoPhotoPath.current === c.photo) demoPhotoBase64.current = b64;
-    });
+    demoPhotoPath.current = null;
   }, []);
 
-  const photoSlot = heroPhoto ? (
-    <figure className="m-0 flex flex-col px-4 py-4">
+  const hasPhoto = Boolean(heroPhoto || loadUpload.previewUrl);
+
+  const photoSlot = (
+    <figure className="m-0 flex h-full flex-col px-4 py-4">
       {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
       {/* Click-to-upload (user direction): the photo itself is the upload
           target — hover reveals a hint, picking a file replaces the image.
@@ -295,29 +273,52 @@ export function WorkspaceClient() {
       <label
         htmlFor="load-photo-upload"
         className={cn(
-          "group relative block cursor-pointer overflow-hidden rounded-[16px] border border-seam transition-colors duration-100 hover:border-amber-line",
+          "group relative block cursor-pointer overflow-hidden rounded-[16px] border transition-colors duration-100",
+          hasPhoto
+            ? "border-seam hover:border-amber-line"
+            : "border-dashed border-seam-strong hover:border-amber-line",
           loading && "pointer-events-none opacity-50",
         )}
         title={loadUpload.filename ? "Replace photo" : "Upload photo"}
       >
-        <img
-          src={loadUpload.previewUrl ?? heroPhoto.path}
-          alt={loadUpload.filename ?? heroPhoto.caption}
-          className="aspect-[4/3] w-full object-cover transition-opacity duration-150 group-hover:opacity-60"
-        />
-        {/* Hover veil: the only affordance for click-to-upload */}
-        <span
-          aria-hidden="true"
-          className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-[0.6px] text-ink uppercase opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-        >
-          {loadUpload.filename ? "Replace photo" : "Upload photo"}
-        </span>
+        {hasPhoto ? (
+          <>
+            <img
+              src={loadUpload.previewUrl ?? heroPhoto!.path}
+              alt={loadUpload.filename ?? heroPhoto!.caption}
+              className="aspect-[4/3] w-full object-cover transition-opacity duration-150 group-hover:opacity-60"
+            />
+            {/* Hover veil: the only affordance for click-to-upload */}
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-[0.6px] text-ink uppercase opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            >
+              {loadUpload.filename ? "Replace photo" : "Upload photo"}
+            </span>
+          </>
+        ) : (
+          /* Empty stage: no truck at the gate until a demo case or an
+              upload arrives (user direction). */
+          <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted transition-colors duration-100 group-hover:text-ink">
+            <span className="text-[22px] leading-none" aria-hidden="true">
+              ◉
+            </span>
+            <span className="text-[13px] font-semibold tracking-[0.6px] uppercase">
+              Upload load photo
+            </span>
+            <span className="text-[12px]">
+              or pick a demo case on the right
+            </span>
+          </span>
+        )}
       </label>
-      <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
-        {loadUpload.filename
-          ? `Uploaded photo · ${loadUpload.filename}`
-          : heroPhoto.caption}
-      </figcaption>
+      {hasPhoto ? (
+        <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
+          {loadUpload.filename
+            ? `Uploaded photo · ${loadUpload.filename}`
+            : heroPhoto!.caption}
+        </figcaption>
+      ) : null}
       {loadUpload.filename ? (
         <button
           type="button"
@@ -329,7 +330,7 @@ export function WorkspaceClient() {
         </button>
       ) : null}
     </figure>
-  ) : null;
+  );
 
   return (
     /* Vertical gate flow: intake on top, verdict below (user direction,
@@ -352,6 +353,7 @@ export function WorkspaceClient() {
             onChange={onChange}
             onDemo={onDemo}
             onSubmit={onSubmit}
+            onReset={onReset}
             onWaybillPhoto={onWaybillPhoto}
             waybillPhoto={waybillUpload}
             loading={loading}
@@ -362,7 +364,13 @@ export function WorkspaceClient() {
       </Panel>
 
       {/* ============ Inspection Verdict ============ */}
-      <div ref={verdictRef} className="scroll-mt-[72px]">
+      {/* min-h fills the viewport below the topbar: after Inspect scrolls
+          here, the verdict IS the screen (user direction — the incoming
+          panel must not peek above it). scroll-mt clears the sticky bar. */}
+      <div
+        ref={verdictRef}
+        className="flex min-h-[calc(100vh-84px)] scroll-mt-[72px] flex-col"
+      >
       <VerdictPanel
         phase={phase}
         gates={gates}

@@ -40,6 +40,7 @@ export function IntakeForm({
   onChange,
   onDemo,
   onSubmit,
+  onReset,
   onWaybillPhoto,
   waybillPhoto,
   loading,
@@ -50,6 +51,9 @@ export function IntakeForm({
   onChange: (patch: Partial<IntakeValues>) => void;
   onDemo: (key: "green" | "amber" | "red") => void;
   onSubmit: () => void;
+  /** Clear the whole gate (form, uploads, photo, verdict) — the same
+      reset the verdict's "Next truck" button performs. */
+  onReset: () => void;
   /** Upload handler receives the picked File (or null to clear). The load
       photo upload lives beside the hero image, not in this form. */
   onWaybillPhoto: (file: File | null) => void;
@@ -252,17 +256,28 @@ export function IntakeForm({
           </p>
         ) : null}
 
-        {/* CTA anchors the panel bottom (mt-auto): right column height
-            matches the photo column, no floating button. */}
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          disabled={loading}
-          className="mt-auto w-full"
-        >
-          {loading ? "Evaluating interlock…" : "Inspect Load"}
-        </Button>
+        {/* CTA row anchors the panel bottom (mt-auto): primary Inspect +
+            a quiet Reset to clear the gate before any verdict exists. */}
+        <div className="mt-auto flex gap-2">
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            disabled={loading}
+            className="flex-1"
+          >
+            {loading ? "Evaluating interlock…" : "Inspect Load"}
+          </Button>
+          <Button
+            type="button"
+            variant="default"
+            size="lg"
+            disabled={loading}
+            onClick={onReset}
+          >
+            Reset
+          </Button>
+        </div>
       </form>
     </div>
   );
