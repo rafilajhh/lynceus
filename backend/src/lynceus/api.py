@@ -349,6 +349,10 @@ def _run_inspection_with_audit(
             # neither, and the record then honestly says None.
             "provider": vlm_result.get("provider"),
             "latency_ms": vlm_result.get("latency_ms"),
+            # Validated contaminant regions; older/stub results without
+            # them stay valid as an empty list / unspecified mode.
+            "boxes": vlm_result.get("boxes", []),
+            "localisation": vlm_result.get("localisation"),
         },
         "llm": {
             "model": str(llm_result.get("model", "")),

@@ -31,20 +31,9 @@ DEMO = REPO / "web" / "public" / "demo"
 MIN_GAP_S = 2.0
 TRUNC = 2048
 
-CONTAMINANTS = (
-    "metal/rock/concrete/tire/e-waste/plastic_film/glass/textile/"
-    "organic_residue/wet_mix"
-)
-ZONES = (
-    "top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right"
-)
-LOCATIONS_KEY = (
-    ' Also include the key "locations" (list of objects {"label": one of the '
-    'contaminant strings, "box": [x0,y0,x1,y1] normalised 0..1 from the '
-    'top-left, "zone": one of ' + ZONES + "}); use an empty list when "
-    "nothing is found."
-)
-LOCALISATION_PROMPT = _VLM_PROMPT + LOCATIONS_KEY
+# The production prompt already carries the "locations" request (same wording
+# this probe validated), so the probe sends it verbatim.
+LOCALISATION_PROMPT = _VLM_PROMPT
 
 # Hand-measured on red-1.jpg (524x524): crumpled foil tray spans roughly
 # x 32..505 px, y 50..440 px -> normalised box below.

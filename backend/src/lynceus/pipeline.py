@@ -30,6 +30,7 @@ import httpx
 from lynceus import gas_ingest
 from lynceus import gas_twin
 from lynceus.config import Settings, get_settings, provider_for_url
+from lynceus.vision_boxes import parse_locations
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -87,6 +88,12 @@ _VLM_PROMPT = (
     "organic_residue/wet_mix), and "
     '"confidence" (number 0..1, your confidence in the analysis). '
     "Be conservative: report contamination only when visible."
+    # Same wording as the validated probe (scripts/probe_token_factory.py).
+    ' Also include the key "locations" (list of objects {"label": one of the '
+    'contaminant strings, "box": [x0,y0,x1,y1] normalised 0..1 from the '
+    'top-left, "zone": one of '
+    "top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right"
+    "}); use an empty list when nothing is found."
 )
 
 _LLM_PROMPT = (
@@ -294,6 +301,7 @@ class VLLMClient:
             self._settings.vllm_vlm_url, self._settings.vlm_model, messages
         )
         latency_ms = (time.perf_counter() - started) * 1000.0
+        mode = self._settings.localisation_mode
         return {
             "detected": {
                 "contamination": parsed.get("contamination", "unknown"),
@@ -302,6 +310,8 @@ class VLLMClient:
                 "light_contaminants": parsed.get("light_contaminants", []),
             },
             "confidence": _clamp01(parsed.get("confidence")),
+            "boxes": parse_locations(parsed.get("locations"), mode),
+            "localisation": mode,
             "model": self._settings.vlm_model,
             "model_version": self._settings.vlm_model,
             "raw_output": json.dumps(parsed, sort_keys=True),
@@ -392,6 +402,7 @@ _STUB_VLM: Dict[str, Dict[str, Any]] = {
             "light_contaminants": [],
         },
         "confidence": 0.83,
+        "locations": [{"label": "metal", "zone": "center"}],
     },
 }
 
@@ -441,6 +452,8 @@ class StubAIClients:
         return {
             "detected": dict(script["detected"]),
             "confidence": script["confidence"],
+            "boxes": parse_locations(script.get("locations", []), "zone"),
+            "localisation": "zone",
             "model": "stub-vlm",
             "model_version": "stub-1",
             "raw_output": json.dumps(script, sort_keys=True),
