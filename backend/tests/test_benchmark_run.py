@@ -5,6 +5,7 @@ Uses a fake ``post`` callable; no network and no model call.
 
 from __future__ import annotations
 
+import base64
 import json
 import sys
 from pathlib import Path
@@ -230,6 +231,13 @@ def test_rate_limit_is_not_a_measurement_via_run(workspace):
     with pytest.raises(bench.RateLimitedError):
         _run(workspace, post)
     assert [r["image"] for r in _lines(workspace[2])] == ["a.jpg", "b.jpg"]
+    # The summary written on the way out reflects exactly the two measured items.
+    summary = json.loads(workspace[2].with_name("out.summary.json").read_text(encoding="utf-8"))
+    assert summary["complete"] is False
+    assert summary["n"] == 2 and summary["errors"] == 0
+    assert summary["attempt_stats"]["attempts"] == 2  # no phantom row for item 3
+    assert summary["attempt_stats"]["retried"] == 0
+    assert summary["framing"] == bench.FRAMING
 
 
 def test_rerun_after_rate_limit_skips_done_items_and_finishes(workspace, monkeypatch):
@@ -293,3 +301,31 @@ def test_provenance_abort_mid_run_keeps_earlier_rows_and_writes_none_for_the_stu
 def test_non_live_provenance_on_first_item_exits_2_before_any_row(workspace, monkeypatch):
     assert _main_with(monkeypatch, workspace, lambda p: (200, _ok_body(provenance="stub"))) == 2
     assert not workspace[2].exists() or workspace[2].read_text(encoding="utf-8") == ""
+
+
+def test_detection_matches_the_real_pipeline_and_api_wording(tmp_path, monkeypatch):
+    """Contract: a live client out of 429 retries, through the real app, is detected.
+
+    Pins ``is_rate_limited`` to the actual text produced by ``VLLMClient._chat``
+    -> ``LiveAIUnavailableError`` -> the API's 503, with stub fallback disabled.
+    """
+    from fastapi.testclient import TestClient
+
+    from lynceus import pipeline
+    from lynceus.api import create_app
+
+    monkeypatch.setenv("LYNCEUS_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("LYNCEUS_ALLOW_STUB_FALLBACK", "0")
+    monkeypatch.setattr(pipeline, "_vlm_reachable", lambda settings: True)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda s: None)  # the client's retry waits
+
+    def always_429(self, base_url, model, messages, max_tokens=512):
+        raise pipeline._RateLimitedError(0)
+
+    monkeypatch.setattr(pipeline.VLLMClient, "_chat_once", always_429)
+
+    item = {"image": "a.jpg", "category": "Metal", "expected": "reject"}
+    payload = bench.build_payload(item, 1, base64.b64encode(JPEG).decode("ascii"))
+    response = TestClient(create_app()).post("/inspect", json=payload)
+    assert response.status_code == 503, response.text[:300]
+    assert bench.is_rate_limited(response.status_code, response.json()) is True
