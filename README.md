@@ -94,6 +94,12 @@ Then open <http://localhost:8020> — the dashboard loads with three demo cases
 
 No API keys are committed; anything secret belongs in environment variables.
 
+> **Honest-contract note:** `POST /inspect` also accepts `waybill_image_base64`
+> (a photo of the paper waybill) for forward compatibility, but it is **not
+> processed today** — the verdict uses the load photo plus the waybill *text*
+> the operator types in (`manifest_text`), and no OCR is performed. The gas
+> readings are simulated by a physics digital twin, not measured by hardware.
+
 ### Serving the models on AMD (ADC MI300X)
 
 ```bash
