@@ -311,7 +311,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
           Download JSON
         </Button>
         <span className="self-center text-[12px] text-muted">
-          Immutable audit record: saved as {detail.record_id}.json
+          Tamper-evident audit record: saved as {detail.record_id}.json
         </span>
       </div>
     </div>

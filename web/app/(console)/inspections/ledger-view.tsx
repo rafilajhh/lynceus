@@ -221,7 +221,7 @@ export function LedgerView() {
   return (
     <div className="flex flex-col gap-4">
       <Panel>
-        <PanelHead title="Audit trail" meta="immutable ledger" />
+        <PanelHead title="Audit trail" meta="tamper-evident ledger" />
 
         {/* ---- states: loading / error ---- */}
         {state.kind === "loading" ? (

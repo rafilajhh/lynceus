@@ -17,11 +17,11 @@ Next.js 15 (App Router, React 19, Tailwind v4) in `web/` built to a static expor
 
 ## Product Purpose
 
-Lynceus is an AI gate inspector for alternative-fuel (RDF) facilities. It fuses a load photo (VLM), waybill text (LLM), weighbridge mass, and gate gas telemetry (physics digital twin) into one verdict — ACCEPT / ESCALATE / REJECT — with reasons, confidence, and an immutable SHA-256 audit record per truck. Success: stops contaminants (metal, rock) before they destroy shredders (≈Rp 350jt) or halt kilns (≈US$28k/hour).
+Lynceus is an AI gate inspector for alternative-fuel (RDF) facilities. It fuses a load photo (VLM), waybill text (LLM), weighbridge mass, and gate gas telemetry (physics digital twin) into one verdict — ACCEPT / ESCALATE / REJECT — with reasons, confidence, and a tamper-evident SHA-256 audit record per truck. Success: stops contaminants (metal, rock) before they destroy shredders (≈Rp 350jt) or halt kilns (≈US$28k/hour).
 
 ## Positioning
 
-AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route scoring) + immutable audit trail — not a chatbot, not a dashboard. The decision engine, AMD AI layer, fusion pipeline, and web app are all part of this project.
+AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route scoring) + tamper-evident audit trail — not a chatbot, not a dashboard. The decision engine, AMD AI layer, fusion pipeline, and web app are all part of this project.
 
 ## Operating Context
 
@@ -34,7 +34,7 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 
 - `POST /inspect`: full pipeline (photo base64 → VLM stub/live → LLM cross-check → Lynceus engine → fusion verdict → audit record + impact estimate with per-figure source URLs).
 - `POST /assess`: direct Lynceus engine assessment.
-- Audit records: immutable, atomic-write, strict-decode; 57 invariant checks; record_id never reused.
+- Audit records: tamper-evident, atomic-write, strict-decode; 57 invariant checks; record_id never reused.
 - Gas digital twin: Eq. HH-1 generation → virtual NDIR/PID/EC sensors, deterministic per truck/record; gas supports (never overrides) the visual verdict.
 - Impact estimates: prevented-loss in IDR/USD with cited basis rows (REJECT: shredder + kiln downtime; ACCEPT: RDF value band).
 - 35 backend tests green; stub AI is deterministic and honestly labeled (`provenance: stub` vs `live`).

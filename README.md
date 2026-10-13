@@ -8,7 +8,7 @@ gate gas telemetry are fused by a **vision-language model (Qwen2.5-VL-7B)** and
 an **LLM (Qwen2.5-7B)** served with **vLLM on AMD Instinct MI300X (ROCm)**,
 then scored by a **regulation-grounded decision engine**. The operator gets a
 verdict — **ACCEPT / ESCALATE / REJECT** — with reasons, confidence, and an
-immutable, SHA-256-audited record for every inspection.
+tamper-evident, SHA-256-audited record for every inspection.
 
 > One hour of kiln downtime costs ≈ US$28,000. One escaped metal chunk can do
 > exactly that. Lynceus stops it at the gate.
@@ -26,7 +26,7 @@ LLM (Qwen2.5-7B,  vLLM @ AMD MI300X) ─► waybill fields, claim-vs-observation
 Lynceus decision engine (rule-based, cited: Eq. HH-1 40 CFR 98, EN 15359-style route scores)
         │
         ▼
-Verdict ACCEPT / ESCALATE / REJECT  +  gates  +  audit record (atomic, immutable)
+Verdict ACCEPT / ESCALATE / REJECT  +  gates  +  audit record (atomic, tamper-evident)
 ```
 
 ## Provenance

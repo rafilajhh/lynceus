@@ -68,7 +68,7 @@ const STEPS = [
   {
     no: "03",
     title: "Decide",
-    text: "Fusion issues ACCEPT / ESCALATE / REJECT with reasons and confidence, sealed into an immutable SHA-256 audit record per truck.",
+    text: "Fusion issues ACCEPT / ESCALATE / REJECT with reasons and confidence, sealed into a tamper-evident SHA-256 audit record per truck.",
     gate: "gate · verdict sealed",
   },
 ] as const;
@@ -91,7 +91,7 @@ export default function LandingPage() {
           <p className="mt-5 max-w-[56ch] text-[15px] leading-[1.65] text-muted sm:text-[17px]">
             Lynceus inspects every RDF truck at the gate, before tipping:
             visual contaminant detection, waybill cross-check, and a route
-            verdict in seconds, sealed to an immutable audit record.
+            verdict in seconds, sealed to a tamper-evident audit record.
           </p>
           <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <Link
