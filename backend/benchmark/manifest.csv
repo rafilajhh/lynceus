@@ -1,0 +1,81 @@
+image,category,expected
+metal_1.jpg,Metal,reject
+glass_1.jpg,Glass,escalate
+food_organics_1.jpg,Food Organics,escalate
+vegetation_1.jpg,Vegetation,escalate
+paper_1.jpg,Paper,accept
+cardboard_1.jpg,Cardboard,accept
+plastic_1.jpg,Plastic,accept
+textile_trash_1.jpg,Textile Trash,accept
+metal_40.jpg,Metal,reject
+glass_61.jpg,Glass,escalate
+food_organics_59.jpg,Food Organics,escalate
+vegetation_73.jpg,Vegetation,escalate
+paper_51.jpg,Paper,accept
+cardboard_47.jpg,Cardboard,accept
+plastic_93.jpg,Plastic,accept
+textile_trash_32.jpg,Textile Trash,accept
+metal_79.jpg,Metal,reject
+glass_121.jpg,Glass,escalate
+food_organics_117.jpg,Food Organics,escalate
+vegetation_145.jpg,Vegetation,escalate
+paper_101.jpg,Paper,accept
+cardboard_93.jpg,Cardboard,accept
+plastic_185.jpg,Plastic,accept
+textile_trash_63.jpg,Textile Trash,accept
+metal_118.jpg,Metal,reject
+glass_181.jpg,Glass,escalate
+food_organics_175.jpg,Food Organics,escalate
+vegetation_217.jpg,Vegetation,escalate
+paper_151.jpg,Paper,accept
+cardboard_139.jpg,Cardboard,accept
+plastic_277.jpg,Plastic,accept
+textile_trash_94.jpg,Textile Trash,accept
+metal_157.jpg,Metal,reject
+glass_241.jpg,Glass,escalate
+food_organics_233.jpg,Food Organics,escalate
+vegetation_289.jpg,Vegetation,escalate
+paper_201.jpg,Paper,accept
+cardboard_185.jpg,Cardboard,accept
+plastic_369.jpg,Plastic,accept
+textile_trash_125.jpg,Textile Trash,accept
+metal_196.jpg,Metal,reject
+glass_301.jpg,Glass,escalate
+food_organics_291.jpg,Food Organics,escalate
+vegetation_361.jpg,Vegetation,escalate
+paper_251.jpg,Paper,accept
+cardboard_231.jpg,Cardboard,accept
+plastic_461.jpg,Plastic,accept
+textile_trash_156.jpg,Textile Trash,accept
+metal_235.jpg,Metal,reject
+glass_361.jpg,Glass,escalate
+food_organics_349.jpg,Food Organics,escalate
+paper_301.jpg,Paper,accept
+cardboard_277.jpg,Cardboard,accept
+plastic_553.jpg,Plastic,accept
+textile_trash_187.jpg,Textile Trash,accept
+metal_274.jpg,Metal,reject
+paper_351.jpg,Paper,accept
+cardboard_323.jpg,Cardboard,accept
+plastic_645.jpg,Plastic,accept
+textile_trash_218.jpg,Textile Trash,accept
+metal_313.jpg,Metal,reject
+paper_401.jpg,Paper,accept
+cardboard_369.jpg,Cardboard,accept
+plastic_737.jpg,Plastic,accept
+textile_trash_249.jpg,Textile Trash,accept
+metal_352.jpg,Metal,reject
+paper_451.jpg,Paper,accept
+cardboard_415.jpg,Cardboard,accept
+plastic_829.jpg,Plastic,accept
+textile_trash_280.jpg,Textile Trash,accept
+metal_391.jpg,Metal,reject
+metal_430.jpg,Metal,reject
+metal_469.jpg,Metal,reject
+metal_508.jpg,Metal,reject
+metal_547.jpg,Metal,reject
+metal_586.jpg,Metal,reject
+metal_625.jpg,Metal,reject
+metal_664.jpg,Metal,reject
+metal_703.jpg,Metal,reject
+metal_742.jpg,Metal,reject

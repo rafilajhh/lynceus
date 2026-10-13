@@ -69,6 +69,7 @@ def test_payload_is_live_neutral_and_has_no_demo_case():
     assert p["weight_kg"] == 5200 and p["declared_weight_kg"] == 5200
     assert p["supplier"] == "Benchmark" and p["photo_base64"] == "QUJD"
     assert "demo_case" not in p
+    assert "metal" not in p["photo_filename"].lower()
     low = p["manifest_text"].lower()
     assert "moisture" not in low and "metal" not in low
 
@@ -104,11 +105,11 @@ def test_resume_skips_finished_images(workspace):
     seen = []
 
     def post(payload):
-        seen.append(payload["photo_filename"])
+        seen.append(payload["truck_id"])
         return 200, _ok_body()
 
     _run(workspace, post)
-    assert seen == ["c.jpg"]
+    assert seen == ["BENCH-3"]
 
 
 def test_error_rows_are_retried_and_last_row_wins(workspace):
@@ -118,11 +119,11 @@ def test_error_rows_are_retried_and_last_row_wins(workspace):
     seen = []
 
     def post(payload):
-        seen.append(payload["photo_filename"])
+        seen.append(payload["truck_id"])
         return 200, _ok_body()
 
     summary = _run(workspace, post)
-    assert seen == ["a.jpg", "b.jpg", "c.jpg"]  # a.jpg retried
+    assert seen == ["BENCH-1", "BENCH-2", "BENCH-3"]  # BENCH-1 retried
     assert summary["n"] == 3 and summary["errors"] == 0
 
 

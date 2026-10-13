@@ -66,7 +66,7 @@ def build_payload(item: dict[str, str], n: int, photo_b64: str) -> dict[str, Any
     return {
         "truck_id": f"BENCH-{n}",
         "supplier": SUPPLIER,
-        "photo_filename": item["image"],
+        "photo_filename": f"bench-{n}.jpg",  # neutral: the class must not leak via the name
         "photo_base64": photo_b64,
         "manifest_text": MANIFEST_TEXT,
         "weight_kg": WEIGHT_KG,
