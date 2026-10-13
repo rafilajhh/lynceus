@@ -34,13 +34,20 @@ def _number(value: Any) -> Optional[float]:
     """A finite real number (bools and strings are not coordinates)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # int literal beyond float range
+        return None
     return number if math.isfinite(number) else None
 
 
-def _valid_box(
-    box: Any, min_area: float, max_area: float
-) -> Optional[Tuple[float, float, float, float]]:
+#: Returned by :func:`_valid_box` for a well-formed but oversize (full-frame)
+#: box: the whole entry is dropped, with no zone fallback.
+_OVERSIZE = object()
+
+
+def _valid_box(box: Any, min_area: float, max_area: float) -> Any:
+    """``(x0,y0,x1,y1)``, ``None`` when unusable (try zone), or ``_OVERSIZE``."""
     if not isinstance(box, (list, tuple)) or len(box) != 4:
         return None
     nums = [_number(v) for v in box]
@@ -50,7 +57,9 @@ def _valid_box(
     if not (0.0 <= x0 < x1 <= 1.0 and 0.0 <= y0 < y1 <= 1.0):
         return None
     area = (x1 - x0) * (y1 - y0)
-    if area < min_area or area > max_area:
+    if area > max_area:
+        return _OVERSIZE
+    if area < min_area:
         return None
     return x0, y0, x1, y1
 
@@ -67,7 +76,7 @@ def parse_locations(
     * ``mode == "zone"``: only each entry's ``zone`` (mapped via
       :data:`ZONES`) is used.  Any other mode is ``"box"``: the entry's
       ``box`` is used, falling back to its ``zone`` when the box is missing
-      or invalid.
+      or malformed (an oversize box drops the entry, no fallback).
     * Dropped: non-list input, non-dict entries, non-string or blank labels
       (kept labels are stripped and lowercased), boxes that are not four
       finite numbers with ``0 <= x0 < x1 <= 1`` and ``0 <= y0 < y1 <= 1``,
@@ -89,6 +98,10 @@ def parse_locations(
         if not isinstance(label, str) or not label.strip():
             continue
         coords = _valid_box(entry.get("box"), min_area, max_area) if use_box else None
+        if coords is _OVERSIZE:
+            # A full-frame box says nothing about *where*; a zone on the same
+            # entry would re-introduce the false outline, so drop the entry.
+            continue
         if coords is None:
             zone = entry.get("zone")
             if isinstance(zone, str) and zone in ZONES:

@@ -99,6 +99,21 @@ def test_full_frame_box_dropped():
     assert len(parse_locations([_loc([0.1, 0.1, 0.9, 0.9])], "box")) == 1  # 0.64
 
 
+def test_full_frame_box_with_valid_zone_dropped_entirely():
+    # Ruling 14: oversize box drops the entry; no zone fallback.
+    raw = [{"label": "textile", "box": [0, 0, 1, 1], "zone": "center"}]
+    assert parse_locations(raw, "box") == []
+
+
+def test_huge_int_coordinate_is_garbage_not_a_crash():
+    huge = 10**400
+    assert parse_locations([_loc([0, 0, huge, 1])], "box") == []
+    assert parse_locations([_loc([-huge, 0, 0.5, 0.5])], "box") == []
+    # Malformed (not oversize) box still falls back to its zone.
+    out = parse_locations([_loc([0, 0, huge, 1], zone="center")], "box")
+    assert len(out) == 1 and out[0]["x0"] == 1 / 3
+
+
 def test_max_area_is_a_parameter():
     raw = [_loc([0.0, 0.0, 1.0, 1.0])]
     assert parse_locations(raw, "box", max_area=1.0) == [
@@ -219,6 +234,25 @@ def test_inspect_live_box_mode_returns_validated_boxes(client, monkeypatch):
     assert vlm["boxes"] == [
         {"label": "metal", "x0": 0.06, "y0": 0.09, "x1": 0.96, "y1": 0.84}
     ]
+
+
+def test_inspect_full_frame_box_with_zone_yields_no_boxes(client, monkeypatch):
+    locs = '[{"label": "textile", "box": [0, 0, 1, 1], "zone": "center"}]'
+    _live_with_reply(monkeypatch, "{" + _BASE + ', "locations": ' + locs + "}")
+    resp = client.post("/inspect", json=_LIVE_PAYLOAD)
+    assert resp.status_code == 200, resp.text
+    vlm = resp.json()["ai_outputs"]["vlm"]
+    assert vlm["localisation"] == "box"
+    assert vlm["boxes"] == []
+
+
+def test_inspect_with_huge_int_coordinate_completes(client, monkeypatch):
+    locs = '[{"label": "metal", "box": [0, 0, ' + "9" * 400 + ', 1]}]'
+    _live_with_reply(monkeypatch, "{" + _BASE + ', "locations": ' + locs + "}")
+    resp = client.post("/inspect", json=_LIVE_PAYLOAD)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["provenance"] == "live"  # not a stub fallback
+    assert resp.json()["ai_outputs"]["vlm"]["boxes"] == []
 
 
 def test_inspect_live_zone_mode(client, monkeypatch):
