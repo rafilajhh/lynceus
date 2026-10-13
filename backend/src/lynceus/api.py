@@ -236,7 +236,10 @@ def _run_inspection_with_audit(
     record_id = begin.record_id
 
     ai = pipeline.run_inspection(
-        payload, pipeline.resolve_clients(payload, settings), record_id
+        payload,
+        pipeline.resolve_clients(payload, settings),
+        record_id,
+        allow_stub_fallback=settings.allow_stub_fallback,
     )
     vlm_result = ai.get("vlm") or {}
     llm_result = ai.get("llm") or {}
@@ -494,6 +497,13 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=500,
                 detail={"error": "audit_error", "message": str(exc)},
+            ) from exc
+        except pipeline.LiveAIUnavailableError as exc:
+            # Fail-closed (LYNCEUS_ALLOW_STUB_FALLBACK=0): never return a
+            # stub verdict as if the live model answered.
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "live_ai_unavailable", "message": str(exc)},
             ) from exc
 
     @app.get("/inspections", response_model=None)

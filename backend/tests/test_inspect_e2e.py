@@ -368,3 +368,55 @@ def test_health_engine_available(client):
     body = resp.json()
     assert body["status"] == "ok"
     assert body["engine_available"] is True
+
+
+# ---------------------------------------------------------------------------
+# 7. Fail-closed: live AI failure with stub fallback disabled → 503.
+# ---------------------------------------------------------------------------
+
+_LIVE_PAYLOAD = {
+    "truck_id": "B-9174-KT",
+    "photo_base64": "c3R1Yi1waG90bw==",
+    "manifest_text": _GREEN_MANIFEST,
+    "weight_kg": 18500,
+    "waste_stream": "rdf-feedstock",
+    "moisture": 0.095,
+    "age_h": 5,
+}
+
+
+class _BrokenLiveClient:
+    """Provenance-live client whose calls always raise — no httpx involved."""
+
+    provenance = "live"
+
+    def vlm(self, photo):
+        raise ConnectionError("vLLM endpoint unreachable")
+
+    def llm(self, manifest_text, context):
+        raise ConnectionError("vLLM endpoint unreachable")
+
+
+def _force_broken_live_client(monkeypatch):
+    monkeypatch.setattr(
+        pipeline, "resolve_clients", lambda payload, settings=None: _BrokenLiveClient()
+    )
+
+
+def test_live_failure_falls_back_to_stub_by_default(client, monkeypatch, tmp_path):
+    _force_broken_live_client(monkeypatch)
+    resp = client.post("/inspect", json=_LIVE_PAYLOAD)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("provenance") == "stub_fallback_live_error", body
+    assert "live" in (body.get("verdict") or {}).get("uncertainty", "").lower()
+
+
+def test_live_failure_is_503_when_stub_fallback_disabled(client, monkeypatch):
+    monkeypatch.setenv("LYNCEUS_ALLOW_STUB_FALLBACK", "0")
+    _force_broken_live_client(monkeypatch)
+    resp = client.post("/inspect", json=_LIVE_PAYLOAD)
+    assert resp.status_code == 503, resp.text
+    detail = resp.json().get("detail") or {}
+    assert detail.get("error") == "live_ai_unavailable", detail
+    assert "verdict" not in (resp.json() if isinstance(resp.json(), dict) else {})

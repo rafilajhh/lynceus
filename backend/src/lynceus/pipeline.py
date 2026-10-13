@@ -28,6 +28,10 @@ import httpx
 from lynceus import gas_twin
 from lynceus.config import Settings, get_settings
 
+
+class LiveAIUnavailableError(RuntimeError):
+    """Live AI failed and stub fallback is disabled (fail-closed mode)."""
+
 __all__ = [
     "AIClients",
     "VLLMClient",
@@ -466,6 +470,7 @@ def run_inspection(
     payload: Dict[str, Any],
     ai_clients: AIClients,
     record_id: Optional[str] = None,
+    allow_stub_fallback: bool = True,
 ) -> Dict[str, Any]:
     """Run the VLM + LLM + gas-twin stages for one inspection payload.
 
@@ -505,6 +510,11 @@ def run_inspection(
         llm_result = ai_clients.llm(manifest_text, context)
     except Exception as exc:  # noqa: BLE001 — any live failure falls back
         if ai_clients.provenance == "live":
+            if not allow_stub_fallback:
+                raise LiveAIUnavailableError(
+                    f"live AI failed ({type(exc).__name__}: {exc}); "
+                    "stub fallback disabled"
+                ) from exc
             fallback = StubAIClients(demo_case=payload.get("demo_case"))
             vlm_result = fallback.vlm(photo)
             llm_result = fallback.llm(manifest_text, context)
