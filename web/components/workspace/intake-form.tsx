@@ -39,6 +39,7 @@ export function IntakeForm({
   values,
   onChange,
   onDemo,
+  onTruckArriving,
   onSubmit,
   onReset,
   onWaybillPhoto,
@@ -50,6 +51,9 @@ export function IntakeForm({
   values: IntakeValues;
   onChange: (patch: Partial<IntakeValues>) => void;
   onDemo: (key: "green" | "amber" | "red") => void;
+  /** Gate-camera simulation: a truck arrives, the camera fires, and the
+      load enters the pipeline automatically (no operator action). */
+  onTruckArriving: () => void;
   onSubmit: () => void;
   /** Clear the whole gate (form, uploads, photo, verdict) — the same
       reset the verdict's "Next truck" button performs. */
@@ -137,6 +141,19 @@ export function IntakeForm({
             {DEMO_CASES[key].label}
           </Button>
         ))}
+        {/* Gate-camera simulation: one press = one truck arrives and the
+            camera pushes the load straight into the pipeline. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          disabled={loading}
+          title="Simulate the gate camera: a truck arrives and the load enters the pipeline automatically"
+          className="shrink-0 border border-amber-line/70 text-amber hover:bg-amber-dim"
+          onClick={onTruckArriving}
+        >
+          ◉ Truck arriving
+        </Button>
       </div>
 
       <form

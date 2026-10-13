@@ -53,6 +53,7 @@ export function WorkspaceClient() {
   const [bannerLit, setBannerLit] = useState(false);
   const [impactRunKey, setImpactRunKey] = useState(0);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
+  const autoSequence = useRef(0);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
   // Photo state: nothing is preloaded (user direction): the stage starts
@@ -152,6 +153,25 @@ export function WorkspaceClient() {
       if (demoPhotoPath.current === c.photo) demoPhotoBase64.current = b64;
     });
   }, []);
+
+  // ---- Gate camera (auto intake) -------------------------------------
+  // Simulates the production trigger: a truck stops at the weighbridge,
+  // the gate camera fires, and the load enters the pipeline without the
+  // operator touching the form. Cases rotate green -> amber -> red so a
+  // run of arrivals tells the full story; manual controls (upload, edit,
+  // Inspect) stay untouched for testing the VLM.
+  const onTruckArriving = useCallback(() => {
+    const order = ["green", "amber", "red"] as const;
+    const key = order[autoSequence.current % order.length];
+    autoSequence.current += 1;
+    onDemo(key);
+    // Fire the pipeline after the demo values land; the photo fetch is a
+    // fast local asset and the form submit re-reads the latest refs.
+    window.setTimeout(() => {
+      (document.getElementById("inspect-form") as HTMLFormElement | null)
+        ?.requestSubmit();
+    }, 350);
+  }, [onDemo]);
 
   // ---- Submit -------------------------------------------------------
   const onSubmit = useCallback(async () => {
@@ -352,6 +372,7 @@ export function WorkspaceClient() {
             values={values}
             onChange={onChange}
             onDemo={onDemo}
+            onTruckArriving={onTruckArriving}
             onSubmit={onSubmit}
             onReset={onReset}
             onWaybillPhoto={onWaybillPhoto}
