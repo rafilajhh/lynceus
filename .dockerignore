@@ -9,3 +9,12 @@ __pycache__
 .omo
 .playwright-mcp
 *.pyc
+
+# Secrets and scratch must never enter the image (patterns are rooted at the context;
+# a bare ".env" above only matches the root, so nested files need **/)
+**/.env
+backend/benchmark/runs/
+backend/runs*/
+# Benchmark images are licence-restricted (see backend/benchmark/images/ATTRIBUTION.md);
+# the runtime needs only manifest.csv and results/
+backend/benchmark/images/

@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import json
 
+import sys
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from lynceus import api
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 FRAMING = "component validation on public RealWaste images — not field data from a plant"
 
@@ -53,3 +58,9 @@ def test_manifest_csv_is_served(client):
     r = c.get("/benchmark/manifest.csv")
     assert r.status_code == 200 and "a.jpg,Metal,reject" in r.text
     assert r.headers["content-type"].startswith("text/csv")
+
+
+def test_summary_framing_matches_the_api_framing():
+    from benchmark import run as bench
+
+    assert bench.FRAMING == api.BENCHMARK_FRAMING

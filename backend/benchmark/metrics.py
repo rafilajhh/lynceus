@@ -88,3 +88,24 @@ def compute(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "total_ms": _latency(rows, "total_ms"),
         "errors": errors,
     }
+
+
+def attempt_stats(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Raw request attempts, in jsonl order, including failed ones.
+
+    ``retried`` counts error lines superseded by a *later* good row for the
+    same image.  The latency figures cover every attempt (timeouts included),
+    unlike ``compute()``, which covers completed requests only.
+    """
+    retried = 0
+    for i, row in enumerate(attempts):
+        if row.get("error") and any(
+            later["image"] == row["image"] and not later.get("error") for later in attempts[i + 1 :]
+        ):
+            retried += 1
+    values = [float(r["total_ms"]) for r in attempts if isinstance(r.get("total_ms"), (int, float))]
+    return {
+        "attempts": len(attempts),
+        "retried": retried,
+        "total_ms": {"p95": _percentile(values, 0.95), "max": max(values) if values else None},
+    }

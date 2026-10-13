@@ -37,9 +37,18 @@
     "p95": 34378.4
   },
   "errors": 0,
+  "framing": "component validation on public RealWaste images — not field data from a plant",
   "date": "2026-10-13",
   "manifest_n": 80,
   "complete": true,
+  "attempt_stats": {
+    "attempts": 83,
+    "retried": 3,
+    "total_ms": {
+      "p95": 43274.2,
+      "max": 93334.2
+    }
+  },
   "vlm_model": "MiniCPM-V-4.7-35B-A3B",
   "llm_model": "DeepSeek-V4-Flash",
   "provider": "amd-token-factory",

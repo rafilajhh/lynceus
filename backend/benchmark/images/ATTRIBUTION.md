@@ -18,7 +18,9 @@ The 80 images in this folder are a subset of **RealWaste**:
   download) instead says **CC BY-NC-SA 4.0**.
 - The two statements disagree. Until the authors clarify, treat the more
   restrictive terms as binding: attribution, non-commercial use, share-alike.
-  These images are used only to validate the gate, not shipped in the product.
+  These images are used only to validate the gate. They are not part of the product:
+  `.dockerignore` excludes `backend/benchmark/images/`, so the container image carries
+  only `manifest.csv` and `results/`.
 
 ## Selection rule
 

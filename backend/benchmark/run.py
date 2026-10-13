@@ -50,6 +50,8 @@ MANIFEST_TEXT = (
 WEIGHT_KG = 5200
 SUPPLIER = "Benchmark"
 MAX_CONSECUTIVE_ERRORS = 3
+#: Stated with every summary; the API serves the same sentence (tested equal).
+FRAMING = "component validation on public RealWaste images — not field data from a plant"
 
 
 class ProvenanceError(RuntimeError):
@@ -142,20 +144,39 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
     return list(latest.values())
 
 
+def load_attempts(path: Path) -> list[dict[str, Any]]:
+    """Every raw line of the jsonl, in order (failed attempts included)."""
+    if not path.is_file():
+        return []
+    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
 def done_images(path: Path) -> set[str]:
     return {r["image"] for r in load_rows(path) if not r.get("error")}
 
 
-def build_summary(rows: list[dict[str, Any]], date: str, manifest_n: int) -> dict[str, Any]:
+def build_summary(
+    rows: list[dict[str, Any]],
+    date: str,
+    manifest_n: int,
+    attempts: Optional[list[dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    """Summary of the final row per image plus the raw-attempt disclosure.
+
+    ``attempts`` is every jsonl line (default: just ``rows``).  ``n``/latency
+    cover completed requests; ``attempt_stats`` covers every attempt.
+    """
     from benchmark import metrics
 
     summary = metrics.compute(rows)
     good = [r for r in rows if not r.get("error")]
     summary.update(
         {
+            "framing": FRAMING,
             "date": date,
             "manifest_n": manifest_n,
-            "complete": len(rows) == manifest_n,
+            "complete": len(good) == manifest_n,
+            "attempt_stats": metrics.attempt_stats(attempts if attempts is not None else rows),
             "vlm_model": next((r["vlm_model"] for r in good if r.get("vlm_model")), None),
             "llm_model": next((r["llm_model"] for r in good if r.get("llm_model")), None),
             "provider": next((r["provider"] for r in good if r.get("provider")), None),
@@ -266,7 +287,7 @@ def run(
             break
 
     rows = load_rows(out)
-    summary = build_summary(rows, out.stem, len(items))
+    summary = build_summary(rows, out.stem, len(items), load_attempts(out))
     summary_path = out.with_name(out.stem + ".summary.json")
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     log(f"summary -> {summary_path}")

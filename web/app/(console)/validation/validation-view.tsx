@@ -137,12 +137,13 @@ export function ValidationView() {
         </h1>
         <p className="m-0 px-4 pt-4 text-[15px] font-semibold text-ink">{framing}.</p>
         <p className="m-0 max-w-[78ch] px-4 pt-1.5 text-[13px] leading-relaxed text-muted">
-          Each image was posted live to the deployed gate (vision model on AMD Token
-          Factory) with the same neutral waybill and a consistent weight, so the weight and
-          cross-check gates pass and the photo decides. Scripted demo cases were not used.
+          Each image was posted live through the gate&apos;s API code to the vision model on AMD
+          Token Factory, with the same neutral waybill and a consistent weight, so the weight
+          and cross-check gates pass and the photo decides. Scripted demo cases were not used.
         </p>
         <HeadlineRun summary={summary} />
         <Incomplete summary={summary} />
+        <Retries summary={summary} />
       </Panel>
 
       <Panel>
@@ -156,7 +157,10 @@ export function ValidationView() {
           metal as the positive class. Where the matrix shows accept and escalate
           disagreeing, part of that reflects policy (for example, textile trash and plastic
           expected to accept can carry plastic film or textile, which the gate escalates),
-          not vision error. The Error column counts refusals and failed requests; they are
+          not vision error. In this run, one of the three false rejects (a plastic image) came from the
+          vision model&apos;s free-text description mentioning a &quot;concrete floor&quot;,
+          which the gate matches as a hard-contaminant word: a conservative error that lowers
+          precision. The Error column counts refusals and failed requests; they are
           never counted as correct.
         </p>
       </Panel>
@@ -204,10 +208,25 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
         ))}
       </p>
       <p className="figure m-0 mt-3 text-[12px] text-faint">
-        n = {summary.n} images · {summary.errors} errors or refusals (counted as misses) · one run, small
-        sample: the intervals are wide
+        n = {summary.n} images · {summary.errors} errors or refusals in the final results (an error on a
+        metal image counts as a miss) · one run, small sample: the intervals are wide
       </p>
     </div>
+  );
+}
+
+/** Failed-then-retried requests are disclosed; latency figures cover completed ones. */
+function Retries({ summary }: { summary: BenchmarkSummary }) {
+  const a = summary.attempt_stats;
+  if (!a || a.retried === 0) return null;
+  return (
+    <p className="m-0 border-t border-seam px-4 py-3 text-[13px] text-muted">
+      <span className="figure text-ink">{a.retried}</span> of{" "}
+      <span className="figure text-ink">{a.attempts}</span> requests timed out on the shared
+      endpoint and were retried; the latency figures cover completed requests (all-attempt p95{" "}
+      <span className="figure text-ink">{seconds(a.total_ms.p95)}</span>, longest{" "}
+      <span className="figure text-ink">{seconds(a.total_ms.max)}</span>).
+    </p>
   );
 }
 

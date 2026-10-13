@@ -128,12 +128,38 @@ def test_error_rows_are_retried_and_last_row_wins(workspace):
 
 
 def test_three_consecutive_errors_stop_the_run(workspace):
+    manifest, images, out = workspace
+    # A fourth item, so the stop is real: without the guard d.jpg would be posted.
+    (images / "d.jpg").write_bytes(JPEG)
+    with manifest.open("a", encoding="utf-8") as fh:
+        fh.write("d.jpg,Paper,accept" + chr(10))
     calls = []
 
     def post(payload):
-        calls.append(1)
+        calls.append(payload["truck_id"])
         return 429, {"detail": {"message": "rate limited"}}
 
     summary = _run(workspace, post)
-    assert len(calls) == bench.MAX_CONSECUTIVE_ERRORS
-    assert summary["errors"] == 3
+    assert calls == ["BENCH-1", "BENCH-2", "BENCH-3"]
+    assert summary["errors"] == 3 and summary["n"] == 3
+    assert summary["complete"] is False
+
+
+def test_summary_discloses_retries_and_framing(workspace):
+    _run(workspace, lambda p: (503, {"detail": {"message": "ReadTimeout"}}), limit=1)
+    summary = _run(workspace, lambda p: (200, _ok_body()))
+    assert summary["framing"] == bench.FRAMING
+    assert summary["attempt_stats"]["attempts"] == 4  # 1 failed attempt + 3 completed
+    assert summary["attempt_stats"]["retried"] == 1
+    assert summary["errors"] == 0 and summary["complete"] is True
+
+
+def test_complete_counts_good_rows_not_error_rows(workspace):
+    # Every image has a row, but none is a completed request: not complete.
+    rows = [
+        {"image": n, "category": "Paper", "expected": "accept", "predicted": None,
+         "error": "HTTP 503", "total_ms": 1.0}
+        for n in ("a.jpg", "b.jpg", "c.jpg")
+    ]
+    summary = bench.build_summary(rows, "2026-10-13", 3)
+    assert summary["n"] == 3 and summary["complete"] is False

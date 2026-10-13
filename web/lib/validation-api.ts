@@ -53,6 +53,15 @@ const summarySchema = z.object({
     .catch({ precision: null, recall: null, f1: null, tp: 0, fp: 0, fn: 0 }),
   latency_ms: percentiles,
   total_ms: percentiles,
+  /** Every raw request attempt (failed ones included); absent in older summaries. */
+  attempt_stats: z
+    .object({
+      attempts: count,
+      retried: count,
+      total_ms: z.object({ p95: metric, max: metric }).catch({ p95: null, max: null }),
+    })
+    .nullish()
+    .catch(null),
   vlm_model: z.string().nullish().catch(null),
   llm_model: z.string().nullish().catch(null),
   provider: z.string().nullish().catch(null),
