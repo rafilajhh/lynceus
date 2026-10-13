@@ -335,7 +335,14 @@ def _run_inspection_with_audit(
     next_steps = actions.next_steps(
         verdict,
         gates,
-        vlm_result.get("detected") or {},
+        {
+            **(vlm_result.get("detected") or {}),
+            # The hard-contaminant rule decide() itself applied (one source
+            # of truth): empty when the VLM was not confident enough.
+            "hard_contaminants": decision.confident_hard_contaminants(
+                payload, vlm_result, llm_result
+            ),
+        },
         missing_inputs,
         record_id,
     )

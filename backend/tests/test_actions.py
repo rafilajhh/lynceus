@@ -315,3 +315,57 @@ def test_actions_in_audit_record(client):
     assert recorded == body["actions"] == body["engine_outputs"]["recommendation"]["actions"]
     for step in recorded:
         audit.ActionStep(**step)
+
+
+# ---------------------------------------------------------------------------
+# Hard-contaminant steps follow decide()'s own rule (confident_hard_contaminants)
+# ---------------------------------------------------------------------------
+
+
+def _decide_and_steps(inputs, vlm, llm):
+    verdict, gates, _ = decision.decide(inputs, vlm, llm, None)
+    detected = dict(vlm.get("detected") or {})
+    detected["hard_contaminants"] = decision.confident_hard_contaminants(inputs, vlm, llm)
+    return verdict, actions.next_steps(verdict, gates, detected, [], "r1")
+
+
+def test_text_only_metal_reject_gets_do_not_tip():
+    inputs = {
+        "photo_filename": "p.jpg",
+        "manifest_text": "Waste: RDF. Driver note: scrap metal loaded on top.",
+        "weight_kg": 5000.0,
+        "declared_weight_kg": 5000.0,
+    }
+    vlm = {"detected": {"contamination": "mixed fluff", "moisture": 0.1,
+                        "hard_contaminants": "", "light_contaminants": []},
+           "confidence": 0.8}
+    verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
+    assert verdict == D.REJECT
+    assert _refs(steps)[0] == "SOP-RDF-4.1"
+    assert "remove: metal." in steps[1]["text"]
+
+
+def test_weight_mismatch_reject_with_unconfident_hard_list_has_no_sorting_steps():
+    inputs = {
+        "photo_filename": "p.jpg",
+        "manifest_text": "Waste: RDF. Declared weight: 10,000 kg",
+        "weight_kg": 14000.0,
+    }
+    vlm = {"detected": {"contamination": "possible metal", "moisture": 0.1,
+                        "hard_contaminants": ["metal"], "light_contaminants": []},
+           "confidence": 0.45}
+    verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
+    assert verdict == D.REJECT
+    assert not any(r.startswith("SOP-RDF-4.1") or r.startswith("SOP-RDF-4.2") for r in _refs(steps))
+    assert _refs(steps) == ["SOP-RDF-3.2", "SOP-RDF-4.3"]
+
+
+def test_confident_hard_contaminants_unit():
+    vlm = {"detected": {"contamination": "tire and rock"}, "confidence": 0.6}
+    assert decision.confident_hard_contaminants({}, vlm, {}) == ["rock", "tire"]
+    vlm["confidence"] = 0.59
+    assert decision.confident_hard_contaminants({}, vlm, {}) == []
+    assert decision.confident_hard_contaminants(
+        {"manifest_text": "contains Metal"}, {"detected": {}, "confidence": 0.9}, {}
+    ) == ["metal"]
+    assert decision.confident_hard_contaminants(None, None, None) == []

@@ -35,6 +35,7 @@ __all__ = [
     "HARD_CONTAMINANT_CONFIDENCE",
     "UNSAFE_VLM_CONFIDENCE",
     "WEIGHT_MISMATCH_THRESHOLD",
+    "confident_hard_contaminants",
     "GAS_CH4_ANAEROBIC_THRESHOLD_PPM",
     "decide",
 ]
@@ -115,6 +116,32 @@ def _waybill_moisture_claim(text: str) -> Optional[float]:
         if 0.0 <= pct <= 100.0:
             return pct / 100.0
     return None
+
+
+def confident_hard_contaminants(
+    inputs: Optional[Dict[str, Any]],
+    vlm_result: Optional[Dict[str, Any]],
+    llm_result: Optional[Dict[str, Any]],
+) -> List[str]:
+    """Hard contaminants that make :func:`decide` reject, else ``[]``.
+
+    Single source of truth for the hard-contamination rule: whole-word hits
+    across every VLM ``detected`` value, the waybill text and the LLM
+    cross-check notes, trusted only when the VLM confidence is at/above
+    ``HARD_CONTAMINANT_CONFIDENCE``.  Returned sorted and de-duplicated.
+    """
+    vlm_result = vlm_result if isinstance(vlm_result, dict) else {}
+    llm_result = llm_result if isinstance(llm_result, dict) else {}
+    manifest_text = (inputs or {}).get("manifest_text") or ""
+    detected = vlm_result.get("detected") or {}
+    detected_text = " ".join(str(part) for part in detected.values()).lower()
+    waybill_flags = str(llm_result.get("crosscheck_notes", "")).lower()
+    scan_text = f"{detected_text} {manifest_text.lower()} {waybill_flags}"
+    hits = _find_terms(scan_text, HARD_CONTAMINANTS)
+    confidence = _as_float(vlm_result.get("confidence"))
+    if hits and confidence is not None and confidence >= HARD_CONTAMINANT_CONFIDENCE:
+        return sorted(set(hits))
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -262,19 +289,12 @@ def decide(
                 f"VLM confidence {vlm_confidence:.2f} is within the safe range."
             )
 
-    # ----- Contamination scan (VLM detections + waybill notes) -----------
+    # ----- Contamination scan (hard: shared helper; light: VLM detections) --
     detected_text = " ".join(str(part) for part in vlm_detected.values()).lower()
-    waybill_flags = str((llm_result or {}).get("crosscheck_notes", "")).lower()
-    scan_text = f"{detected_text} {manifest_text.lower()} {waybill_flags}"
-
-    hard_hits = _find_terms(scan_text, HARD_CONTAMINANTS)
     light_hits = _find_terms(detected_text, LIGHT_CONTAMINANTS)
 
-    hard_confident = bool(
-        hard_hits
-        and vlm_confidence is not None
-        and vlm_confidence >= HARD_CONTAMINANT_CONFIDENCE
-    )
+    confident_hard = confident_hard_contaminants(inputs, vlm_result, llm_result)
+    hard_confident = bool(confident_hard)
 
     # ----- OCR / LLM confidence gate ---------------------------------------
     llm_confidence = _as_float((llm_result or {}).get("confidence"))
@@ -379,7 +399,7 @@ def decide(
     # ----- Verdict fusion (priority: refuse > reject > escalate > accept) --
     if hard_confident:
         reasons.append(
-            f"Hard contamination detected in the load: {', '.join(sorted(set(hard_hits)))} "
+            f"Hard contamination detected in the load: {', '.join(confident_hard)} "
             f"(VLM confidence {vlm_confidence:.2f})."
         )
     if weight_mismatch is not None and weight_mismatch > WEIGHT_MISMATCH_THRESHOLD:
