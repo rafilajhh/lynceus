@@ -17,6 +17,11 @@ The output is resumable: images that already have a clean row in the output
 file are skipped.  A request error is recorded as a row with ``error`` set (and
 retried on the next run); three errors in a row stop the run so a throttled
 shared key is not hammered.
+
+Rate limiting is different: when the live client has exhausted its own 429
+retries the API answers 503 with a message saying the endpoint is
+rate-limited.  That is not a measurement, so the run stops at once (exit code
+2), writes NO row for that image, and a re-run resumes from it.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ import base64
 import csv
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -56,6 +62,30 @@ FRAMING = "component validation on public RealWaste images — not field data fr
 
 class ProvenanceError(RuntimeError):
     """A response was not produced by the live models; the run must stop."""
+
+
+class RateLimitedError(RuntimeError):
+    """The shared endpoint is rate-limited; the run must stop without a row."""
+
+
+_RATE_LIMIT_RE = re.compile(r"rate[- ]limited", re.IGNORECASE)
+
+
+def _error_message(body: Any) -> str:
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return (detail.get("message") if isinstance(detail, dict) else str(detail)) or ""
+
+
+def is_rate_limited(status: int, body: Any) -> bool:
+    """True for the API's rate-limit failure: HTTP 503 whose message says so.
+
+    The live client retries 429s itself and then raises "endpoint rate-limited
+    after 3 attempts"; with stub fallback disabled the API reports that as 503
+    ``live_ai_unavailable`` carrying that text.  Any other status, or a 503
+    that does not mention rate limiting (timeouts, bad output, ...), is an
+    ordinary error row.
+    """
+    return status == 503 and bool(_RATE_LIMIT_RE.search(_error_message(body)))
 
 
 def read_manifest(path: Path = MANIFEST) -> list[dict[str, str]]:
@@ -255,6 +285,7 @@ def run(
 
     consecutive_errors = 0
     last_end = 0.0
+    rate_limited: Optional[str] = None
     for n, item in todo:
         wait = min_interval - (time.monotonic() - last_end) if last_end else 0.0
         if wait > 0:
@@ -264,12 +295,16 @@ def run(
         status, body = post(build_payload(item, n, photo))
         total_ms = (time.perf_counter() - started) * 1000.0
         last_end = time.monotonic()
+        if is_rate_limited(status, body):
+            # Not a measurement: write no row, stop now, resume from here later.
+            rate_limited = f"{item['image']}: {_error_message(body)}"[:300]
+            log(f"[{n}/{len(items)}] {item['image']} RATE LIMITED: stopping, no row written")
+            break
         if status == 200:
             row = row_from_response(item, body, total_ms)  # may abort: no row written
             consecutive_errors = 0
         else:
-            detail = body.get("detail") if isinstance(body, dict) else None
-            message = (detail.get("message") if isinstance(detail, dict) else str(detail)) or ""
+            message = _error_message(body)
             row = error_row(item, f"HTTP {status}: {message}"[:300], total_ms)
             consecutive_errors += 1
         with out.open("a", encoding="utf-8") as fh:
@@ -291,6 +326,11 @@ def run(
     summary_path = out.with_name(out.stem + ".summary.json")
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     log(f"summary -> {summary_path}")
+    if rate_limited:
+        raise RateLimitedError(
+            f"endpoint rate-limited at {rate_limited}. Items already measured are kept; "
+            "re-run later to resume."
+        )
     return summary
 
 
@@ -303,7 +343,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         run(out=args.out, min_interval=args.min_interval, limit=args.limit)
-    except ProvenanceError as exc:
+    except (ProvenanceError, RateLimitedError) as exc:
         print(f"ABORT: {exc}", file=sys.stderr)
         return 2
     return 0
