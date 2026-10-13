@@ -18,7 +18,7 @@ server steps were not, since nothing in this repository deploys anywhere for you
 
 ```bash
 git clone <your repo url> lynceus && cd lynceus
-git checkout feat/lynceus-1.0          # or the branch / tag you are deploying
+git checkout main                      # or the branch / tag you are deploying
 ```
 
 Create `/etc/lynceus.env` (outside the repo, so it cannot be committed) from the
@@ -77,6 +77,10 @@ Install Caddy (<https://caddyserver.com/docs/install>), then `/etc/caddy/Caddyfi
 
 ```
 your.domain.example {
+    # /inspect takes a base64 photo (8 MB cap in the app); refuse bigger bodies at the edge.
+    request_body {
+        max_size 12MB
+    }
     reverse_proxy 127.0.0.1:8020 {
         transport http {
             read_timeout 150s
