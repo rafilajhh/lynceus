@@ -23,6 +23,8 @@ export interface InspectPayload {
 
 export interface InspectResponse {
   record_id?: string;
+  /** "live" | "stub" | "stub_fallback_live_error" — backend-provenanced. */
+  provenance?: string;
   verdict?: {
     decision?: Decision;
     decided_at_utc?: string;

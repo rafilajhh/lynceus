@@ -9,11 +9,28 @@
 
 import type { ReactNode } from "react";
 import { Panel, PanelHead } from "@/components/ui/panel";
+import { Badge } from "@/components/ui/badge";
 import { GateStrip, type GateDisplay, type GatePhase } from "./gate-strip";
 import { ImpactCounter } from "./impact-counter";
 import { AuditModal } from "./audit-modal";
 import type { InspectResponse } from "@/lib/inspect-api";
 import { cn } from "@/lib/utils";
+
+const PROVENANCE_LABEL: Record<string, { text: string; live: boolean }> = {
+  live: { text: "Live AMD", live: true },
+  stub: { text: "Scripted sample", live: false },
+  stub_fallback_live_error: { text: "Scripted sample · live AI offline", live: false },
+};
+
+function ProvenanceBadge({ provenance }: { provenance?: string }) {
+  const entry = provenance ? PROVENANCE_LABEL[provenance] : undefined;
+  if (!entry) return null;
+  return (
+    <Badge variant={entry.live ? "accept" : "default"}>
+      {entry.text}
+    </Badge>
+  );
+}
 
 type VerdictTone = "accept" | "escalate" | "reject" | "refuse" | "unknown";
 
@@ -200,8 +217,13 @@ export function VerdictPanel({
         >
           {/* 10px radius: matches --radius-card for the banner container.
               4px tracking: industrial register for the verdict label (small-caps companion). */}
-          <span className="text-[20px] font-bold tracking-[4px]">
-            {bannerLit ? style.label : "— — —"}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="text-[20px] font-bold tracking-[4px]">
+              {bannerLit ? style.label : "— — —"}
+            </span>
+            {phase === "resolved" && data ? (
+              <ProvenanceBadge provenance={data.provenance} />
+            ) : null}
           </span>
           {phase === "resolved" && onReset ? (
             <button
