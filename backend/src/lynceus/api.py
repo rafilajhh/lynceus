@@ -27,6 +27,10 @@ from lynceus.config import get_settings
 
 _WEB_DIR = Path(__file__).resolve().parents[2] / "web" / "out"
 
+# No OCR is performed on the waybill; this is the fixed confidence attached
+# to operator-typed manifest text, not an OCR score.
+_MANUAL_TEXT_CONFIDENCE = 0.95
+
 def _web_file(filename: str) -> Path:
     """Absolute path of a static-export page inside ``web/out``."""
     return _WEB_DIR / filename
@@ -211,10 +215,10 @@ def _run_inspection_with_audit(
             "provenance": request.demo_case or "user_upload",
         },
         "manifest_text": {
-            "source": "manual_entry",
+            "source": "manual_text",
             "raw_text_sha256": audit.sha256_field(manifest_text.encode("utf-8")),
             "extracted_fields": {},
-            "ocr_confidence": 0.95,
+            "ocr_confidence": _MANUAL_TEXT_CONFIDENCE,
         },
         "weight": {
             "value_kg": request.weight_kg if request.weight_kg is not None else 0.0,
