@@ -1,0 +1,11 @@
+.git
+node_modules
+web/out
+runs
+__pycache__
+.env
+.venv
+.impeccable
+.omo
+.playwright-mcp
+*.pyc
