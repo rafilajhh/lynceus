@@ -41,7 +41,7 @@ were all built for this project.
 backend/            FastAPI app: engine adapter, AI pipeline (vLLM client), audit records
   src/lynceus/        the service package (api, pipeline, decision, audit, impact)
   src/lynceus_engine/ the vendored decision engine (pure Python, MIT)
-  tests/              pytest suite (57 audit-invariant checks + API tests)
+  tests/              35 backend tests (one audit-invariant test with ~57 sub-checks) + opt-in live smoke module (LYNCEUS_LIVE_TESTS=1)
   scripts/            demo seeding utility
 web/                Operator dashboard — Next.js 15 (App Router) static export
   app/                routes: / (landing), /app (workspace), /inspections (ledger)
@@ -89,7 +89,6 @@ Then open <http://localhost:8020> — the dashboard loads with three demo cases
 | `VLM_MODEL` | `Qwen/Qwen2.5-VL-7B-Instruct` | Vision-language model id |
 | `LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Text model id |
 | `VLLM_API_KEY` | *(empty)* | Optional bearer key for the vLLM endpoints; no auth header sent when empty |
-| `LYNCEUS_AI_PROVIDER` | `vllm` | AI provider selector (`vllm` or `openai-compatible` — same client logic) |
 | `LYNCEUS_STORAGE_DIR` | `./runs` | Where inspection audit records live |
 | `AUDIT_FORMAT_VERSION` | `1` | Audit record schema version |
 
@@ -109,9 +108,35 @@ see `docs/research/amd-gpu-stack.md`.
 
 ```bash
 cd backend
-python -m pytest tests/ -q        # 57 audit-invariant checks + API tests
+python -m pytest tests/ -q        # 35 passed, 1 skipped by default; enable live smoke with LYNCEUS_LIVE_TESTS=1
 ```
 
 ## License
 
 MIT (see `LICENSE`).
+
+## Run with Docker
+
+One container ships the API and the pre-built static UI. `Dockerfile` builds the
+Next.js export in a `node:20-alpine` stage and copies it into a `python:3.12-slim`
+runtime, so no Node toolchain is needed on the target host.
+
+```bash
+# Build the image
+docker build -t lynceus .
+
+# Run it, persisting audit records to a host directory
+docker run --rm -p 8020:8020 \
+  -v "$PWD/runs:/data" \
+  lynceus
+```
+
+Then open <http://localhost:8020>. The `-v "$PWD/runs:/data"` flag mounts a host
+directory onto `/data`, which is the image's `LYNCEUS_STORAGE_DIR` — inspection
+audit records survive container restarts. Point the vLLM variables at your model
+hosts with `-e VLLM_VLM_URL=... -e VLLM_LLM_URL=...` (see the configuration table
+above); the container defaults to the built-in `http://localhost:...` endpoints,
+which are not reachable from inside the container unless the models run alongside it.
+
+> `docker build` not yet validated on this dev machine (no Docker installed);
+> validate on a Docker-capable machine before deployment.

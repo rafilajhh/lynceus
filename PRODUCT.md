@@ -37,7 +37,7 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 - Audit records: immutable, atomic-write, strict-decode; 57 invariant checks; record_id never reused.
 - Gas digital twin: Eq. HH-1 generation → virtual NDIR/PID/EC sensors, deterministic per truck/record; gas supports (never overrides) the visual verdict.
 - Impact estimates: prevented-loss in IDR/USD with cited basis rows (REJECT: shredder + kiln downtime; ACCEPT: RDF value band).
-- 26 backend tests green; stub AI is deterministic and honestly labeled (`provenance: stub` vs `live`).
+- 35 backend tests green; stub AI is deterministic and honestly labeled (`provenance: stub` vs `live`).
 - Constraint: eligibility requires AMD to power the working product at demo time.
 
 ## Brand Commitments
