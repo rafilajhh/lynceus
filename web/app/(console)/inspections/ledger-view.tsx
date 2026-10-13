@@ -255,7 +255,7 @@ export function LedgerView() {
 
             {/* ---- search + verdict filter ---- */}
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
-              <div className="w-full sm:w-[260px]">
+              <div className="w-full sm:w-auto sm:flex-1">
                 <input
                   type="search"
                   value={search}
