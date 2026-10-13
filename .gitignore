@@ -40,3 +40,4 @@ runs-e2e-real*/
 # Screenshot artifacts from visual QA / agent runs
 .playwright-mcp/
 assessB-*.png
+critique-*.png
