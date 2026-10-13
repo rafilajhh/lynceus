@@ -18,3 +18,10 @@ backend/runs*/
 # Benchmark images are licence-restricted (see backend/benchmark/images/ATTRIBUTION.md);
 # the runtime needs only manifest.csv and results/
 backend/benchmark/images/
+
+# Nested build output / caches (bare names above only match the context root)
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+backend/tests/

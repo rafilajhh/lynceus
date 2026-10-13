@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -34,9 +35,27 @@ from lynceus import pipeline
 from lynceus import shift
 from lynceus.config import get_settings, provider_for_url
 
-_WEB_DIR = Path(__file__).resolve().parents[3] / "web" / "out"
-#: Validation benchmark assets (manifest + committed result files).
-_BENCHMARK_DIR = Path(__file__).resolve().parents[2] / "benchmark"
+def _dir_from_env(name: str, default: Path) -> Path:
+    """A directory from environment variable ``name``, else the source-tree ``default``.
+
+    The defaults resolve relative to this file, which is only right for a
+    source checkout or an editable install.  A regular ``pip install`` puts the
+    package under site-packages, so the container sets ``LYNCEUS_WEB_DIR`` /
+    ``LYNCEUS_BENCHMARK_DIR`` to where it staged those assets.
+    """
+    value = os.environ.get(name, "").strip()
+    return Path(value) if value else default
+
+
+#: Static web export served at ``/`` (``LYNCEUS_WEB_DIR`` overrides the source-tree path).
+_WEB_DIR = _dir_from_env(
+    "LYNCEUS_WEB_DIR", Path(__file__).resolve().parents[3] / "web" / "out"
+)
+#: Validation benchmark assets (manifest + committed result files);
+#: ``LYNCEUS_BENCHMARK_DIR`` overrides the source-tree path.
+_BENCHMARK_DIR = _dir_from_env(
+    "LYNCEUS_BENCHMARK_DIR", Path(__file__).resolve().parents[2] / "benchmark"
+)
 #: What the benchmark is, stated with every result so no page can overstate it.
 BENCHMARK_FRAMING = (
     "component validation on public RealWaste images — not field data from a plant"

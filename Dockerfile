@@ -1,10 +1,10 @@
-# NOTE: docker build not yet validated (no Docker on the authoring machine); validate on a Docker-capable host before deployment.
-#
 # Lynceus single-container image: FastAPI backend + statically exported Next.js UI.
-# Layout note: backend/src/lynceus/api.py computes
-#   _WEB_DIR = Path(__file__).resolve().parents[3] / "web" / "out"
-# which from /app/backend/src/lynceus/api.py resolves to /app/web/out —
-# the UI is staged at exactly that repo-relative location.
+#
+#   docker build -t lynceus .
+#   docker run -d --name lynceus -p 8020:8020 --env-file .env -v lynceus-runs:/data/runs lynceus
+#
+# The AMD Token Factory key is supplied at run time (--env-file / -e) and is never
+# copied into the image (.dockerignore excludes every .env).
 
 # ---------- Stage 1: build the static web export ----------
 FROM node:20-alpine AS web
@@ -22,23 +22,44 @@ RUN npm run build
 # ---------- Stage 2: runtime ----------
 FROM python:3.12-slim
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /app
 
-# Backend package (src layout, includes the vendored lynceus_engine).
+# Backend sources, sample-shift seeder and the committed benchmark manifest/results
+# (the benchmark images are excluded by .dockerignore).
 COPY backend/ ./backend/
 
-# Install the backend and its dependencies from its own pyproject.toml.
+# Regular (non-editable) install; knowledge/*.md ships as package data.
 RUN pip install --no-cache-dir ./backend
 
-# Static web export built in stage 1, kept at the repo-relative location
-# that _WEB_DIR resolves to (repo root web/out).
+# Static web export from stage 1.
 COPY --from=web /app/web/out ./web/out
 
-# Persistent audit-record storage (LYNCEUS_STORAGE_DIR default in config.py is ./runs).
-ENV LYNCEUS_STORAGE_DIR=/data
-RUN mkdir -p /data
-VOLUME /data
+COPY deploy/entrypoint.sh /usr/local/bin/lynceus-entrypoint
+RUN chmod +x /usr/local/bin/lynceus-entrypoint
+
+# A site-packages install cannot find web/out or benchmark/ relative to the
+# source tree, so point the app at where they were staged.
+# Audit records live on a volume so they survive container replacement.
+ENV LYNCEUS_WEB_DIR=/app/web/out \
+    LYNCEUS_BENCHMARK_DIR=/app/backend/benchmark \
+    LYNCEUS_STORAGE_DIR=/data/runs \
+    PORT=8020
+
+# Unprivileged runtime user; the volume mount point is created owned by it so a
+# fresh named volume inherits that ownership.
+RUN useradd --uid 10001 --no-create-home --home-dir /app lynceus \
+    && mkdir -p /data/runs \
+    && chown -R lynceus:lynceus /data
+USER lynceus
+
+VOLUME /data/runs
 
 EXPOSE 8020
 
-CMD ["python", "-m", "lynceus.main"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8020'), timeout=4)"
+
+ENTRYPOINT ["lynceus-entrypoint"]
