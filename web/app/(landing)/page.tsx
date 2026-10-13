@@ -25,6 +25,7 @@ const PROOF_FIGURES = [
     suffix: " jt",
     decimals: 0,
     label: "One industrial shredder destroyed by a single metal contaminant",
+    labelSuffix: "≈ US$22k",
     source:
       "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost · docs/research/realcase-indonesia.md §5b",
     grow: "lg:w-[1.25fr]",
@@ -35,6 +36,7 @@ const PROOF_FIGURES = [
     suffix: "k/hr",
     decimals: 0,
     label: "Cement kiln unplanned downtime, per hour of lost clinker",
+    labelSuffix: "≈ Rp 450 jt",
     source:
       "oxmaint US cement benchmark ≈ Rp 450 jt/hr @ Rp 16,000/USD · docs/research/realcase-indonesia.md §5a",
     grow: "lg:w-[1fr]",
@@ -45,6 +47,7 @@ const PROOF_FIGURES = [
     suffix: " t/trip",
     decimals: 1,
     label: "Typical arm-roll load that must be inspected before tipping",
+    labelSuffix: null,
     source:
       "ITATS Surabaya, 14 m³ × 372.71 kg/m³, weighed at TPA Benowo weighbridge · docs/research/realcase-indonesia.md §3a",
     grow: "lg:w-[0.85fr]",
@@ -108,8 +111,8 @@ export default function LandingPage() {
         {/* Proof photo panel: evidence, labeled */}
         <figure className="panel m-0 flex flex-col">
           <Image
-            src="/demo/red-1.jpg"
-            alt="Real waste load photograph with visible metal contaminant among RDF feedstock"
+            src="/demo/red-2.jpg"
+            alt="Rusted industrial steel bolt — the kind of metal contaminant that destroys an RDF shredder"
             width={524}
             height={524}
             className="h-auto w-full object-cover"
@@ -117,7 +120,7 @@ export default function LandingPage() {
           />
           <figcaption className="flex flex-col gap-1 px-4 py-3">
             <span className="figure text-xs text-muted">
-              Visible metal in RDF load (REJECT case)
+              Metal contaminant, REJECT case: one bolt can kill a shredder
             </span>
             <span className="figure text-[11px] text-muted">
               Real waste-stream photo (RealWaste, CC BY 4.0)
@@ -154,6 +157,11 @@ export default function LandingPage() {
               />
               <p className="max-w-[26ch] text-[14px] leading-snug text-muted">
                 {f.label}
+                {f.labelSuffix ? (
+                  <span className="figure mt-0.5 block text-[12px] text-faint">
+                    {f.labelSuffix}
+                  </span>
+                ) : null}
               </p>
               <p className="figure mt-2 max-w-[42ch] border-t border-seam pt-2 text-[11px] leading-[1.5] text-muted">
                 {f.source}
@@ -195,6 +203,34 @@ export default function LandingPage() {
             </li>
           ))}
         </ol>
+      </section>
+
+      {/* ============ CLOSING: the ask, repeated ============ */}
+      <section
+        aria-labelledby="closing-label"
+        className="border-t border-seam py-12 lg:py-16"
+      >
+        <h2
+          id="closing-label"
+          className="max-w-[24ch] text-[clamp(22px,3vw,32px)] leading-[1.15] font-bold tracking-[-0.01em] text-ink"
+        >
+          Watch it reject the truck that would have stopped the kiln.
+        </h2>
+        <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
+          Three seeded cases — clean, suspicious, contaminated — run live
+          through the same gate pipeline, from photo to sealed audit record.
+        </p>
+        <div className="mt-7 flex flex-wrap gap-3">
+          <Link
+            href="/app"
+            className={buttonVariants({ variant: "primary", size: "lg" })}
+          >
+            Open Inspection Console
+          </Link>
+          <Link href="/inspections" className={buttonVariants({ size: "lg" })}>
+            View Audit Trail
+          </Link>
+        </div>
       </section>
 
       {/* ============ PROVENANCE: honest footer ============ */}
