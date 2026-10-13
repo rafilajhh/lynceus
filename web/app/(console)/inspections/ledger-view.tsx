@@ -232,24 +232,29 @@ export function LedgerView() {
           <LedgerEmpty />
         ) : (
           <>
-            {/* ---- summary hairline ---- */}
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
-              <span>
-                <strong className="font-semibold text-ink figure">
+            {/* ---- summary hairline: figures in mono, one tight inline run ---- */}
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
+              <span className="whitespace-nowrap">
+                <strong className="figure font-semibold text-ink">
                   {summary.total}
                 </strong>{" "}
-                inspection{summary.total === 1 ? "" : "s"}
+                inspections
               </span>
-              <span className="text-faint">·</span>
-              <span>
-                <strong className="font-semibold text-verdict-red figure">
+              <span aria-hidden="true" className="text-faint">
+                ·
+              </span>
+              <span className="whitespace-nowrap">
+                <strong className="figure font-semibold text-verdict-red">
                   {summary.rejected}
                 </strong>{" "}
                 rejected
               </span>
-              <span className="text-faint">·</span>
-              <span className="figure text-verdict-green">
-                {formatRupiah(summary.prevented)} prevented
+              <span aria-hidden="true" className="text-faint">
+                ·
+              </span>
+              <span className="figure whitespace-nowrap text-verdict-green">
+                {formatRupiah(summary.prevented)}{" "}
+                <span className="text-muted">prevented</span>
               </span>
             </div>
 
