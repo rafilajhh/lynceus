@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic>=2",
     "httpx",
+    "scentinel @ git+https://github.com/alertxsto/scentinel.git@master",
 ]
 
 [project.optional-dependencies]
