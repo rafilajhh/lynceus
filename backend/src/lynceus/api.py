@@ -345,6 +345,10 @@ def _run_inspection_with_audit(
             "raw_output_sha256": vlm_sha,
             "detected": vlm_result.get("detected", {}),
             "confidence": float(vlm_result.get("confidence", 0.0)),
+            # Live clients stamp provider + latency; stub results carry
+            # neither, and the record then honestly says None.
+            "provider": vlm_result.get("provider"),
+            "latency_ms": vlm_result.get("latency_ms"),
         },
         "llm": {
             "model": str(llm_result.get("model", "")),
@@ -353,6 +357,8 @@ def _run_inspection_with_audit(
             "raw_output_sha256": audit.sha256_field(llm_raw.encode("utf-8")),
             "reasoning": str(llm_result.get("reasoning", "")),
             "confidence": float(llm_result.get("confidence", 0.0)),
+            "provider": llm_result.get("provider"),
+            "latency_ms": llm_result.get("latency_ms"),
         },
         "gas": gas_ai_output,
     }

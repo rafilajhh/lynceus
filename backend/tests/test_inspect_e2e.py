@@ -527,3 +527,47 @@ def test_inspect_with_invalid_sensor_url_falls_back_to_twin(
     assert resp.status_code == 200, resp.text
     rec = _load_audit_record(tmp_path, resp.json()["record_id"])
     assert rec.inputs.gas.source == "digital_twin"
+
+
+# ---------------------------------------------------------------------------
+# Audit v2: provider / latency provenance on ai_outputs.vlm / .llm.
+# ---------------------------------------------------------------------------
+
+
+def test_stub_inspection_has_no_provider_provenance(client, tmp_path):
+    resp = client.post("/inspect", json=DEMO_CASES["green"]["payload"])
+    assert resp.status_code == 200, resp.text
+    rec = _load_audit_record(tmp_path, resp.json()["record_id"])
+    assert rec.format_version == 2
+    assert rec.ai_outputs.vlm.provider is None
+    assert rec.ai_outputs.vlm.latency_ms is None
+    assert rec.ai_outputs.llm.provider is None
+    assert rec.ai_outputs.llm.latency_ms is None
+
+
+def test_live_inspection_persists_provider_and_latency(client, tmp_path, monkeypatch):
+    from lynceus.config import get_settings
+
+    monkeypatch.setenv("VLLM_VLM_URL", "https://developer.amd.com.cn/radeon/api/v1")
+    monkeypatch.setenv("VLLM_LLM_URL", "https://developer.amd.com.cn/radeon/api/v1")
+    live = pipeline.VLLMClient(settings=get_settings())
+    monkeypatch.setattr(
+        pipeline.VLLMClient,
+        "_chat_once",
+        lambda self, *a, **k: (
+            '{"contamination": "none detected", "moisture": 0.1, '
+            '"hard_contaminants": [], "light_contaminants": [], '
+            '"reasoning": "ok", "crosscheck_notes": "consistent", "confidence": 0.8}'
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline, "resolve_clients", lambda payload, settings=None: live
+    )
+    resp = client.post("/inspect", json=_LIVE_PAYLOAD)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["provenance"] == "live", body
+    rec = _load_audit_record(tmp_path, body["record_id"])
+    for out in (rec.ai_outputs.vlm, rec.ai_outputs.llm):
+        assert out.provider == "amd-token-factory"
+        assert out.latency_ms is not None and out.latency_ms >= 0

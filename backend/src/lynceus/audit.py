@@ -68,6 +68,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 __all__ = [
     "AUDIT_FORMAT_VERSION",
+    "SUPPORTED_FORMAT_VERSIONS",
     "AuditError",
     "ExecutionStatus",
     "Decision",
@@ -80,6 +81,8 @@ __all__ = [
     "WeightInput",
     "GasInput",
     "InspectionInputs",
+    "ContaminantBox",
+    "ActionStep",
     "VLMOutput",
     "LLMOutput",
     "AIOutputs",
@@ -108,13 +111,23 @@ __all__ = [
 
 #: Bump on any breaking schema change; older readers must reject, not
 #: misinterpret (engine RUN_FORMAT_VERSION pattern, history.py:67-102).
-AUDIT_FORMAT_VERSION = 1
+#: The writer always stamps this version.  v2 added supplier, provider /
+#: latency provenance, contaminant boxes and SOP-cited actions — all
+#: optional with empty defaults, so v1 records still decode.
+AUDIT_FORMAT_VERSION = 2
+
+#: Versions the reader accepts; anything else is rejected hard.
+SUPPORTED_FORMAT_VERSIONS = (1, 2)
+
+#: Closed enum of how contaminants were localised in the photo.
+LOCALISATION_MODES = ("box", "zone")
 
 RECORD_FILENAME = "audit.json"
 INSPECTION_DIR_RE = re.compile(r"^inspection-(\d+)$")
 RECORD_ID_RE = re.compile(r"^inspection-(\d+)$")
 SHA256_FIELD_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$")
+SOP_REF_RE = re.compile(r"^SOP-RDF-\d+\.\d+$", re.ASCII)
 
 #: Digest of the empty byte string — placeholder for fields not yet known at
 #: begin time.  Its regex validity keeps the in_progress record decodable.
@@ -449,6 +462,7 @@ class InspectionInputs(_StrictModel):
     manifest_text: ManifestTextInput
     weight: WeightInput
     gas: GasInput
+    supplier: Optional[str] = None
 
     @field_validator("truck_id")
     @classmethod
@@ -458,12 +472,112 @@ class InspectionInputs(_StrictModel):
         return v
 
 
+def _validate_latency_ms(value: Optional[float], field: str) -> Optional[float]:
+    """Latency is optional (stub results carry none); when present it must
+    be finite and non-negative (invariant 10: unit in the field name)."""
+    if value is None:
+        return value
+    value = _validate_finite_number(value, field)
+    if value < 0:
+        raise _err(_ERR_FORMAT, field, f"must be non-negative (got {value!r})")
+    return value
+
+
+class ContaminantBox(_StrictModel):
+    """One localised contaminant: normalised image coordinates in 0..1,
+    top-left ``(x0, y0)`` strictly before bottom-right ``(x1, y1)``."""
+
+    label: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    @field_validator("x0", "y0", "x1", "y1")
+    @classmethod
+    def _v_coord(cls, v: float, info: Any) -> float:
+        return _validate_confidence(v, f"ai_outputs.vlm.boxes[].{info.field_name}")
+
+    @model_validator(mode="after")
+    def _v_order(self) -> "ContaminantBox":
+        if not self.x0 < self.x1:
+            raise _err(
+                _ERR_FORMAT,
+                "ai_outputs.vlm.boxes[].x0",
+                f"must be less than x1 (got x0={self.x0!r}, x1={self.x1!r})",
+            )
+        if not self.y0 < self.y1:
+            raise _err(
+                _ERR_FORMAT,
+                "ai_outputs.vlm.boxes[].y0",
+                f"must be less than y1 (got y0={self.y0!r}, y1={self.y1!r})",
+            )
+        return self
+
+
+class ActionStep(_StrictModel):
+    """One ordered recommended action, cited to an SOP clause."""
+
+    order: int
+    text: str
+    sop_ref: str
+
+    @field_validator("order")
+    @classmethod
+    def _v_order(cls, v: int) -> int:
+        if v < 1:
+            raise _err(
+                _ERR_FORMAT,
+                "engine_outputs.recommendation.actions[].order",
+                f"must be >= 1 (got {v!r})",
+            )
+        return v
+
+    @field_validator("text")
+    @classmethod
+    def _v_text(cls, v: str) -> str:
+        if not v.strip():
+            raise _err(
+                _ERR_FORMAT,
+                "engine_outputs.recommendation.actions[].text",
+                "must be a non-empty string",
+            )
+        return v
+
+    @field_validator("sop_ref")
+    @classmethod
+    def _v_sop_ref(cls, v: str) -> str:
+        if not SOP_REF_RE.fullmatch(v):
+            raise _err(
+                _ERR_FORMAT,
+                "engine_outputs.recommendation.actions[].sop_ref",
+                f"must match 'SOP-RDF-<n>.<n>' (got {v!r})",
+            )
+        return v
+
+
 class VLMOutput(_StrictModel):
     model: str
     model_version: str
     raw_output_sha256: str
     detected: Dict[str, Any]
     confidence: float
+    provider: Optional[str] = None
+    latency_ms: Optional[float] = None
+    boxes: List[ContaminantBox] = []
+    localisation: Optional[str] = None
+
+    @field_validator("latency_ms")
+    @classmethod
+    def _v_latency(cls, v: Optional[float]) -> Optional[float]:
+        return _validate_latency_ms(v, "ai_outputs.vlm.latency_ms")
+
+    @field_validator("localisation")
+    @classmethod
+    def _v_localisation(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_closed_enum(v, LOCALISATION_MODES, "ai_outputs.vlm.localisation")
 
     @field_validator("raw_output_sha256")
     @classmethod
@@ -483,6 +597,13 @@ class LLMOutput(_StrictModel):
     raw_output_sha256: str
     reasoning: str
     confidence: float
+    provider: Optional[str] = None
+    latency_ms: Optional[float] = None
+
+    @field_validator("latency_ms")
+    @classmethod
+    def _v_latency(cls, v: Optional[float]) -> Optional[float]:
+        return _validate_latency_ms(v, "ai_outputs.llm.latency_ms")
 
     @field_validator("prompt_sha256")
     @classmethod
@@ -535,6 +656,7 @@ class RecommendationOutput(_StrictModel):
     missing: List[str]
     caveats: List[str]
     alternative: str
+    actions: List[ActionStep] = []
 
     @field_validator("route")
     @classmethod
@@ -659,12 +781,13 @@ class AuditRecord(_StrictModel):
     @field_validator("format_version")
     @classmethod
     def _v_version(cls, v: int) -> int:
-        if v != AUDIT_FORMAT_VERSION:
+        if v not in SUPPORTED_FORMAT_VERSIONS:
+            supported = ", ".join(str(n) for n in SUPPORTED_FORMAT_VERSIONS)
             raise _err(
                 _ERR_FORMAT,
                 "format_version",
-                f"unsupported audit format version {v!r}; this reader only "
-                f"supports {AUDIT_FORMAT_VERSION}",
+                f"unsupported audit format version {v!r}; this reader "
+                f"supports {supported}",
             )
         return v
 

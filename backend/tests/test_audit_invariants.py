@@ -105,6 +105,7 @@ def test_audit_invariants():
     check("finished_at null", rec.finished_at_utc is None)
     disk = json.loads((storage / "inspection-000001" / "audit.json").read_text(encoding="utf-8"))
     check("on-disk status in_progress", disk["execution_status"] == "in_progress")
+    check("writer stamps format_version 2", disk["format_version"] == 2 == A.AUDIT_FORMAT_VERSION)
     check("input digests frozen on disk", disk["digest"]["input_digests"] == input_digests)
     check("no .tmp leftover", not any(p.name.endswith(".tmp") for p in (storage / "inspection-000001").iterdir()))
     check("begin record reloads strictly", A.load_record(storage / "inspection-000001" / "audit.json").record_id == rec.record_id)
@@ -216,6 +217,7 @@ def test_audit_invariants():
 
     check("hand-edit status enum rejected", "execution_status" in (edit_and_load(set_status) or ""))
     check("future format_version rejected", "format_version" in (edit_and_load(bump_version) or ""))
+    check("v1 format_version still readable", edit_and_load(lambda d: d.update(format_version=1)) is None)
     check("bad digest regex rejected", "inputs.photo.sha256" in (edit_and_load(bad_digest) or ""))
     check("extra key rejected (extra=forbid)", "sneaky" in (edit_and_load(extra_key) or ""))
     check("non-Z timestamp rejected", "verdict.decided_at_utc" in (edit_and_load(bad_ts) or ""))
