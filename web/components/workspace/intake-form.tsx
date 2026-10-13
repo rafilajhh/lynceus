@@ -42,6 +42,7 @@ export function IntakeForm({
   onDemo,
   onTruckArriving,
   onSubmit,
+  onRunLive,
   onReset,
   onWaybillPhoto,
   waybillPhoto,
@@ -56,6 +57,8 @@ export function IntakeForm({
       load enters the pipeline automatically (no operator action). */
   onTruckArriving: () => void;
   onSubmit: () => void;
+  /** Submit the selected demo case to the live pipeline (no demo_case). */
+  onRunLive: () => void;
   /** Clear the whole gate (form, uploads, photo, verdict) — the same
       reset the verdict's "Next truck" button performs. */
   onReset: () => void;
@@ -123,7 +126,9 @@ export function IntakeForm({
       {/* Demo-case row: wraps to two lines instead of clipping (user
           feedback: nowrap cut off the red case in the half-width column). */}
       <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-seam px-4 py-3">
-        <span className="smallcaps shrink-0">Demo cases</span>
+        <span className="smallcaps shrink-0" title="Instant scripted samples: no model call">
+          Scripted demo
+        </span>
         {(["green", "amber", "red"] as const).map((key) => (
           <Button
             key={key}
@@ -142,6 +147,26 @@ export function IntakeForm({
             {DEMO_CASES[key].label}
           </Button>
         ))}
+        {/* Live run: the selected case's photo and inputs, sent WITHOUT
+            demo_case so the backend runs the live AMD pipeline (~15 s).
+            Needs a demo photo; uploads go through Inspect Load. The
+            hairline separates it from the scripted cases it is not. */}
+        <span aria-hidden="true" className="h-5 w-px shrink-0 bg-seam-strong" />
+        <Button
+          variant="default"
+          size="sm"
+          type="button"
+          disabled={loading || activeDemo === null}
+          title={
+            activeDemo === null
+              ? "Pick a demo case first: its photo and waybill are sent to the live models"
+              : "Send this case's photo and waybill to the live models on AMD (no script)"
+          }
+          className="shrink-0"
+          onClick={onRunLive}
+        >
+          Run live on AMD
+        </Button>
         {/* Gate-camera simulation: one press = one truck arrives and the
             camera pushes the load straight into the pipeline. */}
         <Button

@@ -26,6 +26,7 @@ import {
 import {
   VerdictPanel,
   verdictTone,
+  type RunMode,
 } from "./verdict-panel";
 import { normalizeGates, type GateDisplay, type GatePhase } from "./gate-strip";
 import { DEMO_CASES } from "@/lib/demo-cases";
@@ -86,7 +87,7 @@ export function WorkspaceClient() {
     src: null,
     alt: "Load photo",
   });
-  const [expectLive, setExpectLive] = useState(false);
+  const [runMode, setRunMode] = useState<RunMode>("other");
 
   const pickFile = useCallback(
     (
@@ -189,7 +190,10 @@ export function WorkspaceClient() {
   }, [onDemo]);
 
   // ---- Submit -------------------------------------------------------
-  const onSubmit = useCallback(async () => {
+  // live=true is "Run live on AMD": the selected demo case's photo and
+  // inputs WITHOUT demo_case, so the backend runs the live pipeline
+  // instead of the scripted sample.
+  const runInspection = useCallback(async (live: boolean) => {
     setFormError(null);
     setResultError(null);
 
@@ -226,9 +230,9 @@ export function WorkspaceClient() {
         ? `Uploaded load photo ${loadUpload.filename}`
         : (heroPhoto?.caption ?? "Load photo"),
     });
-    // A demo case runs the scripted sample; anything else calls the live
-    // models (when configured), which takes ~15 s.
-    setExpectLive(activeDemo === null);
+    // Wait copy only: whether a live model actually ran is stated by the
+    // result's provenance badge, never assumed here.
+    setRunMode(live ? "live" : activeDemo ? "scripted" : "other");
 
     setLoading(true);
     setPhase("evaluating");
@@ -245,12 +249,17 @@ export function WorkspaceClient() {
     verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
     try {
+      // A live run needs the real photo bytes: the demo photo fetch may
+      // still be in flight right after the case was picked.
+      if (live && !demoPhotoBase64.current && demoPhotoPath.current) {
+        demoPhotoBase64.current = await fetchPhotoBase64(demoPhotoPath.current);
+      }
       const resp = await inspectLoad({
         truck_id: values.truck_id.trim(),
         supplier: values.supplier.trim() || null,
         photo_base64: loadBase64.current ?? demoPhotoBase64.current,
         photo_filename: loadUpload.filename ?? demoPhotoPath.current,
-        demo_case: activeDemo,
+        demo_case: live ? null : activeDemo,
         manifest_text: values.manifest_text.trim() || null,
         waybill_image_base64: waybillBase64.current,
         weight_kg: weight,
@@ -275,6 +284,9 @@ export function WorkspaceClient() {
       setLoading(false);
     }
   }, [values, activeDemo, loadUpload, heroPhoto]);
+
+  const onSubmit = useCallback(() => runInspection(false), [runInspection]);
+  const onRunLive = useCallback(() => runInspection(true), [runInspection]);
 
   const onAllResolved = useCallback(() => {
     setBannerLit(true);
@@ -406,6 +418,7 @@ export function WorkspaceClient() {
             onDemo={onDemo}
             onTruckArriving={onTruckArriving}
             onSubmit={onSubmit}
+            onRunLive={onRunLive}
             onReset={onReset}
             onWaybillPhoto={onWaybillPhoto}
             waybillPhoto={waybillUpload}
@@ -437,7 +450,7 @@ export function WorkspaceClient() {
         onReset={onReset}
         error={resultError}
         evidence={evidence}
-        expectLive={expectLive}
+        runMode={runMode}
       >
         {phase === "resolved" && impact ? (
           <p className="m-0 text-[13px] leading-relaxed text-muted">

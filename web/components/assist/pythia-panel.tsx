@@ -25,6 +25,14 @@ type Turn =
   | { id: number; question: string; status: "answered"; response: AssistResponse }
   | { id: number; question: string; status: "error"; message: string };
 
+/**
+ * Suggestion and Ask buttons are never `disabled` while a question is in
+ * flight: disabling the focused button drops keyboard focus to <body>.
+ * They stay focusable with aria-disabled, look inactive, and ask() ignores
+ * presses until the answer lands.
+ */
+const AWAITING = "aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
+
 /** Older turns scroll away: the panel shows the latest exchanges only. */
 const MAX_TURNS = 4;
 
@@ -203,9 +211,9 @@ export function PythiaPanel({
                 type="button"
                 variant="default"
                 size="sm"
-                disabled={pending}
+                aria-disabled={pending}
                 onClick={() => void ask(s)}
-                className="text-left font-medium"
+                className={cn("text-left font-medium", AWAITING)}
               >
                 {s}
               </Button>
@@ -225,7 +233,12 @@ export function PythiaPanel({
             placeholder="Ask about this truck or the gate SOP"
             autoComplete="off"
           />
-          <Button type="submit" variant="default" disabled={pending || !draft.trim()}>
+          <Button
+            type="submit"
+            variant="default"
+            aria-disabled={pending || !draft.trim()}
+            className={AWAITING}
+          >
             Ask
           </Button>
         </form>

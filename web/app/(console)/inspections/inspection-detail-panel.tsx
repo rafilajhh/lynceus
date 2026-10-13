@@ -62,11 +62,19 @@ type ModelOutput = {
   latency_ms?: number | null;
 } | null | undefined;
 
+/** "Scripted sample" / "Scripted fallback" for stub output, else null. The
+    record's verdict.uncertainty states a live failure ("Live AI failed"). */
+function scriptedNote(model: string | null | undefined, uncertainty: string | undefined) {
+  if (!(model ?? "").startsWith("stub")) return null;
+  return (uncertainty ?? "").includes("Live AI failed") ? "Scripted fallback" : "Scripted sample";
+}
+
 /** One model's provenance, stated from what the record holds. */
-function modelProvenance(out: ModelOutput): string {
+function modelProvenance(out: ModelOutput, uncertainty: string | undefined): string {
   if (!out?.model) return "Not recorded";
   if (out.provider) return liveProvenance(out.provider, out.model, out.latency_ms);
-  if (out.model.startsWith("stub")) return `Scripted sample · ${out.model}`;
+  const note = scriptedNote(out.model, uncertainty);
+  if (note) return `${note} · ${out.model}`;
   const latency = formatSeconds(out.latency_ms);
   return `${out.model} · provider not recorded${latency ? ` · ${latency}` : ""}`;
 }
@@ -346,7 +354,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             boxes={vlm?.boxes ?? []}
             localisation={vlm?.localisation}
             model={vlm?.model}
-            scripted={(vlm?.model ?? "").startsWith("stub")}
+            sourceNote={scriptedNote(vlm?.model, uncertainty)}
           />
         </section>
         <NextSteps
@@ -360,9 +368,9 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
         <h3 className="smallcaps mb-2">AI provenance</h3>
         <dl className="figure m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
           <dt className="text-muted">Vision</dt>
-          <dd className="m-0 break-words text-ink">{modelProvenance(vlm)}</dd>
+          <dd className="m-0 break-words text-ink">{modelProvenance(vlm, uncertainty)}</dd>
           <dt className="text-muted">Waybill</dt>
-          <dd className="m-0 break-words text-ink">{modelProvenance(llm)}</dd>
+          <dd className="m-0 break-words text-ink">{modelProvenance(llm, uncertainty)}</dd>
         </dl>
       </section>
 

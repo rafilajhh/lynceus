@@ -286,8 +286,10 @@ export function LedgerView() {
               </div>
             </div>
 
-            {/* ---- ledger table (desktop) ---- */}
-            <Table>
+            {/* ---- ledger table (desktop) ---- hidden below md: the stacked
+                cards replace it there (both rendered at once before, so a
+                phone showed every row and the open record twice). */}
+            <Table className="hidden md:table">
               <TableHeader>
                 <TableRow className="hover:bg-raised">
                   <TableHead

@@ -53,16 +53,25 @@ function ProvenanceBadge({ data }: { data: InspectResponse }) {
   );
 }
 
-/** Honest wait copy: live vision calls take ~15 s, scripted ones return at once. */
-function EvaluatingNote({ expectLive }: { expectLive: boolean }) {
+/** How the operator asked for this inspection to run. Only "live" (the
+    Run live on AMD action) may say a live model is working; whether one
+    actually ran is stated afterwards by the provenance badge. */
+export type RunMode = "scripted" | "live" | "other";
+
+const EVALUATING_COPY: Record<RunMode, string> = {
+  scripted: "Running the scripted sample through the decision engine.",
+  live:
+    "Live run requested on AMD: the vision model usually takes about 15 s. " +
+    "The badge on the result states what actually ran.",
+  other: "Running the inspection…",
+};
+
+/** Honest wait copy plus a real elapsed clock (no fake progress bar). */
+function EvaluatingNote({ runMode }: { runMode: RunMode }) {
   const seconds = useElapsedSeconds(true);
   return (
     <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-muted">
-      <span>
-        {expectLive
-          ? "The live vision model is reading the load photo; this usually takes about 15 s."
-          : "Running the scripted sample through the decision engine."}
-      </span>
+      <span>{EVALUATING_COPY[runMode]}</span>
       <span className="figure text-[12px] text-faint" aria-hidden="true">
         {seconds} s elapsed
       </span>
@@ -208,7 +217,7 @@ export function VerdictPanel({
   onReset,
   error,
   evidence,
-  expectLive,
+  runMode,
   children,
 }: {
   phase: GatePhase;
@@ -227,8 +236,8 @@ export function VerdictPanel({
   error: string | null;
   /** The photo submitted with this inspection (snapshot at submit). */
   evidence: { src: string | null; alt: string };
-  /** No demo case was sent, so a live model call (~15 s) is expected. */
-  expectLive: boolean;
+  /** How this inspection was submitted (drives the wait copy only). */
+  runMode: RunMode;
   /** Optional extra below the impact counter (impact note). */
   children?: ReactNode;
 }) {
@@ -244,7 +253,7 @@ export function VerdictPanel({
     <Panel className="flex flex-col">
       <PanelHead
         title="Inspection verdict"
-        meta={data?.record_id ? `record: ${data.record_id}` : "gate A · live"}
+        meta={data?.record_id ? `record: ${data.record_id}` : "gate A"}
       />
 
       <div className="flex flex-col gap-4 px-4 py-4">
@@ -287,7 +296,7 @@ export function VerdictPanel({
               : "Pick a demo case above, then press Inspect Load."}
         </p>
 
-        {phase === "evaluating" ? <EvaluatingNote expectLive={expectLive} /> : null}
+        {phase === "evaluating" ? <EvaluatingNote runMode={runMode} /> : null}
 
         {/* Live AI failed and the backend fell back to the scripted
             sample: say so plainly, next to the verdict it affects. */}
@@ -324,7 +333,13 @@ export function VerdictPanel({
               boxes={vlm?.boxes ?? []}
               localisation={vlm?.localisation}
               model={vlm?.model}
-              scripted={data?.provenance !== "live"}
+              sourceNote={
+                data?.provenance === "stub"
+                  ? "Scripted sample"
+                  : data?.provenance === "stub_fallback_live_error"
+                    ? "Scripted fallback"
+                    : null
+              }
               pending={!verdictShown}
             />
             {verdictShown ? (

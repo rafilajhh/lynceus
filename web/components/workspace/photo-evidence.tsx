@@ -56,7 +56,7 @@ export function PhotoEvidence({
   boxes,
   localisation,
   model,
-  scripted = false,
+  sourceNote = null,
   pending = false,
   className,
 }: {
@@ -68,8 +68,9 @@ export function PhotoEvidence({
   localisation: "box" | "zone" | null | undefined;
   /** Vision model id, named when it drew the boxes itself. */
   model?: string | null;
-  /** Scripted demo output: labelled as such, never passed off as live. */
-  scripted?: boolean;
+  /** Where non-live regions came from ("Scripted sample", "Scripted
+      fallback"), prefixed to the caption; null makes no provenance claim. */
+  sourceNote?: string | null;
   /** Inspection still running: show the photo, hold the regions back. */
   pending?: boolean;
   className?: string;
@@ -162,7 +163,7 @@ export function PhotoEvidence({
       </div>
 
       <figcaption className="figure flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-relaxed text-muted">
-        <span>{scripted && !pending ? `Scripted sample · ${caption}` : caption}</span>
+        <span>{sourceNote && !pending ? `${sourceNote} · ${caption}` : caption}</span>
         {hasHard ? (
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-verdict-red" />
