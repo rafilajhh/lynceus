@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { CountUpFigure } from "@/components/landing/count-up-figure";
 
@@ -110,7 +111,7 @@ export default function LandingPage() {
           <div className="relative">
             <Image
               src="/demo/red-2.jpg"
-              alt="Rusted industrial steel bolt — the kind of metal contaminant that destroys an RDF shredder"
+              alt="Rusted industrial steel bolt, the kind of metal contaminant that destroys an RDF shredder"
               width={524}
               height={524}
               className="block h-auto max-h-[340px] w-full object-cover lg:max-h-[420px]"
@@ -188,18 +189,18 @@ export default function LandingPage() {
         <h2 id="how-label" className="smallcaps mb-8">
           How a truck is cleared, gate by gate
         </h2>
-        <ol className="m-0 grid list-none gap-8 p-0 md:grid-cols-3 md:gap-8">
+        <ol className="m-0 grid list-none items-stretch gap-8 p-0 md:grid-cols-3 md:gap-8">
           {STEPS.map((s) => (
-            <li key={s.no} className="flex items-start gap-4">
+            <li key={s.no} className="flex items-stretch gap-4">
               <span
                 aria-hidden="true"
                 className="figure shrink-0 text-[clamp(20px,2vw,26px)] leading-none font-semibold tracking-[0.04em] text-faint"
               >
                 {s.no}
               </span>
-              {/* h-full + mt-auto on the chip: the three gate pills share one
-                  baseline even though step copy lengths differ */}
-              <div className="flex h-full flex-col items-start gap-2">
+              {/* mt-auto on the chip: the three gate pills share one baseline
+                  even though step copy lengths differ (02 runs longest) */}
+              <div className="flex flex-1 flex-col items-start gap-2">
                 <h3 className="m-0 text-[17px] font-semibold text-ink">
                   {s.title}
                 </h3>
@@ -219,43 +220,73 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      {/* ============ CLOSING: the ask, repeated ============ */}
+      {/* ============ CLOSING: the ask, with the proof beside it ============ */}
       <section
         aria-labelledby="closing-label"
-        className="border-t border-seam py-12 lg:py-16"
+        className="grid items-center gap-10 border-t border-seam py-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-14 lg:py-16"
       >
-        <h2
-          id="closing-label"
-          className="max-w-[24ch] text-[clamp(22px,3vw,32px)] leading-[1.15] font-bold tracking-[-0.01em] text-ink"
-        >
-          Watch it reject the truck that would have stopped the kiln.
-        </h2>
-        <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
-          Three seeded cases — clean, suspicious, contaminated — run live
-          through the same gate pipeline, from photo to sealed audit record.
-        </p>
-        <div className="mt-7 flex w-full max-w-[420px] flex-col gap-3 sm:max-w-none sm:flex-row">
-          <Link
-            href="/app"
-            className={buttonVariants({ variant: "primary", size: "lg" })}
+        <div>
+          <h2
+            id="closing-label"
+            className="max-w-[24ch] text-[clamp(22px,3vw,32px)] leading-[1.15] font-bold tracking-[-0.01em] text-ink"
           >
-            Open Inspection Console
-          </Link>
-          <Link href="/inspections" className={buttonVariants({ size: "lg" })}>
-            View Audit Trail
-          </Link>
+            Watch it reject the truck that would have stopped the kiln.
+          </h2>
+          <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
+            Three seeded cases (clean, suspicious, contaminated) run live
+            through the same gate pipeline, from photo to sealed audit record.
+          </p>
+          <div className="mt-7 flex w-full max-w-[420px] flex-col gap-3 sm:max-w-none sm:flex-row">
+            <Link
+              href="/app"
+              className={buttonVariants({ variant: "primary", size: "lg" })}
+            >
+              Open Inspection Console
+            </Link>
+            <Link href="/inspections" className={buttonVariants({ size: "lg" })}>
+              View Audit Trail
+            </Link>
+          </div>
+        </div>
+
+        {/* The three outcomes, stated plainly: what the pipeline can say */}
+        <div className="panel flex flex-col">
+          <div className="panel-head">
+            <span>Possible verdicts</span>
+            <span className="figure text-muted" style={{ letterSpacing: 0 }}>
+              per truck
+            </span>
+          </div>
+          <ul className="m-0 flex list-none flex-col p-0">
+            {[
+              ["accept", "ACCEPT", "Clean load. Tip it into the line."],
+              ["escalate", "ESCALATE", "Doubt remains. A human decides."],
+              ["reject", "REJECT", "Contaminant found. Turn it away."],
+            ].map(([variant, label, note]) => (
+              <li
+                key={label}
+                className="flex items-center gap-3 border-b border-seam px-4 py-3 last:border-b-0"
+              >
+                <Badge variant={variant as "accept" | "escalate" | "reject"}>
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full bg-current"
+                  />
+                  {label}
+                </Badge>
+                <span className="text-[13px] text-muted">{note}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
-      {/* ============ PROVENANCE: honest footer ============ */}
-      <footer className="mt-auto border-t border-seam pt-8">
-        <p className="m-0 max-w-[90ch] text-[13px] leading-[1.7] text-muted">
-          The Lynceus decision engine, the AMD AI layer, and the fusion
-          pipeline are all part of this project, built during the hackathon.
-        </p>
-        <p className="figure m-0 mt-2 text-[12px] text-muted">
-          Demo numbers are sourced estimates, not validated measurements ·
-          photos: RealWaste, CC BY 4.0.
+      {/* ============ COLOPHON: one honest line, no stacked fine print ============ */}
+      <footer className="border-t border-seam pt-6 pb-2">
+        <p className="m-0 max-w-[90ch] text-[12.5px] leading-[1.7] text-muted">
+          Built during the AMD Developer Hackathon (ACT III). Demo figures are
+          sourced estimates, not validated measurements · photos: RealWaste,
+          CC BY 4.0.
         </p>
       </footer>
     </div>
