@@ -528,3 +528,45 @@ def test_seed_demo_shift_writes_24_sample_records(tmp_path, monkeypatch):
     assert [r["supplier"] for r in report["suppliers"] if r["flagged"]] == ["UD Sinar Abadi"]
     assert report["median_seconds_per_truck"] is not None
     assert report["median_seconds_per_truck"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Final review: money the row never carried, grouped numbers as one number
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", [
+    "UD Sinar Abadi had 3 of 7 loads rejected, costing Rp 3.000.000. Review it.",
+    "UD Sinar Abadi had 3 of 7 loads rejected, about twelve million rupiah. Review it.",
+    "UD Sinar Abadi had 3 of 7 loads rejected, costing IDR 3,000,000. Review it.",
+    "UD Sinar Abadi had 3 of 7 loads rejected, a US$ loss. Review it.",
+    "UD Sinar Abadi had 3 of 7 loads rejected, losing tiga juta. Review it.",
+])
+def test_money_in_explanation_falls_back(text):
+    shift.clear_explanation_cache()
+    assert shift.explain_supplier(ROW, FakeClient({"explanation": text})) == FALLBACK
+
+
+def test_dot_grouped_number_is_one_number():
+    # "3.000" must be 3000, not the allowed 3 and a stray 0.
+    shift.clear_explanation_cache()
+    text = "UD Sinar Abadi had 3.000 loads rejected. Review it."
+    assert shift.explain_supplier(ROW, FakeClient({"explanation": text})) == FALLBACK
+    assert shift._numbers_in("3.000.000 and 1,200 and 0.67") == [3000000.0, 1200.0, 0.67]
+
+
+def test_counts_and_risk_percent_still_accepted():
+    shift.clear_explanation_cache()
+    text = ("UD Sinar Abadi had 3 of 7 loads rejected and 1 escalated, a 50% risk score. "
+            "Hold its next delivery for a full visual check.")
+    assert shift.explain_supplier(ROW, FakeClient({"explanation": text})) == text
+
+
+def test_rp_amount_rejected_even_when_zero_is_an_allowed_number():
+    # With escalate == 0 the old tokeniser read "Rp 3.000.000" as 3.0 and 0.0
+    # (both "allowed") and let the invented amount through.
+    row = dict(ROW, escalate=0)
+    shift.clear_explanation_cache()
+    text = "UD Sinar Abadi had 3 of 7 loads rejected, costing Rp 3.000.000. Review it."
+    reply = FakeClient({"explanation": text})
+    assert shift.explain_supplier(row, reply) == shift.fallback_explanation(row)

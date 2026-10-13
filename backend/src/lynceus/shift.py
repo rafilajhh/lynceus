@@ -65,8 +65,16 @@ FAILURE_RETRY_S = 300.0
 _MAX_SENTENCES = 3
 _MAX_CHARS = 600
 _NUMBER_RE = re.compile(r"\d+(\.\d+)?")
-#: "1,200" → "1200" before the number check (thousands separators only).
-_THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+#: "1,200" / "3.000.000" → "1200" / "3000000" before the number check, so a
+#: grouped number is ONE number.  Safe for the row's own figures: risk_score is
+#: rounded to 2 decimals, so a legitimate "0.67" never has three digits after
+#: the dot.
+_THOUSANDS_RE = re.compile(r"(?<=\d)[.,](?=\d{3}(?!\d))")
+#: The row carries no money, so any currency or magnitude word is invented.
+_MONEY_RE = re.compile(
+    r"\b(?:rp|idr|rupiah|usd|juta|ribu|million|thousand|billion|miliar)s?\b|\bus\$",
+    re.IGNORECASE,
+)
 _SENTENCE_RE = re.compile(r"[.!?]+(?=\s|$)")
 
 
@@ -264,6 +272,8 @@ def _grounded(text: Any, row: dict) -> str | None:
         return None
     sentences = [s for s in _SENTENCE_RE.split(text) if s.strip()]
     if len(sentences) > _MAX_SENTENCES:
+        return None
+    if _MONEY_RE.search(text):
         return None
     allowed = allowed_numbers(row)
     if any(n not in allowed for n in _numbers_in(text)):
