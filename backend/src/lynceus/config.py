@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from lynceus import __version__
 
@@ -48,6 +49,11 @@ VLM_MODEL_ENV = "VLM_MODEL"
 LLM_MODEL_ENV = "LLM_MODEL"
 #: Optional bearer key for the vLLM endpoints (empty = no auth header).
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
+#: Endpoint / model for the Pythia assistant role (default: the LLM's).
+ASSIST_URL_ENV = "ASSIST_URL"
+ASSIST_MODEL_ENV = "ASSIST_MODEL"
+#: Hazard localisation style: "box" (normalised boxes) or "zone" (text zone).
+LOCALISATION_MODE_ENV = "LOCALISATION_MODE"
 #: When false, a live-AI failure returns HTTP 503 instead of a stub fallback.
 LYNCEUS_ALLOW_STUB_FALLBACK_ENV = "LYNCEUS_ALLOW_STUB_FALLBACK"
 #: Directory where run artefacts are persisted.
@@ -59,6 +65,7 @@ _DEFAULT_VLLM_VLM_URL = "http://localhost:8000/v1"
 _DEFAULT_VLLM_LLM_URL = "http://localhost:8001/v1"
 _DEFAULT_VLM_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
 _DEFAULT_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+_DEFAULT_LOCALISATION_MODE = "box"
 _DEFAULT_STORAGE_DIR = "./runs"
 _DEFAULT_VLLM_API_KEY = ""
 _DEFAULT_ALLOW_STUB_FALLBACK = True
@@ -72,11 +79,28 @@ class Settings:
     vllm_llm_url: str
     vlm_model: str
     llm_model: str
+    assist_url: str
+    assist_model: str
+    localisation_mode: str
     vllm_api_key: str
     allow_stub_fallback: bool
     storage_dir: str
     audit_format_version: int
     version: str
+
+def provider_for_url(url: str) -> str:
+    """Name the provider behind an endpoint URL, for audit provenance.
+
+    ``"amd-token-factory"`` when the host is ``amd.com`` / ``amd.com.cn`` (or a
+    subdomain of either); anything else is a generic ``"openai-compatible"``
+    server (e.g. self-hosted vLLM).
+    """
+    host = (urlparse(url).hostname or "").lower()
+    for domain in ("amd.com.cn", "amd.com"):
+        if host == domain or host.endswith("." + domain):
+            return "amd-token-factory"
+    return "openai-compatible"
+
 
 def get_settings() -> Settings:
     """Build a :class:`Settings` from the current environment.
@@ -93,11 +117,24 @@ def get_settings() -> Settings:
     except ValueError:
         audit_format_version = _DEFAULT_AUDIT_FORMAT_VERSION
 
+    vllm_llm_url = os.environ.get(VLLM_LLM_URL_ENV, _DEFAULT_VLLM_LLM_URL)
+    llm_model = os.environ.get(LLM_MODEL_ENV, _DEFAULT_LLM_MODEL)
+    localisation_mode = (
+        os.environ.get(LOCALISATION_MODE_ENV, _DEFAULT_LOCALISATION_MODE)
+        .strip()
+        .lower()
+    )
+    if localisation_mode not in ("box", "zone"):
+        localisation_mode = _DEFAULT_LOCALISATION_MODE
+
     return Settings(
         vllm_vlm_url=os.environ.get(VLLM_VLM_URL_ENV, _DEFAULT_VLLM_VLM_URL),
-        vllm_llm_url=os.environ.get(VLLM_LLM_URL_ENV, _DEFAULT_VLLM_LLM_URL),
+        vllm_llm_url=vllm_llm_url,
         vlm_model=os.environ.get(VLM_MODEL_ENV, _DEFAULT_VLM_MODEL),
-        llm_model=os.environ.get(LLM_MODEL_ENV, _DEFAULT_LLM_MODEL),
+        llm_model=llm_model,
+        assist_url=os.environ.get(ASSIST_URL_ENV) or vllm_llm_url,
+        assist_model=os.environ.get(ASSIST_MODEL_ENV) or llm_model,
+        localisation_mode=localisation_mode,
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
         vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),
         allow_stub_fallback=os.environ.get(

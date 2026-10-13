@@ -88,6 +88,9 @@ Then open <http://localhost:8020> — the dashboard loads with three demo cases
 | `VLLM_LLM_URL` | `http://localhost:8001/v1` | vLLM endpoint for the text LLM |
 | `VLM_MODEL` | `Qwen/Qwen2.5-VL-7B-Instruct` | Vision-language model id |
 | `LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Text model id |
+| `ASSIST_URL` | value of `VLLM_LLM_URL` | Endpoint for the assistant role |
+| `ASSIST_MODEL` | value of `LLM_MODEL` | Assistant model id |
+| `LOCALISATION_MODE` | `box` | Hazard localisation: `box` or `zone` |
 | `VLLM_API_KEY` | *(empty)* | Optional bearer key for the vLLM endpoints; no auth header sent when empty |
 | `LYNCEUS_STORAGE_DIR` | `./runs` | Where inspection audit records live |
 | `AUDIT_FORMAT_VERSION` | `1` | Audit record schema version |
@@ -120,8 +123,11 @@ URL in `backend/.env` (never commit the key):
 ```bash
 VLLM_VLM_URL=https://developer.amd.com.cn/radeon/api/v1
 VLLM_LLM_URL=https://developer.amd.com.cn/radeon/api/v1
-VLM_MODEL=DeepSeek-V4.1-Flash   # vision: coherent structured output (validated)
+VLM_MODEL=MiniCPM-V-4.7-35B-A3B # vision + box localisation (p50 14.5 s in the probe)
 LLM_MODEL=DeepSeek-V4-Flash     # text waybill cross-check
+ASSIST_URL=https://developer.amd.com.cn/radeon/api/v1
+ASSIST_MODEL=DeepSeek-V4-Flash  # assistant role (p50 4.5 s in the probe)
+LOCALISATION_MODE=box
 VLLM_API_KEY=rc-your-team-key
 ```
 
@@ -129,10 +135,12 @@ Then `python -m lynceus.main` and submit an inspection **without** a
 `demo_case` — the response carries `provenance: "live"`. The verdict panel
 labels it `Live AMD`; scripted demo cases are labelled `Scripted sample`.
 
-Model choice is empirical, not arbitrary: `Gemma-4-31B-IT` returns incoherent
-ASCII noise for vision JSON on this endpoint, and `Qwen3.8` thinking burns
-`max_tokens` (empty content) — `DeepSeek-V4.1-Flash` is the only VLM that
-returned coherent structured analysis of the demo photos. The client honours
+Model choice is empirical, not arbitrary (probe results and method in
+`docs/research/token-factory-probe.md`): `MiniCPM-V-4.7-35B-A3B` was the only
+vision model whose boxes overlapped the metal on the test photo in 3/3 runs
+(p50 14.5 s); `DeepSeek-V4.1-Flash` timed out on image requests in 3/3 runs;
+`Gemma-4-31B-IT` failed the assistant JSON contract in 3/3 runs, while
+`DeepSeek-V4-Flash` passed it 3/3 (p50 4.5 s). The client honours
 `Retry-After` on HTTP 429 (the team key is rate-limited per key, shared
 across teammates).
 

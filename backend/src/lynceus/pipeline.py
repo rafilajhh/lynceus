@@ -22,13 +22,14 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional, Protocol
 
 import httpx
 
 from lynceus import gas_ingest
 from lynceus import gas_twin
-from lynceus.config import Settings, get_settings
+from lynceus.config import Settings, get_settings, provider_for_url
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -200,7 +201,9 @@ class VLLMClient:
                 parts.append(delta)
         return "".join(parts)
 
-    def _chat_once(self, base_url: str, model: str, messages: list) -> str:
+    def _chat_once(
+        self, base_url: str, model: str, messages: list, max_tokens: int = 512
+    ) -> str:
         """Single chat-completions attempt; raises on transport/HTTP errors."""
         with httpx.stream(
             "POST",
@@ -208,7 +211,7 @@ class VLLMClient:
             json={
                 "model": model,
                 "messages": messages,
-                "max_tokens": 512,
+                "max_tokens": max_tokens,
                 "temperature": 0.1,
             },
             headers=self._auth_headers(),
@@ -225,7 +228,9 @@ class VLLMClient:
             payload = json.loads(response.read().decode("utf-8"))
             return str(payload["choices"][0]["message"]["content"])
 
-    def _chat(self, base_url: str, model: str, messages: list) -> str:
+    def _chat(
+        self, base_url: str, model: str, messages: list, max_tokens: int = 512
+    ) -> str:
         """One chat-completions round trip; raises on transport/HTTP errors.
 
         The response is read through two paths: SSE when the endpoint streams
@@ -236,7 +241,7 @@ class VLLMClient:
         """
         for attempt in range(3):
             try:
-                return self._chat_once(base_url, model, messages)
+                return self._chat_once(base_url, model, messages, max_tokens)
             except _RateLimitedError as exc:
                 if attempt == 2:
                     raise ValueError(
@@ -245,9 +250,11 @@ class VLLMClient:
                 time.sleep(exc.retry_after + 0.25 * (attempt + 1))
         raise AssertionError("unreachable")
 
-    def _chat_json(self, base_url: str, model: str, messages: list) -> Dict[str, Any]:
+    def _chat_json(
+        self, base_url: str, model: str, messages: list, max_tokens: int = 512
+    ) -> Dict[str, Any]:
         """Chat round trip with robust JSON parsing and exactly one retry."""
-        content = self._chat(base_url, model, messages)
+        content = self._chat(base_url, model, messages, max_tokens)
         parsed = _extract_json(content)
         if parsed is not None:
             return parsed
@@ -259,7 +266,7 @@ class VLLMClient:
                 "Reply again with ONLY the JSON object — no prose, no code fences.",
             },
         ]
-        content = self._chat(base_url, model, retry_messages)
+        content = self._chat(base_url, model, retry_messages, max_tokens)
         parsed = _extract_json(content)
         if parsed is None:
             raise ValueError(
@@ -282,9 +289,11 @@ class VLLMClient:
                 ],
             }
         ]
+        started = time.perf_counter()
         parsed = self._chat_json(
             self._settings.vllm_vlm_url, self._settings.vlm_model, messages
         )
+        latency_ms = (time.perf_counter() - started) * 1000.0
         return {
             "detected": {
                 "contamination": parsed.get("contamination", "unknown"),
@@ -297,6 +306,8 @@ class VLLMClient:
             "model_version": self._settings.vlm_model,
             "raw_output": json.dumps(parsed, sort_keys=True),
             "provenance": self.provenance,
+            "provider": provider_for_url(self._settings.vllm_vlm_url),
+            "latency_ms": latency_ms,
         }
 
     def llm(self, manifest_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -310,9 +321,11 @@ class VLLMClient:
                 ),
             }
         ]
+        started = time.perf_counter()
         parsed = self._chat_json(
             self._settings.vllm_llm_url, self._settings.llm_model, messages
         )
+        latency_ms = (time.perf_counter() - started) * 1000.0
         return {
             "reasoning": str(parsed.get("reasoning", "")),
             "confidence": _clamp01(parsed.get("confidence")),
@@ -324,7 +337,26 @@ class VLLMClient:
             "model_version": self._settings.llm_model,
             "raw_output": json.dumps(parsed, sort_keys=True),
             "provenance": self.provenance,
+            "provider": provider_for_url(self._settings.vllm_llm_url),
+            "latency_ms": latency_ms,
         }
+
+    def assist(
+        self, messages: list, max_tokens: int = 700
+    ) -> tuple[Dict[str, Any], float]:
+        """JSON chat against the assist endpoint/model.
+
+        Returns ``(parsed_json, latency_ms)``; raises like :meth:`_chat_json`
+        on transport errors, rate limiting, or unparseable output.
+        """
+        started = time.perf_counter()
+        parsed = self._chat_json(
+            self._settings.assist_url,
+            self._settings.assist_model,
+            messages,
+            max_tokens,
+        )
+        return parsed, (time.perf_counter() - started) * 1000.0
 
 
 # ---------------------------------------------------------------------------
@@ -554,8 +586,13 @@ def run_inspection(
     photo = payload.get("photo_base64") or payload.get("photo")
 
     try:
-        vlm_result = ai_clients.vlm(photo)
-        llm_result = ai_clients.llm(manifest_text, context)
+        # The two calls are independent and each takes seconds on a shared
+        # endpoint, so run them concurrently; .result() re-raises either error.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            vlm_future = pool.submit(ai_clients.vlm, photo)
+            llm_future = pool.submit(ai_clients.llm, manifest_text, context)
+            vlm_result = vlm_future.result()
+            llm_result = llm_future.result()
     except Exception as exc:  # noqa: BLE001 — any live failure falls back
         if ai_clients.provenance == "live":
             if not allow_stub_fallback:
