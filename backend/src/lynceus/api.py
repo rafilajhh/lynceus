@@ -6,12 +6,14 @@ Routes:
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
     POST /assist   — Pythia: cited answers over plant documents and an audit record.
     GET  /shift-report — shift aggregation with supplier risk and explanations.
+    GET  /benchmark/latest — newest committed validation summary (+ framing).
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import json
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +35,12 @@ from lynceus import shift
 from lynceus.config import get_settings, provider_for_url
 
 _WEB_DIR = Path(__file__).resolve().parents[3] / "web" / "out"
+#: Validation benchmark assets (manifest + committed result files).
+_BENCHMARK_DIR = Path(__file__).resolve().parents[2] / "benchmark"
+#: What the benchmark is, stated with every result so no page can overstate it.
+BENCHMARK_FRAMING = (
+    "component validation on public RealWaste images — not field data from a plant"
+)
 
 # No OCR is performed on the waybill; this is the fixed confidence attached
 # to operator-typed manifest text, not an OCR score.
@@ -772,6 +780,50 @@ def create_app() -> FastAPI:
                 },
             )
         return FileResponse(page, media_type="text/html")
+
+    @app.get("/validation", include_in_schema=False)
+    def serve_validation_page() -> FileResponse:
+        """Flat ``validation.html`` on ``/validation`` (same fix as ``/shift``)."""
+        page = _web_file("validation.html")
+        if not page.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "validation_page_not_found",
+                    "message": "web/out/validation.html is missing — build the web export.",
+                },
+            )
+        return FileResponse(page, media_type="text/html")
+
+    @app.get("/benchmark/latest")
+    def benchmark_latest() -> dict[str, Any]:
+        """Newest ``*.summary.json`` from the validation benchmark, plus framing."""
+        results = _BENCHMARK_DIR / "results"
+        for path in sorted(results.glob("*.summary.json"), reverse=True):
+            try:
+                summary = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(summary, dict):
+                return {**summary, "framing": BENCHMARK_FRAMING}
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_benchmark",
+                "message": "No benchmark summary has been committed yet.",
+            },
+        )
+
+    @app.get("/benchmark/manifest.csv", include_in_schema=False)
+    def benchmark_manifest() -> FileResponse:
+        """The benchmark's image list with expected verdicts."""
+        path = _BENCHMARK_DIR / "manifest.csv"
+        if not path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "no_manifest", "message": "manifest.csv is missing."},
+            )
+        return FileResponse(path, media_type="text/csv")
 
     @app.get("/shift-report")
     def shift_report(since: str | None = None, until: str | None = None) -> dict[str, Any]:

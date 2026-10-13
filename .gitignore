@@ -46,3 +46,6 @@ package-lock.json
 .playwright-mcp/
 assessB-*.png
 critique-*.png
+
+# Benchmark scratch audit records (the committed results live in backend/benchmark/results/)
+backend/benchmark/runs/
