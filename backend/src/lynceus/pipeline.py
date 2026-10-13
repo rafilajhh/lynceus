@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -44,6 +45,28 @@ ASSIST_TIMEOUT_S = 30.0
 
 class LiveAIUnavailableError(RuntimeError):
     """Live AI failed and stub fallback is disabled (fail-closed mode)."""
+
+
+#: A 429 asking us to wait longer than this is surfaced at once: sleeping on
+#: a judging-day request thread for a minute (or an hour) helps nobody.
+MAX_RETRY_AFTER_S = 10.0
+_DEFAULT_RETRY_AFTER_S = 1.0
+
+
+def _parse_retry_after(value: Any) -> float:
+    """Seconds to wait from a ``Retry-After`` header, never raising.
+
+    Only the numeric-seconds form is honoured; an HTTP-date, garbage, or
+    ``nan`` falls back to 1 s.  Negative values become 0.  Large values are
+    returned as-is — the caller gives up above :data:`MAX_RETRY_AFTER_S`.
+    """
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return _DEFAULT_RETRY_AFTER_S
+    if math.isnan(seconds):
+        return _DEFAULT_RETRY_AFTER_S
+    return max(seconds, 0.0)
 
 
 class _RateLimitedError(Exception):
@@ -245,8 +268,9 @@ class VLLMClient:
             timeout=self._timeout_s,
         ) as response:
             if response.status_code == 429:
-                retry_after = float(response.headers.get("retry-after", "1"))
-                raise _RateLimitedError(retry_after)
+                raise _RateLimitedError(
+                    _parse_retry_after(response.headers.get("retry-after", "1"))
+                )
             response.raise_for_status()
             content_type = response.headers.get("content-type", "")
             if "text/event-stream" in content_type:
@@ -263,13 +287,19 @@ class VLLMClient:
         The response is read through two paths: SSE when the endpoint streams
         (``text/event-stream``), plain JSON otherwise.  Shared endpoints
         (AMD Token Factory) rate-limit per key, so a 429 is retried after
-        its ``Retry-After`` hint — up to two waits, then the error surfaces
+        its ``Retry-After`` hint (at most 10 s each; a longer ask surfaces at
+        once) — up to two waits, then the error surfaces
         (and the honest stub-fallback / fail-closed path takes over).
         """
         for attempt in range(3):
             try:
                 return self._chat_once(base_url, model, messages, max_tokens)
             except _RateLimitedError as exc:
+                if exc.retry_after > MAX_RETRY_AFTER_S:
+                    raise ValueError(
+                        f"endpoint rate-limited; asked to wait {exc.retry_after:g}s "
+                        f"(> {MAX_RETRY_AFTER_S:g}s cap), giving up ({base_url})"
+                    ) from exc
                 if attempt == 2:
                     raise ValueError(
                         f"endpoint rate-limited after 3 attempts ({base_url})"
