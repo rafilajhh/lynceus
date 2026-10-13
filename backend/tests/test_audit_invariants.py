@@ -63,6 +63,10 @@ def test_audit_invariants():
         "llm": {"model": "llama-3.1-8b-instruct", "model_version": "2026-08-15",
                 "prompt_sha256": A.sha256_field(prompt_bytes), "raw_output_sha256": A.sha256_field(b"llm-raw"),
                 "reasoning": "Foto menunjukkan dominasi sisa organik rumah tangga.", "confidence": 0.82},
+        "gas": {"source": "digital_twin",
+                "instrument": {"model": "virtual TDLAS gate monitor (physics twin)",
+                               "technology": "Tunable Diode Laser Absorption Spectroscopy (TDLAS)"},
+                "model_basis": "Eq. HH-1 40 CFR 98"},
     }
     engine_outputs = {
         "suitability": {"classification": "acceptable", "score": 0.74,

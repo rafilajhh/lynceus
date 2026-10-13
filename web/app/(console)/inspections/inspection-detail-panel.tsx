@@ -152,6 +152,9 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
   const uncertainty = detail.verdict?.uncertainty;
   const reasons = detail.reasons ?? [];
   const gasReadings = detail.inputs?.gas?.readings_ppm;
+  const gasInstrument = detail.ai_outputs?.gas?.instrument;
+  const gasModelBasis = detail.ai_outputs?.gas?.model_basis;
+  const gasSource = detail.inputs?.gas?.source;
   const photo = detail.inputs?.photo;
 
   return (
@@ -234,9 +237,27 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
               </ul>
             ) : (
               <div className="text-[12.5px] text-muted">
-                {detail.inputs?.gas?.source ?? "not measured"}
+                {gasSource ?? "not measured"}
               </div>
             )}
+            {gasInstrument ? (
+              <div className="mt-2 border-t border-seam pt-2 text-[11.5px] leading-snug text-faint">
+                <span className="text-muted">instrument: </span>
+                {gasInstrument.model ?? "—"}
+                {gasInstrument.technology ? (
+                  <>
+                    {" · "}
+                    {gasInstrument.technology}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            {gasModelBasis ? (
+              <div className="mt-0.5 text-[11.5px] leading-snug text-faint">
+                <span className="text-muted">model basis: </span>
+                {gasModelBasis}
+              </div>
+            ) : null}
           </div>
 
           {/* photo thumbnail: only when the API exposes a relative path */}

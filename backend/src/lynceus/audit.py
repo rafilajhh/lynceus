@@ -500,9 +500,20 @@ class LLMOutput(_StrictModel):
         return _validate_confidence(v, "ai_outputs.llm.confidence")
 
 
+class GasOutput(_StrictModel):
+    """Gate-gas channel provenance: which instrument class produced the
+    readings (a live gate sensor or the physics digital twin)
+    and the regulatory basis of the twin's generation stage."""
+
+    source: str
+    instrument: Optional[Dict[str, Any]] = None
+    model_basis: Optional[str] = None
+
+
 class AIOutputs(_StrictModel):
     vlm: VLMOutput
     llm: LLMOutput
+    gas: Optional[GasOutput] = None
 
 
 class SuitabilityOutput(_StrictModel):
@@ -910,6 +921,7 @@ def begin_record(
                 "reasoning": "",
                 "confidence": 0.0,
             },
+            "gas": None,
         },
         "engine_outputs": {
             "suitability": {"classification": "", "score": 0.0, "rule": ""},

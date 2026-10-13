@@ -86,11 +86,17 @@ def test_gas_twin_result_shape_and_provenance():
     assert result["model_basis"] == "Eq. HH-1 40 CFR 98"
     assert set(result["readings_ppm"]) == {"ch4", "co2", "tvoc", "h2s"}
     assert all(value >= 0.0 for value in result["readings_ppm"].values())
-    # Sensor families: NDIR for CH4/CO2, PID for TVOC, electrochemical for H2S.
-    assert result["sensor_families"]["ch4"] == "NDIR"
-    assert result["sensor_families"]["co2"] == "NDIR"
+    # Sensor families: TDLAS for CH4/CO2 (virtual TDLAS gate monitor),
+    # PID for TVOC, electrochemical for H2S.
+    assert result["sensor_families"]["ch4"] == "TDLAS"
+    assert result["sensor_families"]["co2"] == "TDLAS"
     assert result["sensor_families"]["tvoc"] == "PID"
     assert result["sensor_families"]["h2s"] == "Electrochemical"
+    # The instrument block names the emulated monitor — never a real vendor.
+    assert result["instrument"]["model"] == "virtual TDLAS gate monitor (physics twin)"
+    assert "sentinel" not in str(result["instrument"]).lower()
+    assert "ecotec" not in str(result["instrument"]).lower()
+    assert result["instrument"]["technology"] == "Tunable Diode Laser Absorption Spectroscopy (TDLAS)"
     # The dilution assumption is stated, labelled 'model assumption'.
     names = {a["name"] for a in result["assumptions"]}
     assert "dilution_air_flow" in names

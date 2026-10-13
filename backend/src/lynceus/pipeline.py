@@ -26,6 +26,7 @@ from typing import Any, Dict, Optional, Protocol
 
 import httpx
 
+from lynceus import gas_ingest
 from lynceus import gas_twin
 from lynceus.config import Settings, get_settings
 
@@ -465,6 +466,25 @@ def resolve_clients(
     return StubAIClients(demo_case=demo_case, provenance="stub")
 
 
+def _gate_gas_readings(
+    payload: Dict[str, Any], record_id: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """Gas readings for this inspection: live instrument first, twin second.
+
+    A configured, reachable sensor gateway (:mod:`lynceus.gas_ingest`,
+    env ``LYNCEUS_GAS_SENSOR_URL`` — e.g. a TDLAS gate
+    monitor) provides *measured* values and is stamped
+    ``sentinel_gate_sensor``.  Otherwise the physics digital twin runs
+    and is stamped ``digital_twin``.  Either way the audit record states
+    which it was; a measurement never masquerades as a simulation and
+    vice versa.
+    """
+    live = gas_ingest.fetch_live_readings()
+    if live is not None:
+        return live
+    return _simulate_gas_readings(payload, record_id)
+
+
 def _simulate_gas_readings(
     payload: Dict[str, Any], record_id: Optional[str]
 ) -> Optional[Dict[str, Any]]:
@@ -521,7 +541,7 @@ def run_inspection(
         never passed off as live output.
     """
     payload = dict(payload or {})
-    gas_result = _simulate_gas_readings(payload, record_id)
+    gas_result = _gate_gas_readings(payload, record_id)
     context = {
         "truck_id": payload.get("truck_id"),
         "weight_kg": payload.get("weight_kg"),

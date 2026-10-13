@@ -420,3 +420,74 @@ def test_live_failure_is_503_when_stub_fallback_disabled(client, monkeypatch):
     detail = resp.json().get("detail") or {}
     assert detail.get("error") == "live_ai_unavailable", detail
     assert "verdict" not in (resp.json() if isinstance(resp.json(), dict) else {})
+
+
+# ---------------------------------------------------------------------------
+# Gas channel: an inspection with no gas data must still complete.
+# ---------------------------------------------------------------------------
+
+
+def test_inspect_without_gas_data_completes(client, tmp_path):
+    # No waste_stream / moisture / age_h: the gas twin cannot run, so there is
+    # no gas data for this inspection — the record must say so, not 500.
+    resp = client.post(
+        "/inspect",
+        json={
+            "truck_id": "T1",
+            "photo_base64": "c3R1Yi1waG90bw==",
+            "manifest_text": "SURAT JALAN",
+            "weight_kg": 5200,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    rec = body["audit_record"]
+    assert rec["execution_status"] == "completed"
+    gas = rec["ai_outputs"]["gas"]
+    assert gas is None or gas["source"] == "not_measured"
+    # The on-disk record strict-decodes (no orphaned in_progress record).
+    record = _load_audit_record(tmp_path, body["record_id"])
+    assert record.execution_status == audit.ExecutionStatus.COMPLETED
+
+
+def test_pipeline_resolve_clients_without_settings_arg():
+    assert pipeline.resolve_clients({"demo_case": "green"}).provenance == "stub"
+
+
+def test_legacy_record_without_ai_gas_still_decodes(client, tmp_path):
+    """Records written before the gas channel existed have no ai_outputs.gas."""
+    import json
+
+    resp = client.post("/inspect", json=DEMO_CASES["green"]["payload"])
+    assert resp.status_code == 200, resp.text
+    path = tmp_path / resp.json()["record_id"] / RECORD_FILENAME
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["ai_outputs"].pop("gas")
+    path.write_text(json.dumps(data), encoding="utf-8")
+    record = audit.load_record(path)
+    assert record.ai_outputs.gas is None
+
+
+def test_inspect_with_live_gate_sensor_stamps_measured_source(
+    client, tmp_path, monkeypatch
+):
+    from lynceus import gas_ingest
+
+    class _Gateway:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "readings_ppm": {"ch4": 54.1, "co2": 56.4, "h2s": 0.0039, "tvoc": 0.067},
+                "measured_at_utc": "2026-10-13T09:00:00Z",
+            }
+
+    monkeypatch.setenv(gas_ingest.GAS_SENSOR_URL_ENV, "http://gate-sensor.invalid/r")
+    monkeypatch.setattr(gas_ingest.httpx, "get", lambda *a, **k: _Gateway())
+    resp = client.post("/inspect", json=DEMO_CASES["green"]["payload"])
+    assert resp.status_code == 200, resp.text
+    rec = _load_audit_record(tmp_path, resp.json()["record_id"])
+    assert rec.inputs.gas.source == "sentinel_gate_sensor"
+    assert rec.inputs.gas.measured_at_utc == "2026-10-13T09:00:00Z"
+    assert rec.ai_outputs.gas.source == "sentinel_gate_sensor"

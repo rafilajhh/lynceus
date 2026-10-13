@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 
 
-SENSOR_FAMILIES = ("PID", "MOX", "Electrochemical", "NDIR", "Pellistor")
+SENSOR_FAMILIES = ("PID", "MOX", "Electrochemical", "NDIR", "Pellistor", "TDLAS")
 
 
 @dataclass(frozen=True)

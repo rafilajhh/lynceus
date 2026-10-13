@@ -113,6 +113,21 @@ const auditRecordSchema = z
           })
           .optional(),
         vlm: z.object({ confidence: z.number().optional() }).optional(),
+        // null on records with no gas data (backend: GasOutput | None).
+        gas: z
+          .object({
+            source: z.string().nullish(),
+            model_basis: z.string().nullish(),
+            instrument: z
+              .object({
+                model: z.string().nullish(),
+                technology: z.string().nullish(),
+                basis: z.string().nullish(),
+              })
+              .passthrough()
+              .nullish(),
+          })
+          .nullish(),
       })
       .optional(),
     verdict: z

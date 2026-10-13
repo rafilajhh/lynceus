@@ -46,6 +46,20 @@ __all__ = [
 #: never inferred — engine pattern 11).
 GAS_SOURCE = "digital_twin"
 
+#: Instrument class emulated by the CH4/CO2 channels: a TDLAS (tunable
+#: diode laser absorption spectroscopy) gate monitor — no drift over
+#: time, no cross-gas sensitivity, fast optical response.  Virtual: no
+#: real vendor product is named or implied.
+SENSOR_INSTRUMENT = {
+    "model": "virtual TDLAS gate monitor (physics twin)",
+    "technology": "Tunable Diode Laser Absorption Spectroscopy (TDLAS)",
+    "basis": "TDLAS landfill-gas monitoring (physics twin)",
+    "channels": {
+        "ch4": "laser line at 1.65 um",
+        "co2": "laser line at 2.00 um",
+    },
+}
+
 #: Regulatory basis of the generation stage (engine generation.py).
 MODEL_BASIS = "Eq. HH-1 40 CFR 98"
 
@@ -72,11 +86,15 @@ LFG_H2S_FRACTION = 36.0e-6
 #: The virtual sensor board: one channel per reported reading.
 #: (family, range_ppm, detection_limit_ppm, response_time_s,
 #:  recovery_time_s, noise_ppm, reading_decimals)
+#: CH4 and CO2 emulate a TDLAS instrument: optical
+#: channels with sub-ppm detection limits, ~1 s optical response and
+#: ppm-level noise (vs the 2 s / 0.5-1.0 ppm NDIR board they replace).
+#: TVOC (PID) and H2S (electrochemical) keep their family-typical specs.
 SENSOR_SPECS: Dict[str, tuple] = {
-    "ch4": ("NDIR", 50_000.0, 0.5, 2.0, 5.0, 1.0, 2),
-    "co2": ("NDIR", 50_000.0, 1.0, 2.0, 5.0, 3.0, 1),
+    "ch4": ("TDLAS", 50_000.0, 0.1, 1.0, 1.0, 0.2, 2),
+    "co2": ("TDLAS", 50_000.0, 0.5, 1.0, 1.0, 0.5, 1),
     "tvoc": ("PID", 100.0, 0.005, 3.0, 8.0, 0.01, 3),
-"h2s": ("Electrochemical", 100.0, 0.0005, 15.0, 30.0, 0.0002, 4),
+    "h2s": ("Electrochemical", 100.0, 0.0005, 15.0, 30.0, 0.0002, 4),
 }
 
 #: Sampling cadence of the warm-up run [s].
@@ -291,5 +309,6 @@ def simulate_gate_readings(
         "co2_rate_kg_per_h": generation.co2_rate_kg_per_h,
         "dilution_air_m3_per_h": round(dilution_air_m3_per_h, 3),
         "sensor_families": sensor_families,
+        "instrument": dict(SENSOR_INSTRUMENT),
         "assumptions": [dict(assumption) for assumption in ASSUMPTIONS],
     }

@@ -248,14 +248,26 @@ def _run_inspection_with_audit(
     vlm_result = ai.get("vlm") or {}
     llm_result = ai.get("llm") or {}
 
-    # The gas digital twin (when it ran) feeds both the decision layer
+    # The gate gas channel (when it ran) feeds both the decision layer
     # and the audit record's frozen inputs — the readings above the bin
-    # are part of what the verdict answers to.
+    # are part of what the verdict answers to.  The source is whatever
+    # the pipeline reported: a live gate sensor (``sentinel_gate_sensor``)
+    # or the physics twin (``digital_twin``).
     gas_result = ai.get("gas")
+    gas_ai_output: dict[str, Any] | None = None
     if gas_result and gas_result.get("readings_ppm"):
+        gas_source = gas_result.get("source") or gas_twin.GAS_SOURCE
         gas_input["readings_ppm"] = gas_result["readings_ppm"]
-        gas_input["source"] = gas_twin.GAS_SOURCE
+        gas_input["source"] = gas_source
+        # A live gateway's own measurement time (already validated by
+        # gas_ingest) beats the time the inspection happened to run.
+        gas_input["measured_at_utc"] = gas_result.get("measured_at_utc") or now
         payload["gas"] = gas_input
+        gas_ai_output = {
+            "source": gas_source,
+            "instrument": gas_result.get("instrument"),
+            "model_basis": gas_result.get("model_basis"),
+        }
 
     engine_result = None
     if (
@@ -342,6 +354,7 @@ def _run_inspection_with_audit(
             "reasoning": str(llm_result.get("reasoning", "")),
             "confidence": float(llm_result.get("confidence", 0.0)),
         },
+        "gas": gas_ai_output,
     }
     audit_gates = {k: v for k, v in gates.items() if k in audit.GATE_NAMES}
     verdict_payload = {
