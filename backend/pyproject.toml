@@ -5,14 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lynceus-backend"
 version = "0.1.0"
-description = "Lynceus backend: FastAPI service wrapping the Scentinel assessment engine."
+description = "Lynceus backend: FastAPI service wrapping the Lynceus decision engine."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "pydantic>=2",
     "httpx",
-    "scentinel @ git+https://github.com/alertxsto/scentinel.git@master",
 ]
 
 [project.optional-dependencies]
@@ -21,8 +20,8 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["lynceus*"]
-
+where = [".", "src"]
+include = ["lynceus*", "lynceus_engine*"]
 [tool.pytest.ini_options]
 markers = [
     "live: live smoke tests against a real endpoint (opt-in via LYNCEUS_LIVE_TESTS=1)",

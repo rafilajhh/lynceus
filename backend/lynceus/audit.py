@@ -1,7 +1,7 @@
 """Lynceus audit record module — immutable, append-only inspection records.
 
 Implements the audit-provenance design from
-``docs/research-scentinel-audit-provenance.md`` §(b).  Each truck inspection
+``docs/research-audit-provenance.md`` §(b).  Each truck inspection
 (foto, manifest teks, berat, gas) produces exactly one ``inspection-NNN``
 directory holding a single ``audit.json`` written **twice, atomically**:
 
@@ -107,7 +107,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 #: Bump on any breaking schema change; older readers must reject, not
-#: misinterpret (Scentinel RUN_FORMAT_VERSION pattern, history.py:67-102).
+#: misinterpret (engine RUN_FORMAT_VERSION pattern, history.py:67-102).
 AUDIT_FORMAT_VERSION = 1
 
 RECORD_FILENAME = "audit.json"
@@ -128,8 +128,8 @@ GATE_NAMES = (
     "weight_plausibility",
 )
 
-#: Consistent error prefixes so failures are greppable (Scentinel
-#: NO_READINGS_ERROR pattern, history.py:186, :1098-1102).
+#: Consistent error prefixes so failures are greppable (engine
+#: NO_READINGS_ERROR pattern — prefixed-error rule).
 _ERR_FORMAT = "FORMAT_ERROR"
 _ERR_STATE = "STATE_ERROR"
 _ERR_IO = "IO_ERROR"
@@ -226,7 +226,7 @@ def _validate_sha256_field(value: str, field: str) -> str:
 
 def _validate_relative_filename(value: str, field: str) -> str:
     """Records must stay portable: relative paths inside the inspection
-    folder only (invariant 8; Scentinel history.py:1171-1192)."""
+    folder only (invariant 8; frozen-history pattern)."""
     if not isinstance(value, str) or not value:
         raise _err(_ERR_FORMAT, field, f"must be a non-empty string (got {value!r})")
     if os.path.isabs(value) or re.match(r"^[A-Za-z]:", value) or value.startswith("\\"):
@@ -269,7 +269,7 @@ def _validate_closed_enum(value: str, allowed: tuple, field: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Closed enums (invariant 10 / Scentinel pattern 11)
+# Closed enums (invariant 10 / engine pattern 11)
 # ---------------------------------------------------------------------------
 
 
@@ -331,7 +331,7 @@ class Classification:
 
 class _StrictModel(BaseModel):
     """Base model: extra fields forbidden so hand-added keys are rejected
-    (strict-decode pattern, Scentinel history.py:787-807)."""
+    (strict-decode pattern, closed-schema rule)."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -688,7 +688,7 @@ class AuditRecord(_StrictModel):
     @model_validator(mode="after")
     def _v_cross_field(self) -> "AuditRecord":
         # finished_at mandatory at terminal, forbidden while in_progress
-        # (invariants 1 & 2; Scentinel history.py:2090-2097).
+        # (invariants 1 & 2; frozen-schema rules).
         if self.execution_status == ExecutionStatus.IN_PROGRESS:
             if self.finished_at_utc is not None:
                 raise _err(
@@ -793,7 +793,7 @@ def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
     """Write JSON atomically: sibling temp file → ``os.replace()``.
 
     A failed replace leaves any previously valid record intact
-    (invariant 1; Scentinel history.py:1195-1210).
+    (invariant 1; atomic-write rule).
     """
     tmp = path.with_name(path.name + ".tmp")
     try:
@@ -813,7 +813,7 @@ def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
 
 def _cleanup_empty_dir(path: Path) -> None:
     """Best-effort removal of a freshly reserved, still-empty inspection
-    folder (Scentinel pattern 29: no inspection without a record)."""
+    folder (engine pattern 29: no inspection without a record)."""
     try:
         if path.is_dir() and not any(path.iterdir()):
             path.rmdir()
@@ -830,8 +830,8 @@ def allocate_inspection_id(storage_dir: "str | os.PathLike[str]") -> "tuple[str,
     """Reserve the next ``inspection-NNN`` directory and return
     ``(record_id, inspection_path)``.
 
-    IDs are allocated from the *filesystem*, not memory (Scentinel
-    history.py:104-110, :846-869): directories matching ``inspection-NNN``
+    IDs are allocated from the *filesystem*, not memory (engine
+    allocation rule, history.py:104-110): directories matching ``inspection-NNN``
     are counted even when their record is corrupt or missing, so an ID is
     never reused even after a crash or application restart.  The directory is
     created with ``mkdir(exist_ok=False)`` — a lost race is a hard error.
@@ -872,7 +872,7 @@ def begin_record(
 ) -> AuditRecord:
     """Write an honest ``in_progress`` record before AI inference starts.
 
-    Inputs are frozen here (digests recorded; Scentinel snapshot_project
+    Inputs are frozen here (digests recorded; engine snapshot pattern
     pattern, history.py:559-595): live input changes after this point cannot
     alter a running record's claims — ``finish_record`` re-verifies raw input
     bytes against these frozen digests.  If the initial write fails and the
@@ -1112,7 +1112,7 @@ def list_inspections(storage_dir: "str | os.PathLike[str]") -> List[Dict[str, An
     scan of ``inspection-NNN`` directories.  A corrupt or missing record
     appears in the result with ``"ok": False`` and the recorded ``"error"``
     instead of crashing the listing; ``load_record`` on the same path still
-    fails hard (Scentinel list_runs pattern, history.py:810-822).
+    fails hard (engine list_runs pattern, history.py:810-822).
 
     Returns a list of dicts sorted by inspection number:
     ``{"record_id", "execution_status", "ok", "error"}`` — ``error`` is

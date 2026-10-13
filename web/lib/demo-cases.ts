@@ -110,7 +110,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
   },
 };
 
-/** Scentinel engine composition presets (scentinel core composition.py). */
+/** Lynceus engine composition presets (lynceus_engine core composition.py). */
 export const WASTE_STREAMS = [
   { value: "mixed-msw", label: "mixed-msw" },
   { value: "co-disposal", label: "co-disposal" },

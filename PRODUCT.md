@@ -21,7 +21,7 @@ Lynceus is an AI gate inspector for alternative-fuel (RDF) facilities. It fuses 
 
 ## Positioning
 
-AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route scoring) + immutable audit trail — not a chatbot, not a dashboard. The decision engine is built on Scentinel, the team's own pre-hackathon MIT open-source project; the AMD AI layer, fusion pipeline, and web app are new.
+AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route scoring) + immutable audit trail — not a chatbot, not a dashboard. The decision engine, AMD AI layer, fusion pipeline, and web app are all part of this project.
 
 ## Operating Context
 
@@ -32,8 +32,8 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 
 ## Capabilities and Constraints
 
-- `POST /inspect`: full pipeline (photo base64 → VLM stub/live → LLM cross-check → Scentinel engine → fusion verdict → audit record + impact estimate with per-figure source URLs).
-- `POST /assess`: direct Scentinel engine assessment.
+- `POST /inspect`: full pipeline (photo base64 → VLM stub/live → LLM cross-check → Lynceus engine → fusion verdict → audit record + impact estimate with per-figure source URLs).
+- `POST /assess`: direct Lynceus engine assessment.
 - Audit records: immutable, atomic-write, strict-decode; 57 invariant checks; record_id never reused.
 - Gas digital twin: Eq. HH-1 generation → virtual NDIR/PID/EC sensors, deterministic per truck/record; gas supports (never overrides) the visual verdict.
 - Impact estimates: prevented-loss in IDR/USD with cited basis rows (REJECT: shredder + kiln downtime; ACCEPT: RDF value band).

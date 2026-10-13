@@ -200,17 +200,8 @@ export default function LandingPage() {
       {/* ============ PROVENANCE: honest footer ============ */}
       <footer className="mt-auto border-t border-seam pt-8">
         <p className="m-0 max-w-[90ch] text-[13px] leading-[1.7] text-muted">
-          Decision engine built on{" "}
-          <a
-            href="https://github.com/alertxsto/scentinel"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-amber underline-offset-2 hover:underline"
-          >
-            Scentinel
-          </a>{" "}
-          (our open-source MIT project). AMD AI layer, fusion pipeline, and web
-          app built during the hackathon.
+          The Lynceus decision engine, the AMD AI layer, and the fusion
+          pipeline are all part of this project, built during the hackathon.
         </p>
         <p className="figure m-0 mt-2 text-[12px] text-muted">
           Demo numbers are sourced estimates, not validated measurements ·

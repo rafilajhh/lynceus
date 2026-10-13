@@ -436,7 +436,7 @@ Problem-first, no kicker/eyebrow, no hero-metric grid:
 3. **How it works** — "How a truck is cleared, gate by gate": three steps,
    mono step numerals in `text-faint`, each with a gate chip (`.figure …
    rounded-[6px] border border-seam bg-raised px-3 py-1.5` + green dot).
-4. **Provenance footer** — Scentinel attribution, honest note "Demo numbers
+4. **Provenance footer** — honest note "Demo numbers
    are sourced estimates, not validated measurements".
 
 ### `/app` — inspection workspace (Operate) — `app/app/page.tsx` → `WorkspaceClient`

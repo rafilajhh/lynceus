@@ -1,5 +1,7 @@
 # Agent session state
 .omo/
+.omc/
+.codegraph/
 
 # Anti-slop audit reports
 anti-slop/
@@ -33,6 +35,9 @@ rf.html
 rf1.json
 runs-live-test/
 runs-e2e-real*/
+
+# Stray root lockfile (real one lives in web/)
+package-lock.json
 
 # Impeccable critique snapshots (local-only backlog)
 .impeccable/critique/

@@ -1,12 +1,12 @@
 """Lynceus decision (fusion) layer.
 
-Fuses the VLM photo analysis, the LLM manifest cross-check, and the Scentinel
+Fuses the VLM photo analysis, the LLM manifest cross-check, and the Lynceus engine
 engine assessment into one final verdict plus a set of **stated** quality
 gates and human-readable English reasons for the demo UI.
 
 Priority order (a red flag always outranks an amber one, and refusing to
 answer always outranks everything — a speculative verdict built on missing
-inputs is "the most destructive output", research-scentinel-audit-provenance
+inputs is "the most destructive output", research-audit-provenance
 pattern 14):
 
 1. ``refuse_insufficient_input`` — a mandatory input is missing (no photo,
@@ -41,7 +41,7 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# Tunables (stated thresholds, never inferred — Scentinel pattern 11)
+# Tunables (stated thresholds, never inferred — engine pattern 11)
 # ---------------------------------------------------------------------------
 
 #: Contaminants that make a load unfit for RDF processing no matter what.
@@ -416,7 +416,7 @@ def decide(
     if escalate_reasons:
         return Decision.ESCALATE_HUMAN, gates, escalate_reasons
 
-    # Engine actionability (Scentinel refuse-to-answer, pattern 14)
+    # Engine actionability (engine refuse-to-answer, pattern 14)
     recommendation = (engine_result or {}).get("recommendation") or {}
     if not recommendation.get("actionable", True):
         reasons.append(

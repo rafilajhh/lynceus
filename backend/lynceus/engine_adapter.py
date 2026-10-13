@@ -1,18 +1,19 @@
-"""Adapter between the Lynceus API and the Scentinel engine.
+"""Adapter between the Lynceus API and the Lynceus decision engine.
 
-Scentinel (:mod:`scentinel.core`) is the physics; Lynceus is the service.
-This module is the only place the two meet, so the rest of the backend never
-imports Scentinel directly and the engine can evolve behind this seam.
+The engine (:mod:`lynceus_engine`, vendored under ``backend/src``) is the
+physics; Lynceus is the service. This module is the only place the two
+meet, so the rest of the backend never imports the engine directly and
+the engine can evolve behind this seam.
 
 Design notes:
 
-* ``scentinel`` is imported lazily inside :func:`_load_engine`, never at
-  module import time. A missing engine therefore degrades into a clear
+* ``lynceus_engine`` is imported lazily inside :func:`_load_engine`, never
+  at module import time. A missing engine therefore degrades into a clear
   runtime error (surfaced by ``/health`` and ``/assess``) instead of
   breaking every import of Lynceus.
 * All serialisation helpers are pure functions over dataclasses, so they are
   trivially unit-testable without the engine installed.
-* ``screening=False`` is passed to :func:`scentinel.core.pipeline.assess_batch`
+* ``screening=False`` is passed to :func:`lynceus_engine.pipeline.assess_batch`
   because the CFD transport mesh was dropped from Lynceus; with it gone there
   is no mesh-independence claim to caveat.
 """
@@ -33,7 +34,7 @@ __all__ = [
 
 
 class EngineUnavailableError(RuntimeError):
-    """Scentinel is not importable in this process."""
+    """The Lynceus decision engine is not importable in this process."""
 
     def __init__(self, detail: str):
         super().__init__(detail)
@@ -41,7 +42,7 @@ class EngineUnavailableError(RuntimeError):
 
 
 class UnknownWasteStreamError(ValueError):
-    """The requested waste stream is not a known Scentinel preset (HTTP 422)."""
+    """The requested waste stream is not a known engine preset (HTTP 422)."""
 
     def __init__(self, waste_stream: str, available: tuple[str, ...]):
         self.waste_stream = waste_stream
@@ -57,9 +58,9 @@ class InvalidBatchError(ValueError):
 
 
 def _load_engine() -> Any:
-    """Import ``scentinel.core`` (plus the submodules we use) or fail clearly.
+    """Import ``lynceus_engine`` (plus the submodules we use) or fail clearly.
 
-    ``scentinel.core``'s ``__init__`` does not re-export its submodules, so
+    ``lynceus_engine``'s ``__init__`` does not re-export its submodules, so
     the pieces Lynceus needs — ``composition`` and ``pipeline`` — are
     imported explicitly. Import stays lazy: it happens on first request, not
     at module load, so a missing engine degrades into a clear runtime error
@@ -67,21 +68,21 @@ def _load_engine() -> Any:
     this function to simulate failures.
     """
     try:
-        import scentinel.core as engine  # type: ignore[import-untyped]
-        import scentinel.core.composition  # noqa: F401  (registers submodule)
-        import scentinel.core.pipeline  # noqa: F401  (registers submodule)
+        import lynceus_engine as engine  # type: ignore[import-untyped]
+        import lynceus_engine.composition  # noqa: F401  (registers submodule)
+        import lynceus_engine.pipeline  # noqa: F401  (registers submodule)
     except ImportError as exc:
         raise EngineUnavailableError(
-            "the Scentinel engine package 'scentinel' is not installed or "
-            f"not importable in this process ({exc}); the Lynceus /assess "
-            "endpoint requires it — install Scentinel or add its src/ "
-            "directory to PYTHONPATH"
+            "the Lynceus decision engine package 'lynceus_engine' is not "
+            f"installed or not importable in this process ({exc}); the "
+            "Lynceus /assess endpoint requires it — install the backend "
+            "package or add backend/src to PYTHONPATH"
         ) from exc
     return engine
 
 
 def engine_available() -> bool:
-    """True when ``scentinel.core`` can be imported (used by ``/health``)."""
+    """True when ``lynceus_engine`` can be imported (used by ``/health``)."""
     try:
         _load_engine()
     except EngineUnavailableError:
@@ -90,7 +91,7 @@ def engine_available() -> bool:
 
 
 def _resolve_waste_stream(engine: Any, waste_stream: str) -> Any:
-    """Map a waste-stream name onto its Scentinel composition preset."""
+    """Map a waste-stream name onto its engine composition preset."""
     presets = engine.composition.PRESETS
     if waste_stream not in presets:
         raise UnknownWasteStreamError(waste_stream, tuple(presets))
@@ -107,7 +108,7 @@ def list_waste_streams() -> list[str]:
 
 
 #: Waste streams offered by the current engine, resolved lazily on first
-#: access (PEP 562) so that importing this module never imports Scentinel.
+#: access (PEP 562) so that importing this module never imports the engine.
 AVAILABLE_WASTE_STREAMS: tuple[str, ...]
 
 
@@ -140,7 +141,7 @@ def as_jsonable(value: Any) -> Any:
 
 
 def serialize_assessment(assessment: Any) -> dict[str, Any]:
-    """Flatten a Scentinel ``BatchAssessment`` into the API response shape.
+    """Flatten an engine ``BatchAssessment`` into the API response shape.
 
     The stage dataclasses are serialised in full (nested), with the two
     summary conveniences — ``summary_lines`` and the recommended route —
@@ -173,10 +174,10 @@ def run_assessment(
     moisture: float,
     age_h: float,
 ) -> dict[str, Any]:
-    """Run the full Scentinel chain for one batch and serialise the result.
+    """Run the full assessment chain for one batch and serialise the result.
 
     Args:
-        waste_stream: a Scentinel preset name (e.g. ``"mixed-msw"``);
+        waste_stream: an engine preset name (e.g. ``"mixed-msw"``);
             unknown names raise :class:`UnknownWasteStreamError`.
         tonnage_t: wet-basis batch tonnage in tonnes (>= 0).
         moisture: wet-basis moisture fraction in [0, 1].
@@ -188,7 +189,7 @@ def run_assessment(
     Raises:
         UnknownWasteStreamError: ``waste_stream`` is not a known preset.
         InvalidBatchError: numeric inputs are outside the engine's domain.
-        EngineUnavailableError: Scentinel could not be imported.
+        EngineUnavailableError: the engine could not be imported.
     """
     engine = _load_engine()
     composition = _resolve_waste_stream(engine, waste_stream)

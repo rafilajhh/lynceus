@@ -1,14 +1,14 @@
 # PLAN.md — Rencana Penuh Pengembangan Lynceus (A–Z)
 
 > Dokumen rencana hackathon AMD Act 3. Semua angka kunci berasal dari file riset di `docs/`:
-> `research-demo-assets.md` (business value & aset demo), `research-scentinel-engine-map.md` (pemetaan engine),
-> `research-amd-gpu-stack.md` (stack AI di AMD GPU), `research-scentinel-audit-provenance.md` (audit & provenance).
+> `research-demo-assets.md` (business value & aset demo), `research-engine-map.md` (pemetaan engine),
+> `research-amd-gpu-stack.md` (stack AI di AMD GPU), `research-audit-provenance.md` (audit & provenance).
 
 ---
 
 ## 1. Ringkasan Eksekutif
 
-**Lynceus** adalah sistem inspeksi pintu gerbang bahan bakar alternatif (RDF/refuse-derived fuel) berbasis AI yang berjalan penuh di GPU AMD Instinct MI300X. Ketika truk sampah tiba di pabrik semen atau PLTSa, operator mengunggah foto muatan, surat jalan, berat timbangan, dan data gas — Lynceus memadukan **VLM (Qwen2.5-VL-7B)** untuk deteksi kontaminan visual dan estimasi basah/kering, **LLM (Qwen2.5-7B-Instruct)** untuk membaca surat jalan dan crosscheck klaim vs observasi, serta **engine rule-based Scentinel** untuk scoring suitability dan rekomendasi rute — semuanya menghasilkan verdict **HIJAU/KUNING/MERAH** beserta alasan, confidence, dan **audit record immutable** dalam hitungan detik. Track: AI pada AMD GPU. Value proposition: satu jam kiln mati = **US$28.000** (±Rp450 juta) — inspeksi otomatis Lynceus adalah "biaya cegah" yang jauh lebih murah daripada satu kontaminan logam/batu yang lolos ke shredder bernilai ratusan juta rupiah dan mematikan kiln.
+**Lynceus** adalah sistem inspeksi pintu gerbang bahan bakar alternatif (RDF/refuse-derived fuel) berbasis AI yang berjalan penuh di GPU AMD Instinct MI300X. Ketika truk sampah tiba di pabrik semen atau PLTSa, operator mengunggah foto muatan, surat jalan, berat timbangan, dan data gas — Lynceus memadukan **VLM (Qwen2.5-VL-7B)** untuk deteksi kontaminan visual dan estimasi basah/kering, **LLM (Qwen2.5-7B-Instruct)** untuk membaca surat jalan dan crosscheck klaim vs observasi, serta **engine rule-based Lynceus** untuk scoring suitability dan rekomendasi rute — semuanya menghasilkan verdict **HIJAU/KUNING/MERAH** beserta alasan, confidence, dan **audit record immutable** dalam hitungan detik. Track: AI pada AMD GPU. Value proposition: satu jam kiln mati = **US$28.000** (±Rp450 juta) — inspeksi otomatis Lynceus adalah "biaya cegah" yang jauh lebih murah daripada satu kontaminan logam/batu yang lolos ke shredder bernilai ratusan juta rupiah dan mematikan kiln.
 
 ---
 
@@ -60,7 +60,7 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 └──────────────┬───────────────────────┘   └──────────────┬──────────────────────┘
                └──────────────────┬───────────────────────┘
                                   ▼
-┌───────── ENGINE SCENTINEL (rule-based, pure Python) ───────────────────────────────────────┐
+┌───────── ENGINE LYNCEUS (rule-based, pure Python) ───────────────────────────────────────┐
 │  pipeline.assess_batch → phase → generation (gas) → massbalance →                          │
 │  suitability.assess (5 rute, fuel_grade EN 15359-style) → recommend.recommend              │
 │  (actionable, reasons, caveats, missing, alternative; refuse bila insufficient)            │
@@ -72,7 +72,7 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 │  Desain aman: MERAH boleh over-reject (jalur inspeksi manual); insufficient → refuse       │
 └──────────────┬─────────────────────────────────────────────────────────────────────────────┘
                ▼
-┌───────── AUDIT RECORD (skema Scentinel) ───────────────────────────────────────────────────┐
+┌───────── AUDIT RECORD (skema audit engine) ───────────────────────────────────────────────────┐
 │  audit-NNN.json immutable: format_version, record_id, execution_status, timestamps UTC,    │
 │  inputs (digest SHA-256 per input), ai_outputs (model identity + prompt hash),             │
 │  engine_outputs, verdict, gates, digest — atomic write, finalisasi single-shot             │
@@ -83,19 +83,19 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Detail skema audit record: `docs/research-scentinel-audit-provenance.md` §(b).
+Detail skema audit record: `docs/research-audit-provenance.md` §(b).
 
 ---
 
-## 4. Adopsi Scentinel
+## 4. Engine Keputusan
 
 ### 4.1 Transparansi
 
-**Engine Scentinel adalah proyek open-source (lisensi MIT) milik tim sendiri**, dikembangkan lebih lanjut selama hackathon ini sebagai library di backend Lynceus. Yang **baru** di Lynceus (bukan bagian Scentinel): layer VLM/LLM di AMD GPU, fusion layer, decision engine verdict truk, dan web app operator.
+**Engine keputusan** adalah bagian dari Lynceus, dikembangkan sebagai library di backend (`backend/src/lynceus_engine/`). Bersama layer VLM/LLM di AMD GPU, fusion layer, decision engine verdict truk, dan web app operator, semuanya dibangun untuk hackathon ini.
 
-### 4.2 Tabel nasib module (dari `research-scentinel-engine-map.md`)
+### 4.2 Tabel nasib module (dari `research-engine-map.md`)
 
-| Module Scentinel | Nasib | Penggunaan di Lynceus |
+| Module engine | Nasib | Penggunaan di Lynceus |
 |---|---|---|
 | `composition.py` | **Diambil utuh** | Basis domain model; `preset()` → dropdown stream di UI |
 | `generation.py` | **Diambil utuh** | Kalkulasi emisi gas batch (CH₄/CO₂) — dipakai pipeline |
@@ -107,13 +107,13 @@ Detail skema audit record: `docs/research-scentinel-audit-provenance.md` §(b).
 | `gas_data.py` | **Diambil utuh** | Katalog gas AP-42 terkutib; `citation()` → tooltip provenance |
 | `gas_defaults.py` | **Diambil utuh** (data generated, 780 ln) | Data default gas |
 | `assessment.py` | **Diambil utuh** | Evaluasi gas readings vs threshold; endpoint gas screening report |
-| `casegen.py`, `container.py`, `geometry.py`, `mesh.py`, `runner.py`, `post.py`, `scenario.py`, `project.py`, `history.py` | **Dibuang** (kode IO/Qt/CFD tidak dibawa) | Konsep audit `history.py` diadopsi ulang sebagai skema audit record Lynceus (lihat `research-scentinel-audit-provenance.md`) |
+| `casegen.py`, `container.py`, `geometry.py`, `mesh.py`, `runner.py`, `post.py`, `scenario.py`, `project.py`, `history.py` | **Dibuang** (kode IO/Qt/CFD tidak dibawa) | Konsep audit `history.py` diadopsi ulang sebagai skema audit record Lynceus (lihat `research-audit-provenance.md`) |
 
 ### 4.3 Perubahan spesifik
 
-1. **Engine jadi library di backend**: Scentinel core dipasang sebagai dependency; backend FastAPI mengekspos `POST /assess` yang membungkus `assess_batch` (dipakai terverifikasi: `assess_batch(preset('mixed-msw'), tonnage_t=12.0, moisture=0.45, age_h=72.0)` → fase II, CH₄ kumulatif 0,471 kg / 0,657 m³, rekomendasi composting 0,51 > rdf 0,46).
+1. **Engine jadi library di backend**: engine keputusan di-vendor ke dalam repo; backend FastAPI mengekspos `POST /assess` yang membungkus `assess_batch` (dipakai terverifikasi: `assess_batch(preset('mixed-msw'), tonnage_t=12.0, moisture=0.45, age_h=72.0)` → fase II, CH₄ kumulatif 0,471 kg / 0,657 m³, rekomendasi composting 0,51 > rdf 0,46).
 2. **i18n string**: rule/caveat/reason berbahasa Inggris hardcode → i18n key, frontend memformat.
-3. **Redaksi caveat CFD**: caveat "mesh independence" (flag `screening=True`) diganti redaksi web-friendly — hasil Lynceus adalah *screening estimate*, bukan hasil tervalidasi lab (pola classification screening/validated dari Scentinel).
+3. **Redaksi caveat CFD**: caveat "mesh independence" (flag `screening=True`) diganti redaksi web-friendly — hasil Lynceus adalah *screening estimate*, bukan hasil tervalidasi lab (pola classification screening/validated engine).
 
 ---
 
@@ -121,7 +121,7 @@ Detail skema audit record: `docs/research-scentinel-audit-provenance.md` §(b).
 
 | Komponen | Pilihan | Justifikasi |
 |---|---|---|
-| Backend | **FastAPI** (Python) | Serialize `asdict` engine Scentinel; endpoint `POST /assess`; OpenAI-compatible client ke vLLM |
+| Backend | **FastAPI** (Python) | Serialize `asdict` engine Lynceus; endpoint `POST /assess`; OpenAI-compatible client ke vLLM |
 | Frontend | **Next.js/React** (alternatif sederhana: Vite+React SPA, atau FastAPI + Jinja/HTMX bila waktu sempit) | Dashboard operator: upload, tiket verdict, audit view |
 | Serving AI | **vLLM Docker `rocm/vllm`** di **AMD Developer Cloud, 1× MI300X** (192 GB HBM3) | First-class ROCm; Quick Start image vLLM tersedia langsung di ADC |
 | VLM | **Qwen2.5-VL-7B-Instruct** (BF16) | Satu-satunya VLM dengan resep + benchmark resmi vLLM yang eksplisit menargetkan MI300X/MI325X/MI355X; kuat OCR/dokumen (DocVQA 95,7); ~17–24 GB |
@@ -160,8 +160,8 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 - **Acceptance**: `docker exec -it rocm bash` sukses via SSH dan `rocm-smi` menampilkan MI300X; skeleton web jalan di localhost; semua anggota tim punya akses repo + ADC + Discord.
 - **Risiko**: approval kredit ADP butuh 2–3 hari kerja → **Mitigasi**: ajukan Day 1 pagi; gunakan kredit 25 jam ADC sebagai jembatan; kartu kredit valid disiapkan sejak awal.
 
-### Day 2 — Integrasi Engine Scentinel
-- **Deliverable**: Scentinel core jadi dependency backend; endpoint `POST /assess` (input truk → `assess_batch` → JSON); unit test pada contoh terverifikasi (mixed-msw, 12 t, moisture 0,45, age 72 h → composting 0,51).
+### Day 2 — Integrasi Engine Keputusan
+- **Deliverable**: Engine keputusan jadi bagian backend; endpoint `POST /assess` (input truk → `assess_batch` → JSON); unit test pada contoh terverifikasi (mixed-msw, 12 t, moisture 0,45, age 72 h → composting 0,51).
 - **Acceptance**: `curl POST /assess` mengembalikan JSON lengkap (suitability + recommendation + missing) sesuai skema; test hijau; i18n key untuk string `recommend` dirancang.
 - **Risiko**: mismatch asumsi engine vs input truk → **Mitigasi**: mapping layer eksplisit input truk → composition/moisture/tonnage; unit test konversi.
 

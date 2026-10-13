@@ -23,7 +23,7 @@ VLM (Qwen2.5-VL, vLLM @ AMD MI300X) ──► contaminants, wet/dry, confidence
 LLM (Qwen2.5-7B,  vLLM @ AMD MI300X) ─► waybill fields, claim-vs-observation crosscheck
         │
         ▼
-Scentinel decision engine (rule-based, cited: Eq. HH-1 40 CFR 98, EN 15359-style route scores)
+Lynceus decision engine (rule-based, cited: Eq. HH-1 40 CFR 98, EN 15359-style route scores)
         │
         ▼
 Verdict ACCEPT / ESCALATE / REJECT  +  gates  +  audit record (atomic, immutable)
@@ -31,11 +31,9 @@ Verdict ACCEPT / ESCALATE / REJECT  +  gates  +  audit record (atomic, immutable
 
 ## Provenance
 
-The decision engine is built on **[Scentinel](https://github.com/alertxsto/scentinel)**,
-an open-source (MIT) waste-assessment project by our own team that predates this
-hackathon. What is new here, built during the hackathon: the AMD-hosted AI layer
-(Qwen2.5-VL + Qwen2.5-7B + vLLM + ROCm), the multi-modal fusion pipeline, and the
-web operator UI.
+The decision engine, the AMD-hosted AI layer (Qwen2.5-VL + Qwen2.5-7B +
+vLLM + ROCm), the multi-modal fusion pipeline, and the web operator UI
+were all built for this project.
 
 ## Repository layout
 
@@ -47,8 +45,9 @@ docs/      Plan, hackathon checklist, and research notes
 
 ## Quickstart
 
-Requirements: Python 3.12+, the Scentinel engine installed
-(`pip install -e ../scentinel` or from its repo), FastAPI deps.
+Requirements: Python 3.12+, FastAPI deps. The decision engine
+(`lynceus_engine`) is vendored in `backend/src/lynceus_engine/` — no
+separate install needed.
 
 ```bash
 pip install fastapi "uvicorn[standard]" pydantic httpx pytest

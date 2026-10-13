@@ -10,7 +10,7 @@ Covers the assignment's acceptance criteria:
   for an old organic load claimed dry, honest ``not_run`` when absent,
   and never able to change the verdict on its own.
 
-The Scentinel engine is required; these tests are skipped cleanly when
+The Lynceus engine is required; these tests are skipped cleanly when
 it is not importable (mirroring the e2e suite's treatment of the
 engine-dependent paths).
 """
@@ -22,7 +22,7 @@ import pytest
 from lynceus import decision, gas_twin, pipeline
 from lynceus.audit import Decision, GateState
 
-pytest.importorskip("scentinel.core", reason="gas twin requires the Scentinel engine")
+pytest.importorskip("lynceus_engine", reason="gas twin requires the Lynceus engine")
 
 
 #: A waybill claiming a dry load (the conflict trigger).

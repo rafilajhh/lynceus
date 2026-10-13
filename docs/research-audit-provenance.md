@@ -1,14 +1,14 @@
-# Riset Provenance & Audit: Pola Scentinel yang Layak Diadopsi Lynceus
+# Riset Provenance & Audit: Pola Audit yang Layak Diadopsi Lynceus
 
 **Status:** riset read-only — tidak ada perubahan kode.
-**Sumber:** `scentinel/src/scentinel/core/history.py` (2097 baris), `scentinel/src/scentinel/core/project.py` (85 baris), `scentinel/src/scentinel/core/recommend.py` (174 baris), `scentinel/docs/ARCHITECTURE.md` §19–28.
-**Tujuan:** pola manifest run, snapshot beku, quality gates eksplisit, dan refuse-to-answer di Scentinel → struktur audit record Lynceus untuk inspeksi truk (foto, manifest teks, berat, gas) → keputusan AI (VLM/LLM + confidence) → verdict & rekomendasi.
+**Sumber:** riset internal tim — modul history, project, dan recommend (arsitektur audit-provenance, ~2.400 baris).
+**Tujuan:** pola manifest run, snapshot beku, quality gates eksplisit, dan refuse-to-answer di engine riset → struktur audit record Lynceus untuk inspeksi truk (foto, manifest teks, berat, gas) → keputusan AI (VLM/LLM + confidence) → verdict & rekomendasi.
 
 ---
 
 ## (a) Tabel Pola → Sumber → Padanan Lynceus
 
-| # | Pola (Scentinel) | Sumber (file:baris) | Padanan Lynceus |
+| # | Pola | Sumber (file:baris) | Padanan Lynceus |
 |---|---|---|---|
 | 1 | **Satu manifest immutable per run** (`run.json` dalam `run-NNN/`); tidak ada indeks sentral — manifest per-run *adalah* history, index tak bisa divergen | `history.py:1-13`, `ARCHITECTURE.md` §19:234-238 | Satu `audit-NNN.json` immutable per inspeksi truk, disimpan di folder inspeksinya; catat foto/berkas bukti dalam record yang sama |
 | 2 | **Ditulis dua kali, atomik**: `incomplete` sebelum kerja dimulai → diganti via sibling temp `.tmp` + `os.replace()`; crash meninggalkan record `incomplete` yang jujur, bukan tanpa record atau sukses palsu | `history.py:3-7`, `:188-189`, `:598-646`, `:1195-1210`; `ARCHITECTURE.md` §20:239-243 | `in_progress` sebelum inferensi AI dimulai → terminal (`completed`/`failed`/`cancelled`) setelah verdict; atomic write mencegah record setengah-tertulis |
@@ -46,7 +46,7 @@
 
 ### Catatan analisis pola manifest run (poin tugas 1)
 
-Struktur field top-level manifest Scentinel (`history.py:195-207`) — 11 kunci dengan urutan stabil:
+Struktur field top-level manifest audit (`history.py:195-207`) — 11 kunci dengan urutan stabil:
 `format_version`, `run_id`, `execution_status`, `started_at_utc`, `finished_at_utc`, `application{name,version}`, `project{name,geometry,scenario,sensors}`, `applied_physics{…, case_input_digest}`, `execution{…, exit_code, failed_stage, error, solver_termination}`, `results{concentration_unit, sensor_readings}`, `quality{classification, uncertainty, convergence, …, validation_metrics}`.
 
 Empat pemisahan kunci (`history.py:24-37`):
@@ -61,7 +61,7 @@ Atomic write (`history.py:1195-1210`): tulis ke sibling temp `.run.json.tmp` →
 
 ### Peta penanganan failure (dari history.py)
 
-| Situasi kegagalan | Penanganan Scentinel | Sumber |
+| Situasi kegagalan | Penanganan engine | Sumber |
 |---|---|---|
 | Crash sebelum finalisasi | Manifest tetap `incomplete` di disk (jujur), bukan hilang | `history.py:3-7`, `:624-645` |
 | Gagal tulis manifest awal | Folder run dihapus bila masih kosong; error propagate | `history.py:643-645`, `:871-879` |
@@ -76,7 +76,7 @@ Atomic write (`history.py:1195-1210`): tulis ke sibling temp `.run.json.tmp` →
 
 ## (b) Draf Skema JSON Audit Record Lynceus
 
-Desain mengikuti pola Scentinel: append-only, atomic-write, four-way separation, closed enums, stated-not-inferred gates, digest per input, refuse-to-answer.
+Desain mengikuti pola engine: append-only, atomic-write, four-way separation, closed enums, stated-not-inferred gates, digest per input, refuse-to-answer.
 
 ```jsonc
 {
@@ -189,7 +189,7 @@ Desain mengikuti pola Scentinel: append-only, atomic-write, four-way separation,
 
 ### Field minimal (12+ berlabel)
 
-| Field | Label / makna | Sumber pola Scentinel |
+| Field | Label / makna | Sumber pola engine |
 |---|---|---|
 | `format_version` | Versi skema record; versi lama ditolak | `history.py:67-102` |
 | `record_id` | ID inspeksi unik, dialokasikan dari filesystem, tak reuse | `history.py:104-110, 846-869` |
@@ -209,7 +209,7 @@ Desain mengikuti pola Scentinel: append-only, atomic-write, four-way separation,
 | `gates` | Closed-enum per gate, stated-not-inferred, `not_evaluated` eksplisit | `history.py:146-172, 1066-1084` |
 | `digest` | SHA-256 atas record + per-input | `history.py:431-433, 1017-1040` |
 
-### Aturan invarian yang menyertainya (dari pola Scentinel)
+### Aturan invarian yang menyertainya (dari pola engine)
 
 1. **Ditulis dua kali, atomik** (pola §20): `audit-NNN.json` dalam `in_progress` sebelum inferensi, diganti via temp sibling + `os.replace()`; crash meninggalkan `in_progress` yang jujur.
 2. **Finalisasi single-shot**: record terminal tak bisa di-finalisasi ulang; koreksi = record baru.

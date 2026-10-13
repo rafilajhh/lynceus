@@ -2,7 +2,7 @@
 
 Routes:
     GET  /health   — liveness plus engine availability.
-    POST /assess   — one batch assessment through the Scentinel engine.
+    POST /assess   — one batch assessment through the Lynceus decision engine.
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
 """
 
@@ -51,7 +51,7 @@ class AssessRequest(BaseModel):
     """One waste batch, as the demo UI submits it."""
 
     waste_stream: str = Field(
-        description="Scentinel preset name, e.g. 'mixed-msw'.",
+        description="engine preset name, e.g. 'mixed-msw'.",
         examples=["mixed-msw"],
     )
     tonnage_t: float = Field(
@@ -113,7 +113,7 @@ class InspectRequest(BaseModel):
     waste_stream: str | None = Field(
         default=None,
         validation_alias=AliasChoices("waste_stream", "stream"),
-        description="Scentinel preset name, e.g. 'mixed-msw' or 'rdf-feedstock'.",
+        description="engine preset name, e.g. 'mixed-msw' or 'rdf-feedstock'.",
     )
     moisture: float | None = Field(
         default=None,
@@ -390,7 +390,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Lynceus backend",
         version=__version__,
-        description="Assessment service wrapping the Scentinel engine.",
+        description="Assessment service wrapping the Lynceus decision engine.",
     )
 
     # Dev-friendly: the demo UI may be served from any origin.

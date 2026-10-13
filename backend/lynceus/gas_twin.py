@@ -1,6 +1,6 @@
 """Lynceus gas digital twin — simulated gate readings above the waste bin.
 
-The chain is assembled from the Scentinel engine; this module only wires
+The chain is assembled from the Lynceus engine; this module only wires
 it into the Lynceus inspection pipeline:
 
 1. ``composition.preset(waste_stream)`` — the stream's mass fractions
@@ -10,7 +10,7 @@ it into the Lynceus inspection pipeline:
 3. A *simple dilution* converts each mass rate into a plausible ppmv
    concentration in the air sweeping the open bin.  The dilution is not
    measured physics: it is stated as a ``model assumption`` in the
-   returned payload (Scentinel provenance pattern — assumptions are
+   returned payload (engine provenance pattern — assumptions are
    labelled, never silently embedded).
 4. ``virtual_sensor.step_response()`` — each concentration is read
    through a virtual sensor of the matching family (NDIR for CH4 and
@@ -23,8 +23,8 @@ always produce identical readings, while different records differ.  The
 returned dict contains no timestamps, so two calls with the same inputs
 compare equal.
 
-Scentinel is imported lazily (on first call, not at module import) so a
-process without the engine degrades into an honest "gas not measured"
+The Lynceus engine is imported lazily (on first call, not at module import)
+so a process without the engine degrades into an honest "gas not measured"
 inspection instead of an import failure.
 """
 
@@ -43,17 +43,17 @@ __all__ = [
 ]
 
 #: Provenance tag stamped on every twin result (the source is stated,
-#: never inferred — Scentinel pattern 11).
+#: never inferred — engine pattern 11).
 GAS_SOURCE = "digital_twin"
 
-#: Regulatory basis of the generation stage (Scentinel generation.py).
+#: Regulatory basis of the generation stage (engine generation.py).
 MODEL_BASIS = "Eq. HH-1 40 CFR 98"
 
 #: Ideal-gas molar volume at 25 °C, 1 atm [m3/kmol] (CRC Handbook).
 MOLAR_VOLUME_M3_PER_KMOL = 24.465
 
 #: Molar masses for the mass -> volume conversion [g/mol], mirroring the
-#: constants the Scentinel generation module itself uses.
+#: constants the Lynceus engine generation module itself uses.
 MOLAR_MASS_G_PER_MOL = {"CH4": 16.043, "CO2": 44.009}
 
 #: model assumption — dilution air sweeping the open bin, per wet tonne
@@ -129,29 +129,29 @@ ASSUMPTIONS: tuple = (
 
 
 class GasTwinUnavailableError(RuntimeError):
-    """The Scentinel engine package is not importable in this process."""
+    """The Lynceus engine package is not importable in this process."""
 
     def __init__(self, detail: str) -> None:
         super().__init__(
-            "the Scentinel engine package 'scentinel' is not installed or "
-            f"not importable in this process ({detail}); the gas digital "
+            "the Lynceus engine package 'lynceus_engine' is not installed "
+            f"or not importable in this process ({detail}); the gas digital "
             "twin requires it"
         )
         self.detail = detail
 
 
 def _load_core() -> Any:
-    """Lazily import the Scentinel core modules the twin needs.
+    """Lazily import the Lynceus engine core modules the twin needs.
 
-    Importing this module must never import Scentinel: a deployment
+    Importing this module must never import the engine: a deployment
     without the engine keeps a working Lynceus that simply reports gas
     as ``not_measured``.
     """
     try:
-        import scentinel.core as core  # type: ignore[import-untyped]
-        import scentinel.core.composition  # noqa: F401  (registers submodule)
-        import scentinel.core.generation  # noqa: F401
-        import scentinel.core.virtual_sensor  # noqa: F401
+        import lynceus_engine as core  # type: ignore[import-untyped]
+        import lynceus_engine.composition  # noqa: F401  (registers submodule)
+        import lynceus_engine.generation  # noqa: F401
+        import lynceus_engine.virtual_sensor  # noqa: F401
     except ImportError as exc:
         raise GasTwinUnavailableError(str(exc)) from exc
     return core
@@ -191,7 +191,7 @@ def simulate_gate_readings(
     """Simulate one set of gas readings above the bin for a truck load.
 
     Args:
-        waste_stream: a Scentinel preset name (e.g. ``"mixed-msw"``);
+        waste_stream: an engine preset name (e.g. ``"mixed-msw"``);
             unknown names raise ``ValueError`` (from ``composition.preset``).
         tonnage_t: wet-basis batch tonnage in tonnes (>= 0).
         moisture: wet-basis moisture fraction in [0, 1].
@@ -209,7 +209,7 @@ def simulate_gate_readings(
         arguments.
 
     Raises:
-        GasTwinUnavailableError: Scentinel is not importable.
+        GasTwinUnavailableError: the Lynceus engine is not importable.
         ValueError: unknown preset, or numeric inputs outside the
             engine's domain (negative tonnage/age, moisture outside
             [0, 1]).

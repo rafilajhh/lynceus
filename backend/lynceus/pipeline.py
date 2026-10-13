@@ -439,7 +439,7 @@ def _simulate_gas_readings(
     """Run the gas digital twin for this load, or ``None`` when it cannot.
 
     The twin needs the full batch description (waste stream, tonnage,
-    moisture, age) and the Scentinel engine.  Anything missing or
+    moisture, age) and the Lynceus decision engine.  Anything missing or
     off-domain means "no gas data for this inspection" — the gas channel
     is a *supporting* signal and must never fail the inspection itself.
     """
