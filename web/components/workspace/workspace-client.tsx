@@ -202,7 +202,10 @@ export function WorkspaceClient() {
     setData(null);
     // User direction: pressing Inspect takes the operator straight to the
     // verdict panel (the gate strip is the show while it evaluates).
-    verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Scroll the panel body into view — with block:"start" the top of a
+    // below-fold panel lands flush at the viewport top and reads as
+    // "not moving"; centering guarantees visible travel.
+    verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
 
     try {
       const resp = await inspectLoad({
@@ -278,20 +281,23 @@ export function WorkspaceClient() {
   const photoSlot = heroPhoto ? (
     <figure className="m-0 flex flex-col px-4 py-4">
       {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
-      {/* 16px radius matches --radius-card-lg: hero evidence panel uses the larger card radius */}
+      {/* 16px radius matches --radius-card-lg: hero evidence panel uses the larger card radius.
+          aspect-[4/3] crop: the raw photos are near-square; a wider, shorter
+          frame kills the dead space under the caption (user feedback). */}
       <img
         src={loadUpload.previewUrl ?? heroPhoto.path}
         alt={loadUpload.filename ?? heroPhoto.caption}
-        className="h-auto w-full rounded-[16px] border border-seam object-cover"
+        className="aspect-[4/3] w-full rounded-[16px] border border-seam object-cover"
       />
-      <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
-        {loadUpload.filename
-          ? `Uploaded photo · ${loadUpload.filename}`
-          : heroPhoto.caption}
-      </figcaption>
-      {/* Load-photo upload lives under the photo it controls (user
-          feedback: it sat in the demo row, disconnected from the image). */}
-      <div className="mt-2">
+      {/* Footer row: caption left (truncated), upload control right — the
+          two-line mono caption stacked over the button read as misaligned
+          (user feedback). */}
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <figcaption className="figure min-w-0 truncate text-[11px] leading-relaxed text-muted">
+          {loadUpload.filename
+            ? `Uploaded photo · ${loadUpload.filename}`
+            : heroPhoto.caption}
+        </figcaption>
         <input
           id="load-photo-upload"
           type="file"
@@ -303,18 +309,18 @@ export function WorkspaceClient() {
         <label
           htmlFor="load-photo-upload"
           className={cn(
-            "inline-flex cursor-pointer items-center gap-2 rounded-[6px] border border-transparent px-3 py-1.5 text-xs font-semibold text-muted transition-colors duration-100 select-none hover:bg-seam hover:text-ink",
+            "inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-[6px] border border-seam-strong bg-raised px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam",
             loading && "pointer-events-none opacity-50",
           )}
         >
-          {loadUpload.filename ? "Replace photo" : "Upload photo"}
+          {loadUpload.filename ? "Replace" : "Upload"}
         </label>
         {loadUpload.filename ? (
           <button
             type="button"
             onClick={() => onLoadPhoto(null)}
             disabled={loading}
-            className="ml-1 cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
+            className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
           >
             Clear
           </button>

@@ -85,7 +85,7 @@ export function IntakeForm({
       <label
         htmlFor={id}
         className={cn(
-          "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[6px] border border-transparent bg-transparent px-3 py-1.5 text-xs font-semibold text-muted transition-colors duration-100 select-none hover:bg-seam hover:text-ink",
+          "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[6px] border border-seam-strong bg-raised px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam",
           loading && "pointer-events-none opacity-50",
         )}
       >
@@ -159,22 +159,21 @@ export function IntakeForm({
         {/* Waybill: photo upload only (user direction, 2026-10-13 — the
             paper ticket is photographed at the gate, not typed). Demo cases
             prefill manifest_text internally; a REFUSED verdict still fires
-            honestly when neither text nor photo is present. */}
-        <div>
-          <span className="smallcaps mb-1 block">Waybill</span>
-          <div className="rounded-[6px] border border-seam bg-raised px-3 py-2">
-            {values.manifest_text ? (
-              <p className="m-0 mb-1 text-[12px] text-muted">
-                Waybill text loaded from demo case.
-              </p>
-            ) : null}
-            {uploadRow(
-              "waybill-photo-upload",
-              waybillPhoto.filename ? "Replace waybill photo" : "Upload waybill photo",
-              waybillPhoto,
-              onWaybillPhoto,
-            )}
-          </div>
+            honestly when neither text nor photo is present. No big empty
+            drop-zone: the control is one row, sized to its content. */}
+        <div className="flex items-center gap-3">
+          <span className="smallcaps shrink-0">Waybill</span>
+          {uploadRow(
+            "waybill-photo-upload",
+            waybillPhoto.filename ? "Replace photo" : "Upload photo",
+            waybillPhoto,
+            onWaybillPhoto,
+          )}
+          {values.manifest_text && !waybillPhoto.filename ? (
+            <span className="min-w-0 truncate text-[12px] text-muted">
+              Waybill text loaded from demo case
+            </span>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
