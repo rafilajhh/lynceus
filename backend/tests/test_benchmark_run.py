@@ -163,3 +163,133 @@ def test_complete_counts_good_rows_not_error_rows(workspace):
     ]
     summary = bench.build_summary(rows, "2026-10-13", 3)
     assert summary["n"] == 3 and summary["complete"] is False
+
+
+# --- Task 11: resilience under rate limiting -------------------------------
+
+#: What the API returns (fail-closed) when the live client's own 429 retries are
+#: exhausted: VLLMClient._chat raises "endpoint rate-limited after 3 attempts",
+#: pipeline wraps it in LiveAIUnavailableError, api.py maps that to 503.
+RATE_LIMITED_503 = (
+    503,
+    {
+        "detail": {
+            "error": "live_ai_unavailable",
+            "message": "live AI failed (ValueError: endpoint rate-limited after 3 "
+            "attempts (https://endpoint.example)); stub fallback disabled",
+        }
+    },
+)
+
+
+def _lines(path):
+    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+_REAL_RUN = bench.run  # captured once: main() is patched per call below
+
+
+def _main_with(monkeypatch, workspace, post):
+    """Drive the real main() (arg parsing + exit-code mapping) with a fake post."""
+    manifest, images, out = workspace
+    monkeypatch.setattr(
+        bench,
+        "run",
+        lambda **kw: _REAL_RUN(
+            **kw, manifest=manifest, images_dir=images, post=post,
+            sleep=lambda s: None, log=lambda m: None,
+        ),
+    )
+    return bench.main(["--out", str(out), "--min-interval", "0"])
+
+
+def test_rate_limit_on_item_3_stops_immediately_with_exit_2(workspace, monkeypatch):
+    manifest, images, out = workspace
+    (images / "d.jpg").write_bytes(JPEG)
+    with manifest.open("a", encoding="utf-8") as fh:
+        fh.write("d.jpg,Paper,accept\n")
+    calls = []
+
+    def post(payload):
+        calls.append(payload["truck_id"])
+        return RATE_LIMITED_503 if payload["truck_id"] == "BENCH-3" else (200, _ok_body())
+
+    code = _main_with(monkeypatch, workspace, post)
+    assert code == 2
+    # Stopped at the first rate limit: not retried, item 4 never posted.
+    assert calls == ["BENCH-1", "BENCH-2", "BENCH-3"]
+    rows = _lines(out)
+    assert [r["image"] for r in rows] == ["a.jpg", "b.jpg"]  # items 1-2 persisted
+    assert all(not r.get("error") for r in rows)  # no row for item 3: not a measurement
+
+
+def test_rate_limit_is_not_a_measurement_via_run(workspace):
+    def post(payload):
+        return RATE_LIMITED_503 if payload["truck_id"] == "BENCH-3" else (200, _ok_body())
+
+    with pytest.raises(bench.RateLimitedError):
+        _run(workspace, post)
+    assert [r["image"] for r in _lines(workspace[2])] == ["a.jpg", "b.jpg"]
+
+
+def test_rerun_after_rate_limit_skips_done_items_and_finishes(workspace, monkeypatch):
+    def limited(payload):
+        return RATE_LIMITED_503 if payload["truck_id"] == "BENCH-3" else (200, _ok_body())
+
+    assert _main_with(monkeypatch, workspace, limited) == 2
+    seen = []
+
+    def post(payload):
+        seen.append(payload["truck_id"])
+        return 200, _ok_body()
+
+    assert _main_with(monkeypatch, workspace, post) == 0
+    assert seen == ["BENCH-3"]  # items 1-2 not re-spent
+    rows = _lines(workspace[2])
+    assert [r["image"] for r in rows] == ["a.jpg", "b.jpg", "c.jpg"]
+    summary = json.loads(workspace[2].with_name("out.summary.json").read_text(encoding="utf-8"))
+    assert summary["n"] == 3 and summary["complete"] is True
+    assert summary["attempt_stats"]["attempts"] == 3  # no wasted/erroneous attempts logged
+
+
+@pytest.mark.parametrize(
+    "status, body",
+    [
+        (503, {"detail": {"message": "live_ai_unavailable: ReadTimeout"}}),  # other 503
+        (429, {"detail": {"message": "rate limited"}}),  # not the API's rate-limit shape
+        (500, {"detail": {"message": "endpoint rate-limited after 3 attempts"}}),  # wrong status
+    ],
+)
+def test_other_errors_are_not_treated_as_rate_limit(status, body):
+    assert bench.is_rate_limited(status, body) is False
+    assert bench.is_rate_limited(*RATE_LIMITED_503) is True
+
+
+def test_non_rate_limit_error_still_records_row_and_continues(workspace):
+    calls = []
+
+    def post(payload):
+        calls.append(payload["truck_id"])
+        if payload["truck_id"] == "BENCH-2":
+            return 503, {"detail": {"message": "live_ai_unavailable: ReadTimeout"}}
+        return 200, _ok_body()
+
+    summary = _run(workspace, post)
+    assert calls == ["BENCH-1", "BENCH-2", "BENCH-3"]
+    assert summary["errors"] == 1 and summary["n"] == 3
+
+
+def test_provenance_abort_mid_run_keeps_earlier_rows_and_writes_none_for_the_stub(
+    workspace, monkeypatch
+):
+    def post(payload):
+        stub = payload["truck_id"] == "BENCH-2"
+        return 200, _ok_body(provenance="stub" if stub else "live")
+
+    assert _main_with(monkeypatch, workspace, post) == 2
+    assert [r["image"] for r in _lines(workspace[2])] == ["a.jpg"]  # nothing for item 2
+
+
+def test_non_live_provenance_on_first_item_exits_2_before_any_row(workspace, monkeypatch):
+    assert _main_with(monkeypatch, workspace, lambda p: (200, _ok_body(provenance="stub"))) == 2
+    assert not workspace[2].exists() or workspace[2].read_text(encoding="utf-8") == ""
