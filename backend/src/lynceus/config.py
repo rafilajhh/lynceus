@@ -48,8 +48,8 @@ VLM_MODEL_ENV = "VLM_MODEL"
 LLM_MODEL_ENV = "LLM_MODEL"
 #: Optional bearer key for the vLLM endpoints (empty = no auth header).
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
-#: AI provider selector; "vllm" and "openai-compatible" share the same logic.
-LYNCEUS_AI_PROVIDER_ENV = "LYNCEUS_AI_PROVIDER"
+#: When false, a live-AI failure returns HTTP 503 instead of a stub fallback.
+LYNCEUS_ALLOW_STUB_FALLBACK_ENV = "LYNCEUS_ALLOW_STUB_FALLBACK"
 #: Directory where run artefacts are persisted.
 LYNCEUS_STORAGE_DIR_ENV = "LYNCEUS_STORAGE_DIR"
 #: Version tag stamped onto audit records.
@@ -61,7 +61,7 @@ _DEFAULT_VLM_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
 _DEFAULT_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 _DEFAULT_STORAGE_DIR = "./runs"
 _DEFAULT_VLLM_API_KEY = ""
-_DEFAULT_AI_PROVIDER = "vllm"
+_DEFAULT_ALLOW_STUB_FALLBACK = True
 _DEFAULT_AUDIT_FORMAT_VERSION = 1
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class Settings:
     vlm_model: str
     llm_model: str
     vllm_api_key: str
-    ai_provider: str
+    allow_stub_fallback: bool
     storage_dir: str
     audit_format_version: int
     version: str
@@ -100,7 +100,12 @@ def get_settings() -> Settings:
         llm_model=os.environ.get(LLM_MODEL_ENV, _DEFAULT_LLM_MODEL),
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
         vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),
-        ai_provider=os.environ.get(LYNCEUS_AI_PROVIDER_ENV, _DEFAULT_AI_PROVIDER),
+        allow_stub_fallback=os.environ.get(
+            LYNCEUS_ALLOW_STUB_FALLBACK_ENV, ""
+        ).strip().lower()
+        not in ("0", "false", "no")
+        if LYNCEUS_ALLOW_STUB_FALLBACK_ENV in os.environ
+        else _DEFAULT_ALLOW_STUB_FALLBACK,
         audit_format_version=audit_format_version,
         version=__version__,
     )
