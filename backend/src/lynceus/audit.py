@@ -1015,6 +1015,8 @@ def begin_record(
     application: Dict[str, str],
     inputs: Dict[str, Any],
     input_digests: Dict[str, str],
+    *,
+    reserved_record_id: Optional[str] = None,
 ) -> AuditRecord:
     """Write an honest ``in_progress`` record before AI inference starts.
 
@@ -1025,9 +1027,41 @@ def begin_record(
     freshly reserved folder is still empty, it is cleaned up best-effort —
     no inspection without a record (pattern 29).
 
+    ``reserved_record_id`` lets the caller reserve the ID first (so an input
+    collector seeded by the record identity — the gate gas channel — can run
+    before the record is begun) and then begin into that same directory.  It
+    must already exist as an empty ``inspection-NNN`` directory reserved by
+    :func:`allocate_inspection_id`; a directory with an existing record, or a
+    missing directory, is rejected.
+
     Returns the in-progress ``AuditRecord``.
     """
-    record_id, inspection_path = allocate_inspection_id(storage_dir)
+    if reserved_record_id is not None:
+        if not RECORD_ID_RE.match(reserved_record_id):
+            raise _err(
+                _ERR_FORMAT,
+                "record_id",
+                f"reserved_record_id must match 'inspection-NNN' "
+                f"(got {reserved_record_id!r})",
+            )
+        inspection_path = Path(storage_dir) / reserved_record_id
+        if not inspection_path.is_dir():
+            raise _err(
+                _ERR_STATE,
+                reserved_record_id,
+                "reserved inspection directory does not exist — reserve it "
+                "with allocate_inspection_id first",
+            )
+        if (inspection_path / RECORD_FILENAME).is_file():
+            raise _err(
+                _ERR_STATE,
+                reserved_record_id,
+                "reserved inspection directory already has a record — "
+                "a reserved ID is begun into exactly once",
+            )
+        record_id = reserved_record_id
+    else:
+        record_id, inspection_path = allocate_inspection_id(storage_dir)
     record_path = inspection_path / RECORD_FILENAME
     started = now_utc()
     payload: Dict[str, Any] = {
@@ -1227,9 +1261,16 @@ def _finish_record_locked(
             f"on-disk record_id {current.record_id!r} does not match {record_id!r}",
         )
 
-    digests: Dict[str, str] = (
-        dict(input_digests) if input_digests else dict(current.digest.input_digests)
-    )
+    # The begin-time digest map is authoritative (invariant 3): a caller may
+    # never substitute a different map at finish time.
+    if input_digests is not None and dict(input_digests) != dict(current.digest.input_digests):
+        raise _err(
+            _ERR_INPUT_MISMATCH,
+            "digest.input_digests",
+            "finish was given an input-digest map that differs from the one "
+            "frozen at begin time — inputs are frozen at begin, never re-negotiated",
+        )
+    digests: Dict[str, str] = dict(current.digest.input_digests)
 
     # Invariant 3: outputs must answer the same inputs frozen at begin time.
     if frozen_inputs:

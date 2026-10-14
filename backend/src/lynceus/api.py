@@ -282,7 +282,7 @@ _LIVE_SLOTS = threading.BoundedSemaphore(MAX_LIVE_INSPECTIONS)
 
 
 def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
-    """Request model → plain pipeline/decision payload dict.
+    """Request model → the single effective payload used by everything.
 
     When only ``demo_case`` is supplied (no manual data), research-backed
     defaults fill the gaps so the demo tells a true story (see
@@ -290,15 +290,24 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
     ≈ 5,2 ton/trip (jurnal ITATS Surabaya §3a) and Indonesian MSW runs
     55–60 % moisture (SBI Cilacap §2c).  The InspectRequest contract
     itself is untouched — only the demo defaults are realistic.
+
+    This is the canonical object: the audit record, the AI prompts, the
+    engine assessment, the decision, and the impact estimate all derive
+    from it, so what the verdict used is exactly what gets recorded.
+    ``weight_defaulted`` / ``manifest_defaulted`` mark injected defaults so
+    their audit provenance is honest rather than claimed as measured.
     """
     weight_kg = request.weight_kg
     moisture = request.moisture
     waste_stream = request.waste_stream
     age_h = request.age_h
     manifest_text = request.manifest_text
+    weight_defaulted = False
+    manifest_defaulted = False
     if request.demo_case:
         if weight_kg is None:
             weight_kg = impact.ARM_ROLL_TRIP_KG  # ≈ 5,2 t/trip (ITATS §3a)
+            weight_defaulted = True
         if moisture is None:
             moisture = 0.55  # MSW Indonesia 55–60 % (SBI Cilacap §2c)
         if waste_stream is None:
@@ -315,8 +324,9 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
                 f"Netto (kg): {int(weight_kg)} (bruto - tarra, jembatan timbang)\n"
                 "Verifikasi: non-B3, non-medis; kadar air sesuai deklarasi."
             )
+            manifest_defaulted = True
     return {
-        "truck_id": request.truck_id or "",
+        "truck_id": request.truck_id or f"demo-{request.demo_case or 'truck'}",
         "demo_case": request.demo_case,
         "photo_base64": request.photo_base64,
         "photo_filename": request.photo_filename,
@@ -326,6 +336,9 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
         "waste_stream": waste_stream,
         "moisture": moisture,
         "age_h": age_h,
+        "supplier": (request.supplier or "").strip() or None,
+        "weight_defaulted": weight_defaulted,
+        "manifest_defaulted": manifest_defaulted,
     }
 
 
@@ -343,38 +356,41 @@ def _run_inspection_with_audit(
     # Validate the upload first: a rejected photo must not leave an
     # ``inspection-*`` record behind (audit.begin_record is below).
     photo_bytes = decode_photo(request.photo_base64)
+    # One effective payload: demo defaults applied here flow identically to
+    # the AI, the engine, the decision, the impact estimate, and the audit
+    # record — the record reflects what the verdict actually used.
     payload = _inspect_payload(request)
 
-    manifest_text = request.manifest_text or ""
+    manifest_text = payload["manifest_text"] or ""
     # Demo photos arrive as site URLs ("/demo/red-1.jpg"); the audit record
     # stores a portable relative filename (invariant: no absolute paths),
     # so keep only the basename. Real uploads already send bare names.
     photo_filename = audit.safe_filename(
-        request.photo_filename or "photo.jpg"
+        payload["photo_filename"] or "photo.jpg"
     )
     now = audit.now_utc()
     gas_input: dict[str, Any] = {"readings_ppm": {}, "source": "not_measured", "measured_at_utc": now}
     inputs = {
-        "truck_id": request.truck_id or f"demo-{request.demo_case or 'truck'}",
+        "truck_id": payload["truck_id"],
         "photo": {
             "filename": photo_filename,
             "sha256": audit.sha256_field(photo_bytes),
             "captured_at_utc": now,
-            "provenance": photo_provenance or request.demo_case or "user_upload",
+            "provenance": photo_provenance or payload["demo_case"] or "user_upload",
         },
         "manifest_text": {
-            "source": "manual_text",
+            "source": "scripted_demo_default" if payload["manifest_defaulted"] else "manual_text",
             "raw_text_sha256": audit.sha256_field(manifest_text.encode("utf-8")),
             "extracted_fields": {},
             "ocr_confidence": _MANUAL_TEXT_CONFIDENCE,
         },
         "weight": {
-            "value_kg": request.weight_kg if request.weight_kg is not None else 0.0,
-            "source": "weighbridge",
+            "value_kg": payload["weight_kg"] if payload["weight_kg"] is not None else 0.0,
+            "source": "scripted_demo_default" if payload["weight_defaulted"] else "weighbridge",
             "measured_at_utc": now,
         },
         "gas": gas_input,
-        "supplier": (request.supplier or "").strip() or None,
+        "supplier": payload["supplier"],
     }
     input_digests = {
         "photo": audit.sha256_field(photo_bytes),
@@ -387,27 +403,14 @@ def _run_inspection_with_audit(
     # (HTTP 503) and leaves no ``inspection-*`` shell behind.
     ai_clients = pipeline.resolve_clients(payload, settings)
 
-    # Invariant 1: an honest in_progress record exists before AI runs.
-    begin = audit.begin_record(
-        settings.storage_dir, application, inputs, input_digests
-    )
-    record_id = begin.record_id
-
-    ai = pipeline.run_inspection(
-        payload,
-        ai_clients,
-        record_id,
-        allow_stub_fallback=settings.allow_stub_fallback,
-    )
-    vlm_result = ai.get("vlm") or {}
-    llm_result = ai.get("llm") or {}
-
-    # The gate gas channel (when it ran) feeds both the decision layer
-    # and the audit record's frozen inputs — the readings above the bin
-    # are part of what the verdict answers to.  The source is whatever
-    # the pipeline reported: a live gate sensor (``sentinel_gate_sensor``)
-    # or the physics twin (``digital_twin``).
-    gas_result = ai.get("gas")
+    # Reserve the record identity first so the gate gas channel — whose
+    # deterministic twin is seeded by it — can run BEFORE the record is
+    # begun.  The readings are then frozen into the begin-time inputs, so
+    # what the verdict answers to is exactly what the record froze
+    # (invariant 3).  The twin/sensor runs exactly once here, not again in
+    # run_inspection.
+    reserved_id, _reserved_path = audit.allocate_inspection_id(settings.storage_dir)
+    gas_result = pipeline.collect_gate_gas(payload, reserved_id)
     gas_ai_output: dict[str, Any] | None = None
     if gas_result and gas_result.get("readings_ppm"):
         gas_source = gas_result.get("source") or gas_twin.GAS_SOURCE
@@ -423,19 +426,39 @@ def _run_inspection_with_audit(
             "model_basis": gas_result.get("model_basis"),
         }
 
+    # Invariant 1: an honest in_progress record exists before AI runs.
+    begin = audit.begin_record(
+        settings.storage_dir,
+        application,
+        inputs,
+        input_digests,
+        reserved_record_id=reserved_id,
+    )
+    record_id = begin.record_id
+
+    ai = pipeline.run_inspection(
+        payload,
+        ai_clients,
+        record_id,
+        allow_stub_fallback=settings.allow_stub_fallback,
+        precomputed_gas=gas_result,
+    )
+    vlm_result = ai.get("vlm") or {}
+    llm_result = ai.get("llm") or {}
+
     engine_result = None
     if (
-        request.waste_stream
-        and request.weight_kg is not None
-        and request.moisture is not None
-        and request.age_h is not None
+        payload["waste_stream"]
+        and payload["weight_kg"] is not None
+        and payload["moisture"] is not None
+        and payload["age_h"] is not None
     ):
         try:
             engine_result = engine_adapter.run_assessment(
-                waste_stream=request.waste_stream,
-                tonnage_t=request.weight_kg / 1000.0,
-                moisture=request.moisture,
-                age_h=request.age_h,
+                waste_stream=payload["waste_stream"],
+                tonnage_t=payload["weight_kg"] / 1000.0,
+                moisture=payload["moisture"],
+                age_h=payload["age_h"],
             )
         except (
             engine_adapter.EngineUnavailableError,
@@ -574,6 +597,10 @@ def _run_inspection_with_audit(
             engine_outputs,
             verdict_payload,
             audit_gates,
+            frozen_inputs={
+                "photo": photo_bytes,
+                "manifest_text": manifest_text.encode("utf-8"),
+            },
         )
 
     # Presentation-layer measurable impact — NOT part of the audit schema:
@@ -581,7 +608,7 @@ def _run_inspection_with_audit(
     # provenance (docs/research/realcase-indonesia.md) and sits in the
     # response JSON parallel to the frozen audit_record.
     impact_estimate = impact.estimate_prevented_loss(
-        verdict, vlm_result, request.weight_kg
+        verdict, vlm_result, payload["weight_kg"]
     )
     impact_estimate["provenance"] = (
         "docs/research/realcase-indonesia.md (dampak Rp, §5) — "

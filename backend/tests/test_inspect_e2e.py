@@ -575,3 +575,37 @@ def test_live_inspection_persists_provider_and_latency(client, tmp_path, monkeyp
     for out in (rec.ai_outputs.vlm, rec.ai_outputs.llm):
         assert out.provider == "amd-token-factory"
         assert out.latency_ms is not None and out.latency_ms >= 0
+
+
+# ---------------------------------------------------------------------------
+# 8. Scripted-audit consistency: a demo_case-only request records the
+#    effective inputs the verdict actually used, not the raw empty request.
+# ---------------------------------------------------------------------------
+
+
+def test_demo_case_only_records_effective_inputs(client, tmp_path):
+    # No truck_id, no weight, no manifest — every gap is filled by the
+    # research-backed demo defaults, and the audit must freeze THOSE.
+    resp = client.post("/inspect", json={"demo_case": "green"})
+    assert resp.status_code == 200, resp.text
+    record_id = resp.json()["record_id"]
+    rec = _load_audit_record(tmp_path, record_id)
+
+    # Effective weight is the demo default (~5.2 t/trip), not 0.0.
+    assert rec.inputs.weight.value_kg == 5200
+    assert rec.inputs.weight.source == "scripted_demo_default"
+
+    # Effective manifest is the generated scripted waybill, not empty text.
+    assert rec.inputs.manifest_text.source == "scripted_demo_default"
+    expected_manifest_sha = audit.sha256_field(
+        (
+            "SURAT JALAN / TIKET TIMBANG (RDF-MSW)\n"
+            "Jenis muatan: MSW\n"
+            f"Netto (kg): {5200} (bruto - tarra, jembatan timbang)\n"
+            "Verifikasi: non-B3, non-medis; kadar air sesuai deklarasi."
+        ).encode("utf-8")
+    )
+    assert rec.inputs.manifest_text.raw_text_sha256 == expected_manifest_sha
+    assert rec.digest.input_digests["manifest_text"] == expected_manifest_sha
+    # The LLM prompt hash is the same manifest digest (existing contract).
+    assert rec.ai_outputs.llm.prompt_sha256 == expected_manifest_sha

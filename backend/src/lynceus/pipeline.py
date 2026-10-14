@@ -620,6 +620,26 @@ def resolve_assist_client(
     return None
 
 
+#: Sentinel distinguishing "no precomputed gas supplied" from an explicit
+#: ``None`` (collector already ran and found nothing).  Without it,
+#: :func:`run_inspection` could not tell whether to collect gas itself.
+_GAS_NOT_SUPPLIED = object()
+
+
+def collect_gate_gas(
+    payload: Dict[str, Any], record_id: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """Collect this inspection's gate gas readings exactly once.
+
+    Called by the API *before* the audit record is begun so the readings are
+    frozen into the begin-time inputs (audit invariant 3).  The result is
+    then handed to :func:`run_inspection` via ``precomputed_gas`` so the
+    sensor/twin never runs a second time (a live sensor could otherwise
+    return different values and break the frozen snapshot).
+    """
+    return _gate_gas_readings(payload, record_id)
+
+
 def _gate_gas_readings(
     payload: Dict[str, Any], record_id: Optional[str]
 ) -> Optional[Dict[str, Any]]:
@@ -673,6 +693,7 @@ def run_inspection(
     ai_clients: AIClients,
     record_id: Optional[str] = None,
     allow_stub_fallback: bool = True,
+    precomputed_gas: Any = _GAS_NOT_SUPPLIED,
 ) -> Dict[str, Any]:
     """Run the VLM + LLM + gas-twin stages for one inspection payload.
 
@@ -683,6 +704,10 @@ def run_inspection(
         record_id: The audit record identity — part of the deterministic
             noise seed of the gas twin, so the same truck + record always
             reproduce the same readings.
+        precomputed_gas: Gas already collected by the API (see
+            :func:`collect_gate_gas`).  The default sentinel means "collect
+            here"; an explicit value (including ``None``) is used as-is and
+            never triggers another collection.
 
     Returns:
         ``{"vlm": ..., "llm": ..., "gas": ..., "provenance": "live"|"stub"}``.
@@ -695,7 +720,11 @@ def run_inspection(
         never passed off as live output.
     """
     payload = dict(payload or {})
-    gas_result = _gate_gas_readings(payload, record_id)
+    gas_result = (
+        _gate_gas_readings(payload, record_id)
+        if precomputed_gas is _GAS_NOT_SUPPLIED
+        else precomputed_gas
+    )
     context = {
         "truck_id": payload.get("truck_id"),
         "weight_kg": payload.get("weight_kg"),
