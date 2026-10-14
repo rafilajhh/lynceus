@@ -54,12 +54,6 @@ export function NextSteps({
           ))}
         </ol>
       )}
-      {steps.length > 0 ? (
-        <p className="m-0 text-[11px] leading-relaxed text-faint">
-          SOP-RDF clauses come from the reference gate SOP written for this
-          demo, not from a specific plant&apos;s own procedure.
-        </p>
-      ) : null}
     </section>
   );
 }

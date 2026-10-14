@@ -176,17 +176,13 @@ export function GateStrip({
         })}
       </div>
 
-      <div className="mt-2 text-center" aria-live="polite">
-        {evaluating ? (
+      {evaluating ? (
+        <div className="mt-2 text-center" aria-live="polite">
           <span className="figure text-[12px] tracking-[0.5px] text-amber">
             Evaluating interlock…
           </span>
-        ) : allResolved ? (
-          <span className="figure text-[12px] tracking-[0.5px] text-muted">
-            Interlock resolved: verdict issued.
-          </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {/* Gate legend (critique P2): the signature move must explain
           itself — XCHECK/GAS are meaningless without it. Rendered once
