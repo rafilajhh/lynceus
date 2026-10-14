@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ApiError,
   fetchInspections,
@@ -65,6 +66,24 @@ type SortDir = "asc" | "desc";
 const PAGE_SIZE = 25;
 
 export function LedgerView() {
+  return (
+    <Suspense
+      fallback={
+        <Panel>
+          <PanelHead title="Audit trail" meta="tamper-evident ledger" />
+          <LedgerLoading />
+        </Panel>
+      }
+    >
+      <LedgerViewInner />
+    </Suspense>
+  );
+}
+
+function LedgerViewInner() {
+  const searchParams = useSearchParams();
+  const supplierParam = (searchParams.get("supplier") ?? "").trim();
+  const [supplierFilter, setSupplierFilter] = useState(supplierParam);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
@@ -95,6 +114,15 @@ export function LedgerView() {
     void load();
   }, [load]);
 
+  // Keep the address bar honest with the supplier chip: clear ?supplier=
+  // when the chip is dismissed so a refresh doesn't silently re-filter.
+  useEffect(() => {
+    if (supplierFilter || !supplierParam) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("supplier");
+    window.history.replaceState(null, "", url.toString());
+  }, [supplierFilter, supplierParam]);
+
   const ready = state.kind === "ready" ? state.inspections : [];
 
   /** Summary hairline figures: computed over ALL rows, not the filtered view. */
@@ -124,10 +152,13 @@ export function LedgerView() {
   }, [ready]);
 
   const rows = useMemo(() => {
+    const filteredBySupplier = supplierFilter
+      ? ready.filter((item) => (item.supplier ?? "").trim() === supplierFilter)
+      : ready;
     const filteredByVerdict =
       filter === "all"
-        ? ready
-        : ready.filter((item) => item.decision === filter);
+        ? filteredBySupplier
+        : filteredBySupplier.filter((item) => item.decision === filter);
     const term = search.trim().toLowerCase();
     const normTerm = term.replace(/[-\s]/g, "");
     const matchesSearch = (val: string) => {
@@ -149,7 +180,7 @@ export function LedgerView() {
       }
       return (Date.parse(a.decided_at_utc) - Date.parse(b.decided_at_utc)) * direction;
     });
-  }, [ready, filter, search, sort]);
+  }, [ready, filter, search, sort, supplierFilter]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(Math.max(1, page), totalPages);
@@ -273,6 +304,18 @@ export function LedgerView() {
 
             {/* ---- search + verdict filter ---- */}
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
+              {supplierFilter ? (
+                <button
+                  type="button"
+                  onClick={() => setSupplierFilter("")}
+                  aria-label={`Clear supplier filter ${supplierFilter}`}
+                  title="Clear supplier filter"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-amber bg-amber-soft px-3 py-1 text-[12.5px] font-semibold text-ink transition-colors duration-100 hover:border-amber-line"
+                >
+                  Supplier: <span className="text-ink">{supplierFilter}</span>
+                  <span aria-hidden="true" className="text-muted">✕</span>
+                </button>
+              ) : null}
               <div className="w-full sm:w-auto sm:flex-1">
                 <input
                   type="search"

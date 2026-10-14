@@ -52,6 +52,22 @@ function humanLabel(label: string): string {
   return label.replace(/_/g, " ");
 }
 
+/** Drill-through: the flag is an accusation; make its evidence one click away. */
+function SupplierLink({ name, className }: { name: string; className?: string }) {
+  return (
+    <Link
+      href={`/inspections?supplier=${encodeURIComponent(name)}`}
+      title={`View ${name} trucks in the audit trail`}
+      className={cn(
+        "underline-offset-2 transition-colors duration-100 hover:text-amber hover:underline",
+        className,
+      )}
+    >
+      {name}
+    </Link>
+  );
+}
+
 export function ShiftView() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
@@ -137,6 +153,7 @@ export function ShiftView() {
           Shift report
         </h1>
         <HeadlineRun report={report} />
+        <HandoverLine report={report} />
         <BreakdownLine report={report} />
       </Panel>
       <SupplierPanel report={report} />
@@ -228,6 +245,86 @@ const VERDICT_ORDER = [
   ["refuse_insufficient_input", "refused"],
 ] as const;
 
+/** One plain-text line a supervisor can paste into a handover note. */
+function buildSummaryText(report: ShiftReport): string {
+  const rejected = report.by_verdict.reject ?? 0;
+  const escalated = report.by_verdict.escalate_human ?? 0;
+  const accepted = report.by_verdict.accept ?? 0;
+  const open = rejected + escalated;
+  const parts = [
+    `Shift ${windowLabel(report)}`,
+    `${report.trucks} trucks`,
+    `${accepted} accepted`,
+    `${escalated} escalated`,
+    `${rejected} rejected`,
+    `prevented loss ${formatRupiah(report.prevented_loss_idr)}`,
+    open > 0 ? `${open} need resolution before handover` : "all resolved",
+  ];
+  return parts.join(" · ");
+}
+
+function HandoverLine({ report }: { report: ShiftReport }) {
+  const [copied, setCopied] = useState(false);
+  const rejected = report.by_verdict.reject ?? 0;
+  const escalated = report.by_verdict.escalate_human ?? 0;
+  const open = rejected + escalated;
+
+  const copySummary = useCallback(async () => {
+    const text = buildSummaryText(report);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard blocked (permissions / non-secure context): fall back so
+      // the supervisor is never left without a way to take the summary.
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }, [report]);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-seam px-4 py-3">
+      <p className="m-0 flex items-center gap-2 text-[13px]">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            open > 0 ? "bg-amber" : "bg-dot-ok",
+          )}
+        />
+        {open > 0 ? (
+          <span className="text-ink">
+            <span className="figure font-semibold">{open}</span>{" "}
+            {open === 1 ? "truck needs" : "trucks need"} resolution before
+            handover{" "}
+            <span className="text-muted">
+              ({escalated} escalated · {rejected} rejected)
+            </span>{" "}
+            <Link
+              href="/inspections"
+              className="text-amber underline underline-offset-2"
+            >
+              view in ledger
+            </Link>
+          </span>
+        ) : (
+          <span className="text-muted">
+            All trucks resolved: nothing is pending for the next shift.
+          </span>
+        )}
+      </p>
+      <Button variant="default" size="sm" onClick={() => void copySummary()}>
+        {copied ? "Copied" : "Copy shift summary"}
+      </Button>
+    </div>
+  );
+}
+
 /** Hairline under the figures: every verdict and every contaminant caught. */
 function BreakdownLine({ report }: { report: ShiftReport }) {
   const contaminants = Object.entries(report.contaminants);
@@ -292,7 +389,10 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
         {report.suppliers.map((row) => (
           <li key={row.supplier} className="rounded-[10px] border border-seam bg-raised p-3">
             <div className="flex items-start justify-between gap-3">
-              <span className="text-[13.5px] font-semibold text-ink">{row.supplier}</span>
+              <SupplierLink
+                name={row.supplier}
+                className="text-[13.5px] font-semibold text-ink"
+              />
               <StatusMark row={row} />
             </div>
             <p className="m-0 mt-1.5 text-[12.5px] text-muted">
@@ -324,7 +424,9 @@ function SupplierTableRows({ row, report }: { row: SupplierRow; report: ShiftRep
   return (
     <>
       <TableRow className={cn("hover:bg-transparent", row.explanation && "border-b-0")}>
-        <TableCell className="font-semibold text-ink">{row.supplier}</TableCell>
+        <TableCell className="font-semibold text-ink">
+          <SupplierLink name={row.supplier} />
+        </TableCell>
         <TableCell className="figure text-right text-[12.5px] text-ink">{row.trucks}</TableCell>
         <TableCell className="figure text-right text-[12.5px] text-ink">{row.reject}</TableCell>
         <TableCell className="figure text-right text-[12.5px] text-ink">{row.escalate}</TableCell>

@@ -43,6 +43,8 @@ const gateStateSchema = z
 const inspectionSummarySchema = z.object({
   record_id: z.string(),
   truck_id: z.string().catch("—"),
+  /** Supplier from the waybill; absent on v1 records and blanks. */
+  supplier: z.string().nullish().catch(null),
   decision: decisionSchema,
   decided_at_utc: z.string().catch(""),
   /** Loss avoided by rejecting/escalating; 0 for accepted loads. */

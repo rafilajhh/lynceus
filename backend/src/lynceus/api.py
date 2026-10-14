@@ -818,6 +818,7 @@ def create_app() -> FastAPI:
                 {
                     "record_id": record.record_id,
                     "truck_id": record.inputs.truck_id,
+                    "supplier": (record.inputs.supplier or "").strip() or None,
                     "decision": record.verdict.decision,
                     "decided_at_utc": record.verdict.decided_at_utc,
                     "prevented_loss_idr": 0 if admitted else estimate_idr,
