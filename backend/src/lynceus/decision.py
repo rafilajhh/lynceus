@@ -48,7 +48,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 #: Contaminants that make a load unfit for RDF processing no matter what.
-HARD_CONTAMINANTS = ("metal", "rock", "concrete", "tire", "tyre", "e-waste")
+HARD_CONTAMINANTS = ("metal", "rock", "concrete", "tire", "e-waste")
 #: Contaminants that require human review but are not automatically fatal.
 LIGHT_CONTAMINANTS = ("plastic_film", "glass", "textile", "organic_residue", "wet_mix")
 #: VLM confidence at/above which a hard-contaminant detection is trusted.
@@ -127,19 +127,22 @@ def confident_hard_contaminants(
 ) -> List[str]:
     """Hard contaminants that make :func:`decide` reject, else ``[]``.
 
-    Single source of truth for the hard-contamination rule: whole-word hits
-    across every VLM ``detected`` value, the waybill text and the LLM
-    cross-check notes, trusted only when the VLM confidence is at/above
-    ``HARD_CONTAMINANT_CONFIDENCE``.  Returned sorted and de-duplicated.
+    Only allowlisted strings in ``detected.hard_contaminants`` count, trusted
+    when VLM confidence is at/above ``HARD_CONTAMINANT_CONFIDENCE``. Prose in
+    detections, manifests and cross-check notes is not evidence of presence.
+    Returned sorted and de-duplicated.
     """
     vlm_result = vlm_result if isinstance(vlm_result, dict) else {}
-    llm_result = llm_result if isinstance(llm_result, dict) else {}
-    manifest_text = (inputs or {}).get("manifest_text") or ""
-    detected = vlm_result.get("detected") or {}
-    detected_text = " ".join(str(part) for part in detected.values()).lower()
-    waybill_flags = str(llm_result.get("crosscheck_notes", "")).lower()
-    scan_text = f"{detected_text} {manifest_text.lower()} {waybill_flags}"
-    hits = _find_terms(scan_text, HARD_CONTAMINANTS)
+    detected = vlm_result.get("detected")
+    if not isinstance(detected, dict):
+        return []
+    contaminants = detected.get("hard_contaminants")
+    if not isinstance(contaminants, list):
+        return []
+    hits = [
+        item for item in contaminants
+        if isinstance(item, str) and item in HARD_CONTAMINANTS
+    ]
     confidence = _as_float(vlm_result.get("confidence"))
     if hits and confidence is not None and confidence >= HARD_CONTAMINANT_CONFIDENCE:
         return sorted(set(hits))

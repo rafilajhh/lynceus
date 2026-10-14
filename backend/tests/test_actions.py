@@ -329,7 +329,7 @@ def _decide_and_steps(inputs, vlm, llm):
     return verdict, actions.next_steps(verdict, gates, detected, [], "r1")
 
 
-def test_text_only_metal_reject_gets_do_not_tip():
+def test_structured_metal_reject_gets_do_not_tip():
     inputs = {
         "photo_filename": "p.jpg",
         "manifest_text": "Waste: RDF. Driver note: scrap metal loaded on top.",
@@ -337,7 +337,7 @@ def test_text_only_metal_reject_gets_do_not_tip():
         "declared_weight_kg": 5000.0,
     }
     vlm = {"detected": {"contamination": "mixed fluff", "moisture": 0.1,
-                        "hard_contaminants": "", "light_contaminants": []},
+                        "hard_contaminants": ["metal"], "light_contaminants": []},
            "confidence": 0.8}
     verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
     assert verdict == D.REJECT
@@ -361,11 +361,12 @@ def test_weight_mismatch_reject_with_unconfident_hard_list_has_no_sorting_steps(
 
 
 def test_confident_hard_contaminants_unit():
-    vlm = {"detected": {"contamination": "tire and rock"}, "confidence": 0.6}
+    vlm = {"detected": {"contamination": "tire and rock",
+                        "hard_contaminants": ["tire", "rock"]}, "confidence": 0.6}
     assert decision.confident_hard_contaminants({}, vlm, {}) == ["rock", "tire"]
     vlm["confidence"] = 0.59
     assert decision.confident_hard_contaminants({}, vlm, {}) == []
     assert decision.confident_hard_contaminants(
         {"manifest_text": "contains Metal"}, {"detected": {}, "confidence": 0.9}, {}
-    ) == ["metal"]
+    ) == []
     assert decision.confident_hard_contaminants(None, None, None) == []

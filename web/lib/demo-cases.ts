@@ -128,7 +128,7 @@ export const WASTE_STREAMS = [
 /** The five interlock gates (audit.GATE_NAMES order). */
 export const GATE_ORDER = [
   { key: "vlm_confidence", label: "VLM" },
-  { key: "ocr_confidence", label: "OCR" },
+  { key: "ocr_confidence", label: "MANIFEST" },
   { key: "manifest_crosscheck", label: "XCHECK" },
   { key: "gas_plausibility", label: "GAS" },
   { key: "weight_plausibility", label: "WEIGHT" },
