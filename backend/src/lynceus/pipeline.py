@@ -44,6 +44,7 @@ from lynceus.vision_boxes import parse_locations
 VLM_TIMEOUT_S = 90.0
 LLM_TIMEOUT_S = 45.0
 ASSIST_TIMEOUT_S = 30.0
+EXPLAIN_TIMEOUT_S = ASSIST_TIMEOUT_S
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -82,6 +83,20 @@ class _RateLimitedError(Exception):
     def __init__(self, retry_after: float) -> None:
         super().__init__(f"rate limited; retry after {retry_after}s")
         self.retry_after = retry_after
+
+
+def _deadline_error(budget_s: float) -> httpx.ReadTimeout:
+    """The timeout a call past its wall-clock budget raises.
+
+    A :class:`httpx.ReadTimeout`, i.e. the same error a stalled read raises,
+    so every caller's existing timeout handling applies unchanged.
+    """
+    return httpx.ReadTimeout(f"no complete reply within {budget_s:g} s")
+
+
+def _check_deadline(deadline: Optional[float], budget_s: float) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise _deadline_error(budget_s)
 
 __all__ = [
     "AIClients",
@@ -202,6 +217,24 @@ def _clamp01(value: Any, default: float = 0.0) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _fold_system_messages(messages: list) -> list:
+    """Merge every ``system`` message into the first ``user`` message.
+
+    Order is kept: system text comes first, separated by a blank line. A
+    conversation without a user turn gets one built from the system text.
+    """
+    system = [str(m.get("content", "")) for m in messages if m.get("role") == "system"]
+    if not system:
+        return list(messages)
+    rest = [dict(m) for m in messages if m.get("role") != "system"]
+    preamble = "\n\n".join(system)
+    for message in rest:
+        if message.get("role") == "user":
+            message["content"] = f"{preamble}\n\n{message.get('content', '')}"
+            return rest
+    return [{"role": "user", "content": preamble}] + rest
+
+
 class VLLMClient:
     """Live AI client against two vLLM OpenAI-compatible endpoints."""
 
@@ -231,60 +264,123 @@ class VLLMClient:
         return {}
 
     @staticmethod
-    def _read_sse(r: httpx.Response) -> str:
+    def _read_sse(
+        r: httpx.Response, deadline: Optional[float] = None, budget_s: float = 0.0
+    ) -> str:
         """Consume an SSE chat-completions stream and join delta contents.
 
         Some OpenAI-compatible endpoints always answer with ``text/event-stream``
         (even without ``stream: true``), so the reader collects
         ``choices[0].delta.content`` fragments until ``data: [DONE]``.
+        ``deadline`` (a ``time.monotonic()`` value) is checked per received
+        chunk, not per line, so bytes trickling without a newline stop too.
         """
         parts: list = []
-        for line in r.iter_lines():
-            line = line.strip()
-            if not line or not line.startswith("data:"):
-                continue
-            data = line[len("data:") :].strip()
-            if data == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data)
-            except json.JSONDecodeError:
-                continue
-            try:
-                delta = chunk["choices"][0]["delta"].get("content")
-            except (KeyError, IndexError, TypeError, AttributeError):
-                continue
-            if delta:
-                parts.append(delta)
+        pending = ""
+        for text in r.iter_text():
+            _check_deadline(deadline, budget_s)
+            pending += text
+            *lines, pending = pending.split("\n")
+            for line in lines:
+                if VLLMClient._sse_line(line, parts):
+                    return "".join(parts)
+        VLLMClient._sse_line(pending, parts)
         return "".join(parts)
+
+    @staticmethod
+    def _sse_line(line: str, parts: list) -> bool:
+        """Append one SSE line's delta content to ``parts``; True on ``[DONE]``."""
+        line = line.strip()
+        if not line.startswith("data:"):
+            return False
+        data = line[len("data:") :].strip()
+        if data == "[DONE]":
+            return True
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError:
+            return False
+        try:
+            delta = chunk["choices"][0]["delta"].get("content")
+        except (KeyError, IndexError, TypeError, AttributeError):
+            return False
+        if delta:
+            parts.append(delta)
+        return False
 
     def _chat_once(
         self, base_url: str, model: str, messages: list, max_tokens: int = 512
     ) -> str:
-        """Single chat-completions attempt; raises on transport/HTTP errors."""
-        with _OUTBOUND_SLOTS, httpx.stream(
-            "POST",
-            f"{base_url.rstrip('/')}/chat/completions",
-            json={
-                "model": model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": 0.1,
-            },
-            headers=self._auth_headers(),
-            timeout=self._timeout_s,
-        ) as response:
-            if response.status_code == 429:
-                raise _RateLimitedError(
-                    _parse_retry_after(response.headers.get("retry-after", "1"))
+        """Single chat-completions attempt; raises on transport/HTTP errors.
+
+        httpx timeouts apply per read, so an endpoint trickling SSE bytes
+        never trips them.  The attempt therefore runs on a daemon thread and
+        the caller waits at most ``self._timeout_s`` wall-clock (slot wait,
+        connect, SSE or JSON read) before :func:`_deadline_error` is raised:
+        the ``ReadTimeout`` a stalled read raises, so stub fallback,
+        fail-closed and Pythia's CANNOT_ANSWER behave as for any timeout.
+        The worker checks the same deadline per chunk, so an abandoned
+        stream closes and frees its outbound slot at its next chunk or
+        per-read timeout.
+        """
+        deadline = time.monotonic() + self._timeout_s
+        outcome: Dict[str, Any] = {}
+        finished = threading.Event()
+
+        def _attempt() -> None:
+            try:
+                outcome["text"] = self._chat_attempt(
+                    base_url, model, messages, max_tokens, deadline
                 )
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "")
-            if "text/event-stream" in content_type:
-                return self._read_sse(response)
-            # Fallback: a full non-streaming JSON body (application/json).
-            payload = json.loads(response.read().decode("utf-8"))
-            return str(payload["choices"][0]["message"]["content"])
+            except BaseException as exc:  # noqa: BLE001 — re-raised below
+                outcome["error"] = exc
+            finally:
+                finished.set()
+
+        threading.Thread(target=_attempt, name="lynceus-chat", daemon=True).start()
+        if not finished.wait(self._timeout_s):
+            raise _deadline_error(self._timeout_s)
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome["text"]
+
+    def _chat_attempt(
+        self, base_url: str, model: str, messages: list, max_tokens: int, deadline: float
+    ) -> str:
+        """The HTTP round trip behind :meth:`_chat_once`, bounded by ``deadline``."""
+        budget_s = self._timeout_s
+        if not _OUTBOUND_SLOTS.acquire(timeout=max(deadline - time.monotonic(), 0.0)):
+            raise _deadline_error(budget_s)
+        try:
+            with httpx.stream(
+                "POST",
+                f"{base_url.rstrip('/')}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.1,
+                },
+                headers=self._auth_headers(),
+                timeout=budget_s,
+            ) as response:
+                if response.status_code == 429:
+                    raise _RateLimitedError(
+                        _parse_retry_after(response.headers.get("retry-after", "1"))
+                    )
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "")
+                if "text/event-stream" in content_type:
+                    return self._read_sse(response, deadline, budget_s)
+                # Fallback: a full non-streaming JSON body (application/json).
+                body = bytearray()
+                for chunk in response.iter_bytes():
+                    _check_deadline(deadline, budget_s)
+                    body.extend(chunk)
+                payload = json.loads(body.decode("utf-8"))
+                return str(payload["choices"][0]["message"]["content"])
+        finally:
+            _OUTBOUND_SLOTS.release()
 
     def _chat(
         self, base_url: str, model: str, messages: list, max_tokens: int = 512
@@ -417,6 +513,26 @@ class VLLMClient:
             self._settings.assist_url,
             self._settings.assist_model,
             messages,
+            max_tokens,
+        )
+        return parsed, (time.perf_counter() - started) * 1000.0
+
+    def explain(
+        self, messages: list, max_tokens: int = 700
+    ) -> tuple[Dict[str, Any], float]:
+        """JSON chat against the explain endpoint/model (shift-report prose).
+
+        Same contract as :meth:`assist`; the role defaults to the assist
+        endpoint and model unless ``EXPLAIN_URL`` / ``EXPLAIN_MODEL`` are set.
+        System messages are folded into the first user turn: Gemma chat
+        templates have no system role, and the Token Factory probe recorded
+        unusable Gemma replies whenever a system message was sent.
+        """
+        started = time.perf_counter()
+        parsed = self._scoped(EXPLAIN_TIMEOUT_S)._chat_json(
+            self._settings.explain_url,
+            self._settings.explain_model,
+            _fold_system_messages(messages),
             max_tokens,
         )
         return parsed, (time.perf_counter() - started) * 1000.0

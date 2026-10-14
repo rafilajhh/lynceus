@@ -32,6 +32,61 @@ import {
   type InspectResponse,
 } from "@/lib/inspect-api";
 
+/** Long edge (px) of the load photo sent to the VLM. Image tokens, and so
+ * VLM latency, grow with pixel count; a 12 MP phone photo has ~10x the pixels
+ * of a 1280x960 one. 1280 is still >2x the 524 px image the Token Factory
+ * probe localised at IoU >= 0.888 (docs/research/token-factory-probe.md). */
+const MAX_PHOTO_EDGE_PX = 1280;
+const PHOTO_JPEG_QUALITY = 0.85;
+
+/** The load photo re-encoded as a JPEG with its long edge at
+ * MAX_PHOTO_EDGE_PX, or null when it is already that small or the browser
+ * cannot decode or re-encode it (the original bytes are sent instead).
+ * Aspect ratio is kept, so normalised (0..1) boxes map onto either image;
+ * the canvas applies EXIF orientation, so the model sees what the
+ * preview shows. */
+async function downscaledJpeg(file: File): Promise<Blob | null> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const longEdge = Math.max(img.naturalWidth, img.naturalHeight);
+    if (longEdge <= MAX_PHOTO_EDGE_PX) return null;
+    const scale = MAX_PHOTO_EDGE_PX / longEdge;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    // A transparent PNG would turn black in a JPEG; flatten onto white.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", PHOTO_JPEG_QUALITY),
+    );
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Base64 + MIME of the bytes actually sent for the load photo. */
+async function encodeLoadPhoto(file: File): Promise<{ base64: string; mime: string }> {
+  const small = await downscaledJpeg(file);
+  return small
+    ? { base64: await blobToBase64(small), mime: "image/jpeg" }
+    : { base64: await blobToBase64(file), mime: file.type || "image/jpeg" };
+}
+
+/** The audit names the bytes it stores: a re-encoded photo is a .jpg. */
+function sentFilename(name: string | null, mime: string): string | null {
+  if (!name || mime !== "image/jpeg" || /\.jpe?g$/i.test(name)) return name;
+  return `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
+}
+
 const EMPTY_FORM: IntakeValues = {
   truck_id: "",
   supplier: "",
@@ -72,40 +127,54 @@ export function WorkspaceClient() {
   });
   const [runMode, setRunMode] = useState<RunMode>("other");
 
+  // Encodes in flight, per slot: submit awaits them, and only the latest
+  // pick may store its bytes (a slow older encode must not overwrite it).
+  const encoding = useRef(new Map<object, Promise<void>>());
+
   const pickFile = useCallback(
     (
       file: File | null,
       setSlot: (s: UploadSlot) => void,
       base64Ref: { current: string | null },
       previous: UploadSlot,
+      encode: (file: File) => Promise<{ base64: string; mime: string }>,
+      mimeRef?: { current: string },
     ) => {
       if (previous.previewUrl) URL.revokeObjectURL(previous.previewUrl);
+      base64Ref.current = null;
       if (!file) {
         setSlot(EMPTY_SLOT);
-        base64Ref.current = null;
+        encoding.current.delete(base64Ref);
         return;
       }
       setSlot({ previewUrl: URL.createObjectURL(file), filename: file.name });
-      base64Ref.current = null;
-      blobToBase64(file).then((b64) => {
-        base64Ref.current = b64;
-      });
+      const job: Promise<void> = encode(file).then(
+        ({ base64, mime }) => {
+          if (encoding.current.get(base64Ref) !== job) return;
+          base64Ref.current = base64;
+          if (mimeRef) mimeRef.current = mime;
+        },
+        () => undefined, // unreadable file: no bytes are stored
+      );
+      encoding.current.set(base64Ref, job);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
   const onLoadPhoto = useCallback(
-    (file: File | null) => {
-      pickFile(file, setLoadUpload, loadBase64, loadUpload);
-      if (file?.type) loadMime.current = file.type;
-    },
+    (file: File | null) =>
+      pickFile(file, setLoadUpload, loadBase64, loadUpload, encodeLoadPhoto, loadMime),
     [pickFile, loadUpload],
   );
 
+  // The waybill photo is evidence bytes, not a VLM input: sent unchanged.
   const onWaybillPhoto = useCallback(
     (file: File | null) =>
-      pickFile(file, setWaybillUpload, waybillBase64, waybillUpload),
+      pickFile(file, setWaybillUpload, waybillBase64, waybillUpload, async (f) => ({
+        base64: await blobToBase64(f),
+        mime: f.type,
+      })),
     [pickFile, waybillUpload],
   );
 
@@ -149,6 +218,11 @@ export function WorkspaceClient() {
       return;
     }
 
+    // A photo picked just now may still be downscaling: wait for its bytes.
+    // Loading is set first so a second click cannot start a parallel run.
+    setLoading(true);
+    await Promise.all(encoding.current.values());
+
     // Freeze the evidence photo for this inspection. Uploaded bytes become
     // a data: URL so a later upload revoking its object URL cannot blank
     // the verdict's photo.
@@ -165,7 +239,6 @@ export function WorkspaceClient() {
     // result's provenance badge, never assumed here.
     setRunMode("live");
 
-    setLoading(true);
     setPhase("evaluating");
     setBannerLit(false);
     // Stale-state fix (review finding 4): clear the previous verdict so
@@ -184,7 +257,7 @@ export function WorkspaceClient() {
         truck_id: values.truck_id.trim(),
         supplier: values.supplier.trim() || null,
         photo_base64: loadBase64.current,
-        photo_filename: loadUpload.filename,
+        photo_filename: sentFilename(loadUpload.filename, loadMime.current),
         demo_case: null,
         manifest_text: values.manifest_text.trim() || null,
         waybill_image_base64: waybillBase64.current,
@@ -243,6 +316,7 @@ export function WorkspaceClient() {
     });
     loadBase64.current = null;
     waybillBase64.current = null;
+    encoding.current.clear(); // an encode still in flight must not refill them
   }, []);
 
   const hasPhoto = Boolean(loadUpload.previewUrl);

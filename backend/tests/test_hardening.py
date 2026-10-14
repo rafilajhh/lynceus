@@ -287,6 +287,9 @@ class _FakeStream:
 
         return json.dumps({"choices": [{"message": {"content": self._content}}]}).encode()
 
+    def iter_bytes(self):
+        yield self.read()
+
 
 def _capture_timeouts(monkeypatch, content: str) -> list[float]:
     seen: list[float] = []
