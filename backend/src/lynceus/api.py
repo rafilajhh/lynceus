@@ -6,7 +6,8 @@ Routes:
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
     POST /assist   — Pythia: cited answers over plant documents and an audit record.
     GET  /shift-report — shift aggregation with supplier risk and explanations.
-    GET  /benchmark/latest — newest committed validation summary (+ framing).
+    GET  /benchmark/latest — newest committed validation summary (+ framing, + its replay).
+    GET  /benchmark/replay — newest replay re-score of a recorded run (current rules).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -873,22 +874,52 @@ def create_app() -> FastAPI:
             )
         return FileResponse(page, media_type="text/html")
 
-    @app.get("/benchmark/latest")
-    def benchmark_latest() -> dict[str, Any]:
-        """Newest ``*.summary.json`` from the validation benchmark, plus framing."""
+    def _benchmark_summaries(replay: bool) -> Iterator[dict[str, Any]]:
+        """Readable summaries, newest first: live runs, or offline replays
+        (``*.rescore.summary.json``, which never count as a live run)."""
         results = _BENCHMARK_DIR / "results"
         for path in sorted(results.glob("*.summary.json"), reverse=True):
+            if path.name.endswith(".rescore.summary.json") != replay:
+                continue
             try:
                 summary = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
             if isinstance(summary, dict):
-                return {**summary, "framing": BENCHMARK_FRAMING}
+                yield summary
+
+    @app.get("/benchmark/latest")
+    def benchmark_latest() -> dict[str, Any]:
+        """Newest live ``*.summary.json``, plus framing and its replay.
+
+        ``replay`` is the newest re-score of *this* run (its ``source_run``
+        equals the run's ``date``) through the current rules, else ``None``.
+        """
+        for summary in _benchmark_summaries(replay=False):
+            replay = next(
+                (r for r in _benchmark_summaries(replay=True)
+                 if r.get("source_run") == summary.get("date")),
+                None,
+            )
+            return {**summary, "framing": BENCHMARK_FRAMING, "replay": replay}
         raise HTTPException(
             status_code=404,
             detail={
                 "error": "no_benchmark",
                 "message": "No benchmark summary has been committed yet.",
+            },
+        )
+
+    @app.get("/benchmark/replay")
+    def benchmark_replay() -> dict[str, Any]:
+        """Newest offline replay re-score (recorded model outputs, current rules)."""
+        for summary in _benchmark_summaries(replay=True):
+            return summary
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_replay",
+                "message": "No replay re-score has been committed yet.",
             },
         )
 
@@ -949,9 +980,9 @@ def create_app() -> FastAPI:
                 "rule" if text == shift.fallback_explanation(row) else "model"
             )
             model_used = model_used or row["explanation_source"] == "model"
-        report["explanation_model"] = settings.assist_model if model_used else None
+        report["explanation_model"] = settings.explain_model if model_used else None
         report["explanation_provider"] = (
-            provider_for_url(settings.assist_url) if model_used else None
+            provider_for_url(settings.explain_url) if model_used else None
         )
         return report
 

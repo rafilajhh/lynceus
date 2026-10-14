@@ -116,11 +116,41 @@ def test_escalate_moisture_conflict_from_real_decide():
 
 
 def test_escalate_light_contaminant():
+    # glass, not plastic_film: plastic film is RDF feedstock since the
+    # 2026-10-14 policy fix, so it no longer selects the pre-sort step.
     steps = actions.next_steps(
-        D.ESCALATE_HUMAN, _gates(), _detected(light=["plastic_film"]), [], "r1"
+        D.ESCALATE_HUMAN, _gates(), _detected(light=["glass"]), [], "r1"
     )
     assert _refs(steps) == ["SOP-RDF-4.4"]
     assert _texts(steps) == ["Tip to the pre-sort line, not direct feed."]
+
+
+@pytest.mark.parametrize("feedstock", [["plastic_film"], ["textile"], ["plastic_film", "textile"]])
+def test_rdf_feedstock_listed_as_light_does_not_select_pre_sort(feedstock):
+    """Plastic film / textile in the VLM's light list are RDF feedstock: no pre-sort step."""
+    steps = actions.next_steps(
+        D.ESCALATE_HUMAN, _gates(manifest_crosscheck="failed"), _detected(light=feedstock), [], "r1"
+    )
+    assert _refs(steps) == ["SOP-RDF-3.3"]
+    assert not any("contamina" in t.lower() for t in _texts(steps))
+
+
+def test_rdf_feedstock_load_accepts_and_tips_to_storage_via_real_decide():
+    """A clean plastic-film / textile load: decide() accepts, the card tips it to storage."""
+    inputs = {
+        "photo_filename": "p.jpg",
+        "manifest_text": "Waste: mixed RDF feedstock. Declared weight: 5,200 kg",
+        "weight_kg": 5200.0,
+    }
+    vlm = {"detected": {"contamination": "textile strip and plastic film", "moisture": 0.05,
+                        "hard_contaminants": [], "light_contaminants": ["plastic_film", "textile"]},
+           "confidence": 0.95}
+    verdict, gates, reasons = decision.decide(inputs, vlm, {"confidence": 0.9}, None)
+    assert verdict == D.ACCEPT
+    joined = " ".join(reasons).lower()
+    assert "plastic_film" not in joined and "textile" not in joined
+    steps = actions.next_steps(verdict, gates, vlm["detected"], [], "r1")
+    assert _refs(steps) == ["SOP-RDF-6.1"]
 
 
 def test_escalate_manifest_crosscheck_failed():

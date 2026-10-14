@@ -117,3 +117,44 @@ def test_attempt_stats_empty():
         "retried": 0,
         "total_ms": {"p95": None, "max": None},
     }
+
+
+# SIX plus five rows, worked by hand:
+#   expected accept (5): accept x1 (SIX row 6), escalate x2, reject x1, error x1
+#     -> clean accept 1/5, escalate 2/5, reject 1/5 (the error stays in the denominator)
+#   non-error rows (9): SIX rows 1,2,3,5,6 + the four new non-error rows;
+#     escalated among them: SIX row 3, two accept->escalate, one escalate->escalate = 4
+#     -> review_rate 4/9
+#   expected escalate (2): SIX row 5 (rejected) + one escalated -> escalate_recall 1/2
+OPERATOR = SIX + [
+    _row("accept", "escalate_human"),
+    _row("accept", "escalate_human"),
+    _row("accept", "reject"),
+    _row("accept", None, error="HTTP 503: ReadTimeout"),
+    _row("escalate", "escalate_human"),
+]
+
+
+def test_clean_load_rates_over_expected_accept_rows():
+    out = metrics.compute(OPERATOR)
+    assert out["clean_accept_rate"] == pytest.approx(1 / 5)
+    assert out["clean_escalate_rate"] == pytest.approx(2 / 5)
+    assert out["clean_reject_rate"] == pytest.approx(1 / 5)
+
+
+def test_review_rate_is_escalations_over_non_error_rows():
+    assert metrics.compute(OPERATOR)["review_rate"] == pytest.approx(4 / 9)
+
+
+def test_escalate_recall_counts_errors_and_rejects_as_misses():
+    assert metrics.compute(OPERATOR)["escalate_recall"] == pytest.approx(1 / 2)
+
+
+def test_operator_rates_are_none_without_a_denominator():
+    out = metrics.compute([])
+    for key in ("clean_accept_rate", "clean_escalate_rate", "clean_reject_rate",
+                "review_rate", "escalate_recall"):
+        assert out[key] is None, key
+    only_metal = metrics.compute([_row("reject", "reject")])
+    assert only_metal["clean_accept_rate"] is None and only_metal["escalate_recall"] is None
+    assert only_metal["review_rate"] == 0.0

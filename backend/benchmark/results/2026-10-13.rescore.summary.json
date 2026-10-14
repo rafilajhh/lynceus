@@ -1,0 +1,281 @@
+{
+  "n": 80,
+  "confusion": {
+    "reject": {
+      "reject": 19,
+      "escalate": 0,
+      "accept": 1,
+      "error": 0
+    },
+    "escalate": {
+      "reject": 1,
+      "escalate": 17,
+      "accept": 2,
+      "error": 0
+    },
+    "accept": {
+      "reject": 1,
+      "escalate": 4,
+      "accept": 35,
+      "error": 0
+    }
+  },
+  "reject": {
+    "precision": 0.9047619047619048,
+    "recall": 0.95,
+    "f1": 0.9268292682926829,
+    "tp": 19,
+    "fp": 2,
+    "fn": 1
+  },
+  "latency_ms": {
+    "p50": null,
+    "p95": null
+  },
+  "total_ms": {
+    "p50": null,
+    "p95": null
+  },
+  "errors": 0,
+  "clean_accept_rate": 0.875,
+  "clean_escalate_rate": 0.1,
+  "clean_reject_rate": 0.025,
+  "review_rate": 0.2625,
+  "escalate_recall": 0.85,
+  "kind": "replay",
+  "source_run": "2026-10-13",
+  "framing": "Re-scored: the recorded live model outputs of the 2026-10-13 AMD Token Factory run, replayed through the current decision rules. No new model calls.",
+  "scope": "component validation on public RealWaste images — not field data from a plant",
+  "disclosure": "The rule change this replay scores (plastic film and textile are RDF feedstock and no longer escalate a load) was motivated by this same run's data, so these rates are not a held-out result. Only a new live run on unseen images can confirm them.",
+  "llm_note": "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence of 0.95. That confidence only fills the ocr_confidence gate value, which has no threshold and never moves the verdict. The VLM prompt was not changed for this re-score; latency is not re-measured (no model was called).",
+  "date": "2026-10-13",
+  "rescored_on": "2026-10-14",
+  "manifest_n": 80,
+  "complete": true,
+  "vlm_model": "MiniCPM-V-4.7-35B-A3B",
+  "llm_model": "DeepSeek-V4-Flash",
+  "provider": "amd-token-factory",
+  "provenance": [
+    "replay"
+  ],
+  "source_provenance": [
+    "live"
+  ],
+  "per_category": {
+    "Metal": {
+      "reject": 19,
+      "escalate": 0,
+      "accept": 1,
+      "error": 0
+    },
+    "Glass": {
+      "reject": 1,
+      "escalate": 5,
+      "accept": 1,
+      "error": 0
+    },
+    "Food Organics": {
+      "reject": 0,
+      "escalate": 6,
+      "accept": 1,
+      "error": 0
+    },
+    "Vegetation": {
+      "reject": 0,
+      "escalate": 6,
+      "accept": 0,
+      "error": 0
+    },
+    "Paper": {
+      "reject": 0,
+      "escalate": 1,
+      "accept": 9,
+      "error": 0
+    },
+    "Cardboard": {
+      "reject": 0,
+      "escalate": 2,
+      "accept": 8,
+      "error": 0
+    },
+    "Plastic": {
+      "reject": 1,
+      "escalate": 1,
+      "accept": 8,
+      "error": 0
+    },
+    "Textile Trash": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 10,
+      "error": 0
+    }
+  },
+  "recorded_confusion": {
+    "reject": {
+      "reject": 19,
+      "escalate": 0,
+      "accept": 1,
+      "error": 0
+    },
+    "escalate": {
+      "reject": 1,
+      "escalate": 18,
+      "accept": 1,
+      "error": 0
+    },
+    "accept": {
+      "reject": 2,
+      "escalate": 26,
+      "accept": 12,
+      "error": 0
+    }
+  },
+  "changed": [
+    {
+      "image": "plastic_1.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_1.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "paper_51.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_32.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "glass_121.jpg",
+      "expected": "escalate",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "plastic_185.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_63.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "paper_151.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "plastic_277.jpg",
+      "expected": "accept",
+      "recorded": "reject",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_94.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_125.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "paper_251.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "cardboard_231.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "plastic_461.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_156.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "plastic_553.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_187.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "paper_351.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_218.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "cardboard_369.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_249.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "cardboard_415.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "plastic_829.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    },
+    {
+      "image": "textile_trash_280.jpg",
+      "expected": "accept",
+      "recorded": "escalate",
+      "replay": "accept"
+    }
+  ],
+  "gates_changed": []
+}

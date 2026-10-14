@@ -1,6 +1,7 @@
 /**
  * Validation benchmark client: GET /benchmark/latest → the newest committed
- * summary of the live-on-AMD vision-gate benchmark plus its framing sentence.
+ * summary of the live-on-AMD vision-gate benchmark plus its framing sentence,
+ * and (``replay``) that run re-scored offline under the current rules.
  *
  * Untrusted JSON, parsed once here with zod. Malformed numbers degrade to
  * null (rendered as "—"), never to a made-up zero.
@@ -27,6 +28,52 @@ const percentiles = z
   .object({ p50: metric, p95: metric })
   .catch({ p50: null, p95: null });
 
+const confusion = z
+  .object({ reject: confusionRow, escalate: confusionRow, accept: confusionRow })
+  .catch({
+    reject: { reject: 0, escalate: 0, accept: 0, error: 0 },
+    escalate: { reject: 0, escalate: 0, accept: 0, error: 0 },
+    accept: { reject: 0, escalate: 0, accept: 0, error: 0 },
+  });
+
+const rejectMetrics = z
+  .object({
+    precision: metric,
+    recall: metric,
+    f1: metric,
+    tp: count,
+    fp: count,
+    fn: count,
+  })
+  .catch({ precision: null, recall: null, f1: null, tp: 0, fp: 0, fn: 0 });
+
+/**
+ * Offline re-score of the same run: its recorded model outputs replayed
+ * through the current decision rules (no new model calls).
+ */
+const replaySchema = z.object({
+  kind: z.literal("replay"),
+  source_run: z.string().nullish().catch(null),
+  framing: z.string().min(1),
+  disclosure: z.string().nullish().catch(null),
+  llm_note: z.string().nullish().catch(null),
+  n: count,
+  errors: count,
+  confusion,
+  reject: rejectMetrics,
+  changed: z
+    .array(
+      z.object({
+        image: z.string(),
+        expected: z.string(),
+        recorded: z.string(),
+        replay: z.string(),
+      }),
+    )
+    .nullish()
+    .catch(null),
+});
+
 const summarySchema = z.object({
   framing: z.string().min(1),
   date: z.string().nullish().catch(null),
@@ -34,23 +81,8 @@ const summarySchema = z.object({
   manifest_n: count,
   complete: z.boolean().catch(false),
   errors: count,
-  confusion: z
-    .object({ reject: confusionRow, escalate: confusionRow, accept: confusionRow })
-    .catch({
-      reject: { reject: 0, escalate: 0, accept: 0, error: 0 },
-      escalate: { reject: 0, escalate: 0, accept: 0, error: 0 },
-      accept: { reject: 0, escalate: 0, accept: 0, error: 0 },
-    }),
-  reject: z
-    .object({
-      precision: metric,
-      recall: metric,
-      f1: metric,
-      tp: count,
-      fp: count,
-      fn: count,
-    })
-    .catch({ precision: null, recall: null, f1: null, tp: 0, fp: 0, fn: 0 }),
+  confusion,
+  reject: rejectMetrics,
   latency_ms: percentiles,
   total_ms: percentiles,
   /** Every raw request attempt (failed ones included); absent in older summaries. */
@@ -69,9 +101,13 @@ const summarySchema = z.object({
   per_category: z.record(z.string(), confusionRow).catch({}),
   manual_check_seconds: z.number().positive().nullish().catch(null),
   source_url: z.string().nullish().catch(null),
+  /** Absent in older API responses; null when this run has no replay. */
+  replay: replaySchema.nullish().catch(null),
 });
 
 export type BenchmarkSummary = z.infer<typeof summarySchema>;
+export type ReplaySummary = z.infer<typeof replaySchema>;
+export type Confusion = BenchmarkSummary["confusion"];
 
 export class ValidationError extends Error {
   /** True when no benchmark has been committed (a normal, honest state). */

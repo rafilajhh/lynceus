@@ -52,6 +52,59 @@ def test_latest_skips_an_unreadable_newest_file(client):
     assert c.get("/benchmark/latest").json()["n"] == 5
 
 
+def test_latest_ignores_replays_and_attaches_the_matching_one(client):
+    c, root = client
+    results = root / "results"
+    _write(results, "2026-10-13.summary.json", {"n": 80, "date": "2026-10-13"})
+    # Sorts after the live file name-wise; must never be served as the live run.
+    _write(results, "2026-10-14.rescore.summary.json",
+           {"kind": "replay", "source_run": "2026-10-14", "n": 1})
+    _write(results, "2026-10-13.rescore.summary.json",
+           {"kind": "replay", "source_run": "2026-10-13", "n": 80, "clean_accept_rate": 0.875})
+    body = c.get("/benchmark/latest").json()
+    assert body["date"] == "2026-10-13" and body["framing"] == FRAMING
+    assert "kind" not in body
+    assert body["replay"]["source_run"] == "2026-10-13"
+    assert body["replay"]["clean_accept_rate"] == 0.875
+
+
+def test_latest_replay_is_null_without_a_matching_rescore(client):
+    c, root = client
+    _write(root / "results", "2026-10-13.summary.json", {"n": 80, "date": "2026-10-13"})
+    _write(root / "results", "2026-10-12.rescore.summary.json",
+           {"kind": "replay", "source_run": "2026-10-12"})
+    assert c.get("/benchmark/latest").json()["replay"] is None
+
+
+def test_latest_is_404_when_only_a_replay_exists(client):
+    c, root = client
+    _write(root / "results", "2026-10-13.rescore.summary.json",
+           {"kind": "replay", "source_run": "2026-10-13"})
+    assert c.get("/benchmark/latest").status_code == 404
+
+
+def test_replay_endpoint_serves_the_newest_rescore(client):
+    c, root = client
+    assert c.get("/benchmark/replay").json()["detail"]["error"] == "no_replay"
+    _write(root / "results", "2026-10-13.summary.json", {"n": 80, "date": "2026-10-13"})
+    _write(root / "results", "2026-10-13.rescore.summary.json",
+           {"kind": "replay", "source_run": "2026-10-13", "framing": "Re-scored: x"})
+    body = c.get("/benchmark/replay").json()
+    assert body["kind"] == "replay" and body["framing"] == "Re-scored: x"
+
+
+def test_committed_replay_matches_its_live_run():
+    """The committed 2026-10-13 replay re-scores exactly the committed live run."""
+    results = Path(__file__).resolve().parents[1] / "benchmark" / "results"
+    live = json.loads((results / "2026-10-13.summary.json").read_text(encoding="utf-8"))
+    replay = json.loads((results / "2026-10-13.rescore.summary.json").read_text(encoding="utf-8"))
+    assert replay["kind"] == "replay" and replay["source_run"] == live["date"]
+    assert replay["n"] == live["n"] == 80
+    assert replay["recorded_confusion"] == live["confusion"]
+    assert sum(replay["confusion"]["accept"].values()) == 40
+    assert "not a held-out" in replay["disclosure"]
+
+
 def test_manifest_csv_is_served(client):
     c, root = client
     (root / "manifest.csv").write_text("image,category,expected\na.jpg,Metal,reject\n", encoding="utf-8")
