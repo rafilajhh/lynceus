@@ -143,7 +143,6 @@ export function ValidationView() {
           not used.
         </p>
         <Incomplete summary={summary} />
-        <Retries summary={summary} />
       </Panel>
 
       <Panel>
@@ -154,20 +153,21 @@ export function ValidationView() {
           rock, concrete, tyre and e-waste are rejected.
         </p>
         <ConfusionTable summary={summary} />
-        <p className="m-0 max-w-[78ch] border-t border-seam px-4 py-3 text-[12.5px] leading-relaxed text-muted">
-          <strong className="font-semibold text-ink">Read this with the policy in mind.</strong>{" "}
-          Under the current gate policy, plastic film, glass and textile are light
-          contaminants (escalate), while metal, rock, concrete, tyre and e-waste are hard
-          (reject). The headline above is therefore the hard-contaminant gate only, with
-          metal as the positive class. Where the matrix shows accept and escalate
-          disagreeing, part of that reflects policy (for example, textile trash and plastic
-          expected to accept can carry plastic film or textile, which the gate escalates),
-          not vision error. In this run, one of the three false rejects (a plastic image) came from the
-          vision model&apos;s free-text description mentioning a &quot;concrete floor&quot;,
-          which the gate matches as a hard-contaminant word: a conservative error that lowers
-          precision. The Error column counts refusals and failed requests; they are
-          never counted as correct.
-        </p>
+        <details className="group border-t border-seam px-4 py-3">
+          <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
+            Why accept and escalate disagree
+          </summary>
+          <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+            The headline above is the hard-contaminant gate only, with metal as the positive
+            class. Where the matrix shows accept and escalate disagreeing, part of that reflects
+            policy (for example, textile trash and plastic expected to accept can carry plastic
+            film or textile, which the gate escalates), not vision error. In this run, one of the
+            three false rejects (a plastic image) came from the vision model&apos;s free-text
+            description mentioning a &quot;concrete floor&quot;, which the gate matches as a
+            hard-contaminant word: a conservative error that lowers precision. The Error column
+            counts refusals and failed requests; they are never counted as correct.
+          </p>
+        </details>
       </Panel>
 
       <Panel>
@@ -179,6 +179,12 @@ export function ValidationView() {
         <PanelHead title="Latency and models" />
         <LatencyAndModels summary={summary} />
       </Panel>
+
+      <p className="figure m-0 px-1 text-[13px] text-muted">
+        <span className="text-ink">{ratio(summary.reject.recall)}</span> recall ·{" "}
+        <span className="text-ink">{ratio(summary.reject.precision)}</span> precision ·{" "}
+        n = <span className="text-ink">{summary.n}</span> · one run · raw data linked above
+      </p>
     </div>
   );
 }
@@ -204,7 +210,7 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
   ];
   return (
     <div className="px-4 pt-4 pb-4">
-      <p className="smallcaps m-0 mb-3">REJECT gate, metal as positive</p>
+      <p className="smallcaps m-0 mb-3">Metal gate</p>
       <dl className="m-0 grid grid-cols-3 gap-x-6">
         {parts.map((part) => (
           <div key={part.key} className="flex flex-col gap-1">
@@ -237,7 +243,7 @@ function Retries({ summary }: { summary: BenchmarkSummary }) {
     <p className="m-0 border-t border-seam px-4 py-3 text-[13px] text-muted">
       <span className="figure text-ink">{a.retried}</span> of{" "}
       <span className="figure text-ink">{a.attempts}</span> requests timed out on the shared
-      endpoint and were retried; the latency figures cover completed requests (all-attempt p95{" "}
+      endpoint and were retried; latency covers completed requests (all-attempt p95{" "}
       <span className="figure text-ink">{seconds(a.total_ms.p95)}</span>, longest{" "}
       <span className="figure text-ink">{seconds(a.total_ms.max)}</span>).
     </p>
@@ -390,24 +396,30 @@ function LatencyAndModels({ summary }: { summary: BenchmarkSummary }) {
           </div>
         ))}
       </dl>
-      <p className="m-0 max-w-[78ch] px-4 py-3 text-[12.5px] leading-relaxed text-muted">
-        Latency is measured through the live endpoint and includes provider queueing; it is
-        not a hardware benchmark. No manual-inspection time is compared: no citable
-        per-truck figure was found (see docs/research/token-factory-probe.md).
-      </p>
-      <p className="m-0 max-w-[78ch] border-t border-seam px-4 py-3 text-[12.5px] leading-relaxed text-muted">
-        Images: RealWaste (Single, Iranmanesh, Raad),{" "}
-        <a href={DATASET_URL} className="text-amber underline underline-offset-2">
-          UCI ML Repository
-        </a>
-        . UCI lists the licence as CC BY 4.0; the README inside the dataset says CC BY-NC-SA 4.0,
-        so the stricter terms are assumed. 6 of the 80 files were re-encoded to fit 200 KB; none
-        were resized. The image list and expected verdicts are in the{" "}
-        <a href="/benchmark/manifest.csv" className="text-amber underline underline-offset-2">
-          manifest
-        </a>
-        .
-      </p>
+      <Retries summary={summary} />
+      <details className="group px-4 py-3">
+        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
+          Method, data &amp; licence
+        </summary>
+        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+          Latency is measured through the live endpoint and includes provider queueing; it is
+          not a hardware benchmark. No manual-inspection time is compared: no citable per-truck
+          figure was found (see docs/research/token-factory-probe.md).
+        </p>
+        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+          Images: RealWaste (Single, Iranmanesh, Raad),{" "}
+          <a href={DATASET_URL} className="text-amber underline underline-offset-2">
+            UCI ML Repository
+          </a>
+          . UCI lists the licence as CC BY 4.0; the README inside the dataset says CC BY-NC-SA
+          4.0, so the stricter terms are assumed. 6 of the 80 files were re-encoded to fit 200
+          KB; none were resized. The image list and expected verdicts are in the{" "}
+          <a href="/benchmark/manifest.csv" className="text-amber underline underline-offset-2">
+            manifest
+          </a>
+          .
+        </p>
+      </details>
     </>
   );
 }
