@@ -10,6 +10,19 @@ export function formatRupiah(idr: number): string {
   }).format(idr)}`;
 }
 
+/** "Rp 16,0 M" / "Rp 350 jt": compact headline figure. The full grouped value
+    stays in the title; compact only ever shortens, never changes the value. */
+export function formatRupiahCompact(idr: number): string {
+  if (!Number.isFinite(idr) || idr <= 0) return "Rp 0";
+  const M = 1_000_000_000; // miliar
+  const JT = 1_000_000; // juta
+  const oneDecimal = (n: number) =>
+    new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(n);
+  if (idr >= M) return `Rp ${oneDecimal(idr / M)} M`;
+  if (idr >= JT) return `Rp ${oneDecimal(idr / JT)} jt`;
+  return formatRupiah(idr);
+}
+
 /** "5.200 kg" / "5,2 t": weighbridge register. */
 export function formatWeight(kg: number): string {
   if (!Number.isFinite(kg) || kg <= 0) return "—";

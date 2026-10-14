@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { formatRupiah, providerName } from "@/lib/format";
+import { formatRupiah, formatRupiahCompact, providerName } from "@/lib/format";
 import {
   FLAG_MIN_RISK,
   FLAG_MIN_TRUCKS,
@@ -192,49 +192,45 @@ function SampleNote({ report }: { report: ShiftReport }) {
 function HeadlineRun({ report }: { report: ShiftReport }) {
   const rejected = report.by_verdict.reject ?? 0;
   const median = report.median_seconds_per_truck;
-  const hasMedian = median !== null && median !== undefined;
-  const parts: { key: string; value: string; unit?: string; label: string; tone?: string }[] = [
+  const hasMedian = typeof median === "number" && median > 0;
+  const prevented = report.prevented_loss_idr;
+  const parts: { key: string; value: string; unit?: string; label: string; tone?: string; title?: string }[] = [
     { key: "trucks", value: String(report.trucks), label: report.trucks === 1 ? "truck" : "trucks" },
     { key: "rejected", value: String(rejected), label: "rejected", tone: rejected > 0 ? "text-verdict-red" : undefined },
     {
       key: "prevented",
-      value: formatRupiah(report.prevented_loss_idr),
+      value: formatRupiahCompact(prevented),
+      title: prevented > 0 ? formatRupiah(prevented) : undefined,
       label: "prevented loss",
-      tone: report.prevented_loss_idr > 0 ? "text-verdict-green" : undefined,
+      tone: prevented > 0 ? "text-verdict-green" : undefined,
     },
     {
       key: "median",
       value: hasMedian ? median.toFixed(1) : "—",
       unit: hasMedian ? "s" : undefined,
-      label: "median per truck",
+      label: hasMedian ? "median per truck" : "median (no live inspections)",
     },
   ];
-  // One sentence-like run on wide screens; below sm each figure takes its
-  // own line (separators hidden) so nothing clips at phone width.
+  // A fixed 4-up grid keeps every figure on its own cell, so a long money
+  // string can never push a neighbour onto an orphaned second line.
   return (
-    <p className="m-0 flex flex-col gap-y-1.5 px-4 pt-5 pb-4 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-4 sm:gap-y-2">
-      {parts.map((part, i) => (
-        <span key={part.key} className="inline-flex items-baseline gap-x-4">
-          {i > 0 ? (
-            <span aria-hidden="true" className="hidden text-[22px] text-faint sm:inline">
-              ·
-            </span>
-          ) : null}
-          <span className="inline-flex flex-wrap items-baseline gap-x-2">
-            <strong
-              className={cn(
-                "figure text-[clamp(21px,2.6vw,30px)] leading-tight font-semibold whitespace-nowrap text-ink",
-                part.tone,
-              )}
-            >
-              {part.value}
-              {part.unit ? <span className="ml-1 text-[0.62em]">{part.unit}</span> : null}
-            </strong>
-            <span className="text-[13px] text-muted">{part.label}</span>
-          </span>
-        </span>
+    <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-4 px-4 pt-5 pb-4 lg:grid-cols-4">
+      {parts.map((part) => (
+        <div key={part.key} className="flex flex-col gap-1">
+          <dd
+            title={part.title}
+            className={cn(
+              "figure m-0 whitespace-nowrap text-[clamp(20px,2.4vw,28px)] leading-tight font-semibold text-ink",
+              part.tone,
+            )}
+          >
+            {part.value}
+            {part.unit ? <span className="ml-1 text-[0.62em]">{part.unit}</span> : null}
+          </dd>
+          <dt className="smallcaps">{part.label}</dt>
+        </div>
       ))}
-    </p>
+    </dl>
   );
 }
 
@@ -288,8 +284,8 @@ function HandoverLine({ report }: { report: ShiftReport }) {
   }, [report]);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-seam px-4 py-3">
-      <p className="m-0 flex items-center gap-2 text-[13px]">
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-seam px-4 py-4">
+      <p className="m-0 flex min-w-0 flex-1 items-center gap-2.5 text-[13px]">
         <span
           aria-hidden="true"
           className={cn(
@@ -318,7 +314,12 @@ function HandoverLine({ report }: { report: ShiftReport }) {
           </span>
         )}
       </p>
-      <Button variant="default" size="sm" onClick={() => void copySummary()}>
+      <Button
+        variant="default"
+        size="sm"
+        className="shrink-0"
+        onClick={() => void copySummary()}
+      >
         {copied ? "Copied" : "Copy shift summary"}
       </Button>
     </div>
@@ -424,7 +425,7 @@ function SupplierTableRows({ row, report }: { row: SupplierRow; report: ShiftRep
   return (
     <>
       <TableRow className={cn("hover:bg-transparent", row.explanation && "border-b-0")}>
-        <TableCell className="font-semibold text-ink">
+        <TableCell className="whitespace-nowrap font-semibold text-ink">
           <SupplierLink name={row.supplier} />
         </TableCell>
         <TableCell className="figure text-right text-[12.5px] text-ink">{row.trucks}</TableCell>
@@ -462,7 +463,7 @@ function RiskBar({ row, wide = false }: { row: SupplierRow; wide?: boolean }) {
           style={{ width: `${pct}%` }}
         />
         <div
-          className="absolute top-0 h-full w-px bg-muted"
+          className="absolute top-[-1px] h-[calc(100%+2px)] w-px bg-ink"
           style={{ left: `${FLAG_MIN_RISK * 100}%` }}
         />
       </div>
@@ -477,9 +478,9 @@ function RiskBar({ row, wide = false }: { row: SupplierRow; wide?: boolean }) {
 function StatusMark({ row }: { row: SupplierRow }) {
   if (row.flagged) return <Badge variant="escalate">Flagged</Badge>;
   return (
-    <span className="text-[12.5px] whitespace-nowrap text-faint">
-      {row.trucks < FLAG_MIN_TRUCKS ? "Too few trucks to rate" : "Within limit"}
-    </span>
+    <Badge variant="default">
+      {row.trucks < FLAG_MIN_TRUCKS ? "Too few trucks" : "Within limit"}
+    </Badge>
   );
 }
 
