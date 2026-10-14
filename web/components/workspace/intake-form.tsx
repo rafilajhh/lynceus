@@ -2,15 +2,14 @@
 
 /**
  * IntakeForm: the weighbridge register: truck_id, supplier, waybill
- * photo, weight, stream select, moisture, age. Plus the three demo-case
- * buttons (Green/Amber/Red) with their real labels. Fields use the
- * foundation's .input token. Race-guarded demo loading is handled by
- * the parent (WorkspaceClient).
+ * photo, weight, stream select, moisture, age. Fields use the
+ * foundation's .input token. The load photo upload lives beside the
+ * hero image in the parent (WorkspaceClient).
  */
 
 import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { WASTE_STREAMS, DEMO_CASES } from "@/lib/demo-cases";
+import { WASTE_STREAMS } from "@/lib/demo-cases";
 import { cn } from "@/lib/utils";
 
 export interface IntakeValues {
@@ -30,35 +29,19 @@ export interface UploadSlot {
   filename: string | null;
 }
 
-const DEMO_BTN_TONE: Record<string, string> = {
-  green: "border-verdict-green/70 text-verdict-green hover:bg-green-dim",
-  amber: "border-amber/70 text-amber hover:bg-amber-dim",
-  red: "border-verdict-red/70 text-verdict-red hover:bg-red-dim",
-};
-
 export function IntakeForm({
   values,
   onChange,
-  onDemo,
-  onTruckArriving,
   onSubmit,
-  onRunLive,
   onReset,
   onWaybillPhoto,
   waybillPhoto,
   loading,
   formError,
-  activeDemo,
 }: {
   values: IntakeValues;
   onChange: (patch: Partial<IntakeValues>) => void;
-  onDemo: (key: "green" | "amber" | "red") => void;
-  /** Gate-camera simulation: a truck arrives, the camera fires, and the
-      load enters the pipeline automatically (no operator action). */
-  onTruckArriving: () => void;
   onSubmit: () => void;
-  /** Submit the selected demo case to the live pipeline (no demo_case). */
-  onRunLive: () => void;
   /** Clear the whole gate (form, uploads, photo, verdict) — the same
       reset the verdict's "Next truck" button performs. */
   onReset: () => void;
@@ -68,7 +51,6 @@ export function IntakeForm({
   waybillPhoto: UploadSlot;
   loading: boolean;
   formError: string | null;
-  activeDemo: string | null;
 }) {
   const field =
     "input disabled:opacity-50 disabled:cursor-not-allowed";
@@ -123,66 +105,6 @@ export function IntakeForm({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Demo-case row: wraps to two lines instead of clipping (user
-          feedback: nowrap cut off the red case in the half-width column). */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-seam px-4 py-3">
-        <span className="smallcaps shrink-0" title="Instant scripted samples: no model call">
-          Scripted demo
-        </span>
-        {(["green", "amber", "red"] as const).map((key) => (
-          <Button
-            key={key}
-            variant="ghost"
-            size="sm"
-            type="button"
-            disabled={loading}
-            aria-pressed={activeDemo === key}
-            className={cn(
-              "shrink-0 border",
-              DEMO_BTN_TONE[key],
-              activeDemo === key && "bg-seam/60",
-            )}
-            onClick={() => onDemo(key)}
-          >
-            {DEMO_CASES[key].label}
-          </Button>
-        ))}
-        {/* Live run: the selected case's photo and inputs, sent WITHOUT
-            demo_case so the backend runs the live AMD pipeline (~20 s typical,
-            p95 34 s: Validation page).
-            Needs a demo photo; uploads go through Inspect Load. The
-            hairline separates it from the scripted cases it is not. */}
-        <span aria-hidden="true" className="h-5 w-px shrink-0 bg-seam-strong" />
-        <Button
-          variant="default"
-          size="sm"
-          type="button"
-          disabled={loading || activeDemo === null}
-          title={
-            activeDemo === null
-              ? "Pick a demo case first: its photo and waybill are sent to the live models"
-              : "Send this case's photo and waybill to the live models on AMD (no script)"
-          }
-          className="shrink-0"
-          onClick={onRunLive}
-        >
-          Run live on AMD
-        </Button>
-        {/* Gate-camera simulation: one press = one truck arrives and the
-            camera pushes the load straight into the pipeline. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          type="button"
-          disabled={loading}
-          title="Simulate the gate camera: a truck arrives and the load enters the pipeline automatically"
-          className="shrink-0 border border-amber-line/70 text-amber hover:bg-amber-dim"
-          onClick={onTruckArriving}
-        >
-          ◉ Truck arriving
-        </Button>
-      </div>
-
       <form
         id="inspect-form"
         onSubmit={handleSubmit}
@@ -220,11 +142,9 @@ export function IntakeForm({
           </div>
         </div>
 
-        {/* Waybill: photo upload only (user direction, 2026-10-13 — the
-            paper ticket is photographed at the gate, not typed). Demo cases
-            prefill manifest_text internally; a REFUSED verdict still fires
-            honestly when neither text nor photo is present. No big empty
-            drop-zone: the control is one row, sized to its content. */}
+        {/* Waybill: an optional photo plus the declared text. The text is
+            what the LLM cross-checks against the photo, so without it the
+            gate honestly refuses (insufficient input). */}
         <div className="flex items-center gap-3">
           <span className="smallcaps shrink-0">Waybill</span>
           {uploadRow(
@@ -233,11 +153,21 @@ export function IntakeForm({
             waybillPhoto,
             onWaybillPhoto,
           )}
-          {values.manifest_text && !waybillPhoto.filename ? (
-            <span className="min-w-0 truncate text-[12px] text-muted">
-              Waybill text loaded from demo case
-            </span>
-          ) : null}
+        </div>
+        <div>
+          <label htmlFor="manifest_text" className="smallcaps mb-1 block">
+            Waybill text <span className="text-muted normal-case">(declared)</span>
+          </label>
+          <textarea
+            id="manifest_text"
+            rows={2}
+            className={cn(field, "resize-none")}
+            value={values.manifest_text}
+            onChange={(e) => onChange({ manifest_text: e.target.value })}
+            placeholder="What the waybill declares, e.g. 'Dry shredded RDF, no metal, declared 5200 kg, moisture 18%'"
+            disabled={loading}
+            autoComplete="off"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">

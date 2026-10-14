@@ -25,10 +25,8 @@ import {
 } from "./intake-form";
 import { VerdictPanel, type ResultError, type RunMode } from "./verdict-panel";
 import { normalizeGates, type GateDisplay, type GatePhase } from "./gate-strip";
-import { DEMO_CASES } from "@/lib/demo-cases";
 import {
   inspectLoad,
-  fetchPhotoBase64,
   blobToBase64,
   InspectError,
   type InspectResponse,
@@ -53,23 +51,11 @@ export function WorkspaceClient() {
   const [phase, setPhase] = useState<GatePhase>("idle");
   const [bannerLit, setBannerLit] = useState(false);
   const [impactRunKey, setImpactRunKey] = useState(0);
-  const [activeDemo, setActiveDemo] = useState<string | null>(null);
-  const autoSequence = useRef(0);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
-  // Photo state: nothing is preloaded (user direction): the stage starts
-  // empty and a truck arrives only when the operator picks a demo case or
-  // uploads a photo. demoPhotoBase64/demoPhotoPath hold the demo bytes.
-  const [heroPhoto, setHeroPhoto] = useState<{
-    path: string;
-    caption: string;
-  } | null>(null);
-  const demoPhotoBase64 = useRef<string | null>(null);
-  const demoPhotoPath = useRef<string | null>(null);
-
-  // ---- Uploads: an uploaded load photo overrides the demo photo; an
-  // uploaded waybill photo rides along as extra evidence bytes (backend
-  // accepts extra fields; the audit record digests every input). -------
+  // ---- Uploads: an uploaded load photo is the evidence; an uploaded
+  // waybill photo rides along as extra evidence bytes (backend accepts
+  // extra fields; the audit record digests every input). -------------
   const EMPTY_SLOT: UploadSlot = { previewUrl: null, filename: null };
   const [loadUpload, setLoadUpload] = useState<UploadSlot>(EMPTY_SLOT);
   const [waybillUpload, setWaybillUpload] = useState<UploadSlot>(EMPTY_SLOT);
@@ -113,9 +99,6 @@ export function WorkspaceClient() {
     (file: File | null) => {
       pickFile(file, setLoadUpload, loadBase64, loadUpload);
       if (file?.type) loadMime.current = file.type;
-      // Uploading a photo deselects the demo case: the hero now shows
-      // the operator's own evidence, and submit sends its bytes.
-      if (file) setActiveDemo(null);
     },
     [pickFile, loadUpload],
   );
@@ -140,63 +123,8 @@ export function WorkspaceClient() {
     setValues((v) => ({ ...v, ...patch }));
   }, []);
 
-  // ---- Demo case loading (race-guarded photo fetch) ----------------
-  const onDemo = useCallback((key: "green" | "amber" | "red") => {
-    const c = DEMO_CASES[key];
-    setFormError(null);
-    setResultError(null);
-    setValues({
-      truck_id: c.truck_id,
-      supplier: c.supplier,
-      manifest_text: c.manifest_text,
-      weight_kg: String(c.weight_kg),
-      stream: c.stream,
-      moisture_pct: String(c.moisture_pct),
-      age_h: String(c.age_h),
-    });
-    setActiveDemo(key);
-    // Picking a demo case clears any uploaded load photo: one source of
-    // visual evidence at a time.
-    setLoadUpload((prev) => {
-      if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      return { previewUrl: null, filename: null };
-    });
-    loadBase64.current = null;
-    demoPhotoBase64.current = null;
-    demoPhotoPath.current = c.photo;
-    setHeroPhoto({ path: c.photo, caption: c.photo_caption });
-    // Fetch the photo bytes as base64 so submit sends real image data.
-    // Race guard: if the user switched cases while this fetch was in
-    // flight, drop the stale bytes.
-    fetchPhotoBase64(c.photo).then((b64) => {
-      if (demoPhotoPath.current === c.photo) demoPhotoBase64.current = b64;
-    });
-  }, []);
-
-  // ---- Gate camera (auto intake) -------------------------------------
-  // Simulates the production trigger: a truck stops at the weighbridge,
-  // the gate camera fires, and the load enters the pipeline without the
-  // operator touching the form. Cases rotate green -> amber -> red so a
-  // run of arrivals tells the full story; manual controls (upload, edit,
-  // Inspect) stay untouched for testing the VLM.
-  const onTruckArriving = useCallback(() => {
-    const order = ["green", "amber", "red"] as const;
-    const key = order[autoSequence.current % order.length];
-    autoSequence.current += 1;
-    onDemo(key);
-    // Fire the pipeline after the demo values land; the photo fetch is a
-    // fast local asset and the form submit re-reads the latest refs.
-    window.setTimeout(() => {
-      (document.getElementById("inspect-form") as HTMLFormElement | null)
-        ?.requestSubmit();
-    }, 350);
-  }, [onDemo]);
-
   // ---- Submit -------------------------------------------------------
-  // live=true is "Run live on AMD": the selected demo case's photo and
-  // inputs WITHOUT demo_case, so the backend runs the live pipeline
-  // instead of the scripted sample.
-  const runInspection = useCallback(async (live: boolean) => {
+  const runInspection = useCallback(async () => {
     setFormError(null);
     setResultError(null);
 
@@ -228,14 +156,14 @@ export function WorkspaceClient() {
       ? `data:${loadMime.current};base64,${loadBase64.current}`
       : loadUpload.previewUrl;
     setEvidence({
-      src: uploadSrc ?? heroPhoto?.path ?? null,
+      src: uploadSrc ?? null,
       alt: loadUpload.filename
         ? `Uploaded load photo ${loadUpload.filename}`
-        : (heroPhoto?.caption ?? "Load photo"),
+        : "Load photo",
     });
     // Wait copy only: whether a live model actually ran is stated by the
     // result's provenance badge, never assumed here.
-    setRunMode(live ? "live" : activeDemo ? "scripted" : "other");
+    setRunMode("live");
 
     setLoading(true);
     setPhase("evaluating");
@@ -252,17 +180,12 @@ export function WorkspaceClient() {
     verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
     try {
-      // A live run needs the real photo bytes: the demo photo fetch may
-      // still be in flight right after the case was picked.
-      if (live && !demoPhotoBase64.current && demoPhotoPath.current) {
-        demoPhotoBase64.current = await fetchPhotoBase64(demoPhotoPath.current);
-      }
       const resp = await inspectLoad({
         truck_id: values.truck_id.trim(),
         supplier: values.supplier.trim() || null,
-        photo_base64: loadBase64.current ?? demoPhotoBase64.current,
-        photo_filename: loadUpload.filename ?? demoPhotoPath.current,
-        demo_case: live ? null : activeDemo,
+        photo_base64: loadBase64.current,
+        photo_filename: loadUpload.filename,
+        demo_case: null,
         manifest_text: values.manifest_text.trim() || null,
         waybill_image_base64: waybillBase64.current,
         weight_kg: weight,
@@ -292,10 +215,9 @@ export function WorkspaceClient() {
     } finally {
       setLoading(false);
     }
-  }, [values, activeDemo, loadUpload, heroPhoto]);
+  }, [values, loadUpload]);
 
-  const onSubmit = useCallback(() => runInspection(false), [runInspection]);
-  const onRunLive = useCallback(() => runInspection(true), [runInspection]);
+  const onSubmit = useCallback(() => runInspection(), [runInspection]);
 
   const onAllResolved = useCallback(() => {
     setBannerLit(true);
@@ -311,8 +233,6 @@ export function WorkspaceClient() {
     setResultError(null);
     setFormError(null);
     setValues(EMPTY_FORM);
-    setActiveDemo(null);
-    setHeroPhoto(null);
     setLoadUpload((prev) => {
       if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
       return { previewUrl: null, filename: null };
@@ -323,11 +243,9 @@ export function WorkspaceClient() {
     });
     loadBase64.current = null;
     waybillBase64.current = null;
-    demoPhotoBase64.current = null;
-    demoPhotoPath.current = null;
   }, []);
 
-  const hasPhoto = Boolean(heroPhoto || loadUpload.previewUrl);
+  const hasPhoto = Boolean(loadUpload.previewUrl);
 
   const photoSlot = (
     <figure className="m-0 flex h-full flex-col px-4 py-4">
@@ -357,8 +275,8 @@ export function WorkspaceClient() {
         {hasPhoto ? (
           <>
             <img
-              src={loadUpload.previewUrl ?? heroPhoto!.path}
-              alt={loadUpload.filename ?? heroPhoto!.caption}
+              src={loadUpload.previewUrl!}
+              alt={loadUpload.filename ?? "Load photo"}
               className="aspect-[4/3] w-full object-cover transition-opacity duration-150 group-hover:opacity-60"
             />
             {/* Hover veil: the only affordance for click-to-upload */}
@@ -366,12 +284,11 @@ export function WorkspaceClient() {
               aria-hidden="true"
               className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-[0.6px] text-ink uppercase opacity-0 transition-opacity duration-150 group-hover:opacity-100"
             >
-              {loadUpload.filename ? "Replace photo" : "Upload photo"}
+              Replace photo
             </span>
           </>
         ) : (
-          /* Empty stage: no truck at the gate until a demo case or an
-              upload arrives (user direction). */
+          /* Empty stage: no truck at the gate until a photo is uploaded. */
           <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted transition-colors duration-100 group-hover:text-ink">
             <span className="text-[22px] leading-none" aria-hidden="true">
               ◉
@@ -379,17 +296,13 @@ export function WorkspaceClient() {
             <span className="text-[13px] font-semibold tracking-[0.6px] uppercase">
               Upload load photo
             </span>
-            <span className="text-[12px]">
-              or pick a demo case on the right
-            </span>
+            <span className="text-[12px]">JPEG or PNG from the gate camera</span>
           </span>
         )}
       </label>
-      {hasPhoto ? (
+      {loadUpload.filename ? (
         <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
-          {loadUpload.filename
-            ? `Uploaded photo · ${loadUpload.filename}`
-            : heroPhoto!.caption}
+          {`Uploaded photo · ${loadUpload.filename}`}
         </figcaption>
       ) : null}
       {loadUpload.filename ? (
@@ -424,16 +337,12 @@ export function WorkspaceClient() {
           <IntakeForm
             values={values}
             onChange={onChange}
-            onDemo={onDemo}
-            onTruckArriving={onTruckArriving}
             onSubmit={onSubmit}
-            onRunLive={onRunLive}
             onReset={onReset}
             onWaybillPhoto={onWaybillPhoto}
             waybillPhoto={waybillUpload}
             loading={loading}
             formError={formError}
-            activeDemo={activeDemo}
           />
         </div>
       </Panel>
