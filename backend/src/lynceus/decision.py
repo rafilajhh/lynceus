@@ -13,7 +13,8 @@ pattern 14):
    VLM failed, empty manifest).  The verdict carries the ``missing`` list.
 2. ``reject`` — hard contamination (metal / rock / tire) with VLM confidence
    >= 0.6, weight mismatch > 10 %, or VLM confidence < 0.3 (unsafe).
-3. ``escalate_human`` — light/ambiguous contamination, moisture conflict
+3. ``escalate_human`` — light/ambiguous contamination (glass, organic
+   residue, wet mix; plastic film and textile are RDF feedstock), moisture conflict
    between the VLM visual estimate and the waybill claim, or a failed
    manifest cross-check that is not already a big weight mismatch, or an
    engine ranking whose top two routes are tied within 0.02.
@@ -50,7 +51,12 @@ __all__ = [
 #: Contaminants that make a load unfit for RDF processing no matter what.
 HARD_CONTAMINANTS = ("metal", "rock", "concrete", "tire", "e-waste")
 #: Contaminants that require human review but are not automatically fatal.
-LIGHT_CONTAMINANTS = ("plastic_film", "glass", "textile", "organic_residue", "wet_mix")
+#: Plastic film and textile are deliberately absent: they are the calorific
+#: fraction of RDF, not a contaminant of it (the engine routes textile to
+#: RDF, ``lynceus_engine/massbalance.py``; the benchmark labels clean
+#: plastic, paper, cardboard and textile loads ``accept``).  The VLM may
+#: still list them under ``light_contaminants``; that alone never escalates.
+LIGHT_CONTAMINANTS = ("glass", "organic_residue", "wet_mix")
 #: VLM confidence at/above which a hard-contaminant detection is trusted.
 HARD_CONTAMINANT_CONFIDENCE = 0.6
 #: VLM confidence below which the visual analysis is considered unsafe to act on.

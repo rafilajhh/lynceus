@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lynceus.audit import Decision, GateState
+from lynceus.decision import LIGHT_CONTAMINANTS
 
 __all__ = ["next_steps"]
 
@@ -65,7 +66,10 @@ def next_steps(
     """Ordered ``{"order", "text", "sop_ref"}`` steps for the operator."""
     detected = detected if isinstance(detected, dict) else {}
     hard = _names(detected.get("hard_contaminants"))
-    light = _names(detected.get("light_contaminants"))
+    # Only the light contaminants decide() itself escalates on: the VLM may
+    # also list plastic film / textile, which are RDF feedstock, not a reason
+    # to send the load to the pre-sort line.
+    light = [n for n in _names(detected.get("light_contaminants")) if n in LIGHT_CONTAMINANTS]
     missing_names = _names(list(missing or []))
 
     steps: List[Tuple[str, str]] = []

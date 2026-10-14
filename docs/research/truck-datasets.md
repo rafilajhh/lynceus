@@ -110,3 +110,35 @@ Sumber yang disurvei: Roboflow Universe (via browser langsung, halaman statis di
    - Mengambil video CCTV/sudut tinggi truk sampah sendiri (mengikuti pola Kandidat 1) dan melabeli empty/partial/full, mengacu pada pola label Kandidat 4.
    - Scrape video YouTube/pengawasan truk sampah (perhatikan hak cipta — lisensi konten tidak jelas, **jangan dipakai tanpa konfirmasi**).
 3. **Catatan legal**: Semua kandidat Roboflow di atas menampilkan lisensi eksplisit di halaman dataset (CC BY 4.0). Untuk dataset tanpa lisensi eksplisit (mis. hasil scrape web, sebagian Kaggle), berlabel: **license unclear — jangan dipakai tanpa konfirmasi**.
+
+---
+
+## Addendum (2026-10-14, English): licence check for a separate "truck-bed slice"
+
+**Method.** Licences were read from machine-readable metadata, not from page text: the Zenodo REST API (`https://zenodo.org/api/records/<id>`), the Hugging Face API (`https://huggingface.co/api/datasets/<id>`) and the Wikimedia Commons API (`LicenseShortName` of each file). No image was downloaded. Roboflow Universe pages returned HTTP 403 to both WebFetch and curl from this environment on 2026-10-14, so the Roboflow licences of candidates 1 to 4 above **could not be re-verified** and stay "as reported on 2026-10-13".
+
+### Usable now (licence verified on 2026-10-14)
+
+| Source | What it shows | Count | Licence | URL | Fit for a truck-bed slice |
+|---|---|---|---|---|---|
+| Wikimedia Commons, *Waste collection trucks in Indonesia* | Open dump and arm-roll waste trucks (DLHKP Kebumen), some unloading at a TPA; judged from file titles only, contents not inspected | 24 files | 23 CC BY-SA 4.0, 1 CC BY 2.0 (per file) | https://commons.wikimedia.org/wiki/Category:Waste_collection_trucks_in_Indonesia | Best Indonesian match. Small evaluation set, not training |
+| Wikimedia Commons, *Non-compacting waste collection trucks* | Open-body waste trucks, mixed countries | 42 files | CC BY-SA 3.0 ×18, CC BY-SA 4.0 ×7, public domain ×7, CC BY 3.0 ×3, CC BY-SA 2.0 ×3, CC0 ×2, CC BY 2.0 ×1, CC BY-SA 3.0 de ×1 | https://commons.wikimedia.org/wiki/Category:Non-compacting_waste_collection_trucks | Evaluation; how many show the load from above is not checked |
+| Wikimedia Commons, *Refuse-derived fuel* | RDF fluff, bales and pellets (material, not trucks) | 11 files | CC BY-SA 4.0 ×6, CC BY-SA 3.0 ×3, public domain ×2 | https://commons.wikimedia.org/wiki/Category:Refuse-derived_fuel | Reference images of clean RDF |
+| Zenodo, *Remondis Contamination Dataset (RCD)* | Frames from cameras on waste collection trucks: bins and truck hoppers, boxes on plastic bags | 1,125 images (640×480), 1,851 boxes | CC BY 4.0 (record) | https://zenodo.org/records/8248169 | Closest "load seen from above" set, but its record says part of the images come from "open source online resources", so per-image provenance is unclear |
+| Zenodo, *TSQ-2024* | 120 LiDAR scans of truck passes, empty or loaded with sand, as 16-bit depth images | 120 scans | CC BY 4.0 | https://zenodo.org/records/13645341 | Empty versus loaded bed (fill level); not photos, no contaminants |
+| Zenodo, *Construction and Demolition Waste Dataset* (YOLOv11) | Brick, concrete, plastic, steel reinforcement, timber on a lab conveyor | 1,630 images | CC BY 4.0 | https://zenodo.org/records/17447590 | Not a truck bed; source of concrete, brick and rebar examples for the hard-contaminant classes |
+| Zenodo, *Truck Image Dataset* (candidate 5 above) | Side views of trucks for axle detection | 1,053 images | CC BY 4.0 (confirmed) | https://zenodo.org/records/17128113 | Not a truck bed |
+
+For the CC BY and CC BY-SA files, keep a per-file attribution list (author, licence, URL). If the slice itself is published, the CC BY-SA files require it to be shared under the same licence.
+
+### Not usable, or corrections
+
+- **MMCDWaste** (Zenodo 17874659): 4,786 mixed C&D waste images under a CC BY 4.0 label, but the record's access is *restricted* and the files are not released yet. https://zenodo.org/records/17874659
+- **UniqueData/wagons-images-classification** (Hugging Face): loaded and empty rail wagons, licence CC BY-NC-ND 4.0, which allows no commercial use and no derivatives. Not usable for the product or the pitch.
+- **Correction to candidate 3.** `LibreYOLO/vehicles-q0x2v` on Hugging Face (CC BY 4.0, 4,058 images) is the Roboflow 100 "vehicles" set with 12 classes (big bus, big truck, bus-l-, bus-s-, car, mid truck, small bus, small truck, truck-l-, truck-m-, truck-s-, truck-xl-). It has no Garbage Truck class and is not a mirror of Vehicle Classification V2.
+- **Roboflow hits found today** ("Dumptruck_loading_zone_cropped", https://universe.roboflow.com/eth-ly0hg/dumptruck_loading_zone_cropped; "Truck load Detection", https://universe.roboflow.com/amanul-haque/truck-load-detection-qrfwa): licence not verifiable from here (HTTP 403). Check in a logged-in browser before use.
+- **HKU single-image construction-waste volume study** (2,914 truckloads at a Hong Kong sorting facility): seen only in a search-result summary; the repository page returned HTTP 403 and no public image release was found. Unverified.
+
+### Recommendation
+
+The only public photos of Indonesian waste-truck beds with a verified licence are the 24 Commons files. That is enough for a small, attributed evaluation slice and a demo, not for training. Real truck-bed training data has to come from a pilot gate, with consent (see `docs/operator-validation-kit.md`).

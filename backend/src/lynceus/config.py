@@ -52,6 +52,9 @@ VLLM_API_KEY_ENV = "VLLM_API_KEY"
 #: Endpoint / model for the Pythia assistant role (default: the LLM's).
 ASSIST_URL_ENV = "ASSIST_URL"
 ASSIST_MODEL_ENV = "ASSIST_MODEL"
+#: Endpoint / model for shift-report supplier explanations (default: assist's).
+EXPLAIN_URL_ENV = "EXPLAIN_URL"
+EXPLAIN_MODEL_ENV = "EXPLAIN_MODEL"
 #: Hazard localisation style: "box" (normalised boxes) or "zone" (text zone).
 LOCALISATION_MODE_ENV = "LOCALISATION_MODE"
 #: When false, a live-AI failure returns HTTP 503 instead of a stub fallback.
@@ -81,6 +84,8 @@ class Settings:
     llm_model: str
     assist_url: str
     assist_model: str
+    explain_url: str
+    explain_model: str
     localisation_mode: str
     vllm_api_key: str
     allow_stub_fallback: bool
@@ -127,13 +132,18 @@ def get_settings() -> Settings:
     if localisation_mode not in ("box", "zone"):
         localisation_mode = _DEFAULT_LOCALISATION_MODE
 
+    assist_url = os.environ.get(ASSIST_URL_ENV) or vllm_llm_url
+    assist_model = os.environ.get(ASSIST_MODEL_ENV) or llm_model
+
     return Settings(
         vllm_vlm_url=os.environ.get(VLLM_VLM_URL_ENV, _DEFAULT_VLLM_VLM_URL),
         vllm_llm_url=vllm_llm_url,
         vlm_model=os.environ.get(VLM_MODEL_ENV, _DEFAULT_VLM_MODEL),
         llm_model=llm_model,
-        assist_url=os.environ.get(ASSIST_URL_ENV) or vllm_llm_url,
-        assist_model=os.environ.get(ASSIST_MODEL_ENV) or llm_model,
+        assist_url=assist_url,
+        assist_model=assist_model,
+        explain_url=os.environ.get(EXPLAIN_URL_ENV) or assist_url,
+        explain_model=os.environ.get(EXPLAIN_MODEL_ENV) or assist_model,
         localisation_mode=localisation_mode,
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
         vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),

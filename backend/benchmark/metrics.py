@@ -4,8 +4,14 @@ The headline is a binary hard-contaminant gate: a row is *positive* when its
 expected verdict is ``reject`` (RealWaste "Metal").  Every other expected
 verdict is negative.  The 3x3 confusion matrix (plus an ``error`` column) is
 reported alongside, because accept <-> escalate disagreement partly reflects
-the gate's policy (glass / plastic film / textile are *light* contaminants),
-not vision error.
+the gate's policy (glass / organic residue / wet mix are *light* contaminants
+and escalate by rule), not vision error.
+
+Operator-load rates sit next to the headline: ``clean_*_rate`` is the share of
+expected-accept rows (errors stay in the denominator) per predicted label,
+``review_rate`` the share of all non-error rows sent to a human (escalate), and
+``escalate_recall`` the share of expected-escalate rows escalated (an error
+counts as a miss).  Each is ``None`` when its denominator is empty.
 
 Rows are plain dicts: ``expected`` (reject|escalate|accept), ``predicted`` (the
 raw ``/inspect`` verdict, or None on a request error), ``latency_ms`` (the VLM
@@ -75,6 +81,11 @@ def compute(rows: list[dict[str, Any]]) -> dict[str, Any]:
         elif predicted == "reject":
             fp += 1
 
+    clean = confusion["accept"]
+    clean_n = sum(clean.values())
+    graded = [label for label in map(label_for, rows) if label != "error"]
+    escalate_n = sum(confusion["escalate"].values())
+
     precision = tp / (tp + fp) if (tp + fp) else None
     recall = tp / (tp + fn) if (tp + fn) else None
     f1 = None
@@ -87,7 +98,16 @@ def compute(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "latency_ms": _latency(rows, "latency_ms"),
         "total_ms": _latency(rows, "total_ms"),
         "errors": errors,
+        "clean_accept_rate": _share(clean["accept"], clean_n),
+        "clean_escalate_rate": _share(clean["escalate"], clean_n),
+        "clean_reject_rate": _share(clean["reject"], clean_n),
+        "review_rate": _share(graded.count("escalate"), len(graded)),
+        "escalate_recall": _share(confusion["escalate"]["escalate"], escalate_n),
     }
+
+
+def _share(part: int, whole: int) -> Optional[float]:
+    return part / whole if whole else None
 
 
 def attempt_stats(attempts: list[dict[str, Any]]) -> dict[str, Any]:

@@ -1,8 +1,10 @@
 """Shift report: what the gate caught, what it saved, which suppliers repeat.
 
 :func:`build_report` is pure aggregation over strictly loaded audit records
-in a time window — no clock, no I/O.  :func:`explain_supplier` asks the
-assist model for structured statistics and a recommendation code for one
+in a time window — no clock; its only I/O is reading the benchmark summary
+for ``value_model`` (``impact.value_model_from_benchmark``, the same for
+every window).  :func:`explain_supplier` asks the
+explain-role model (``EXPLAIN_MODEL``, default the assist model) for structured statistics and a recommendation code for one
 flagged supplier row. Supplier identity and all prose are rendered from the
 row and fixed templates; malformed output uses the deterministic fallback.
 
@@ -14,7 +16,11 @@ Rules (spec §4.5, plan Task 9):
   ``until`` exclusive, so back-to-back shifts never count a truck twice.
 * ``prevented_loss_idr`` sums the ``impact`` estimate of reject and escalate
   verdicts only.  For an accepted load that estimate is the load's market
-  value, which ``impact.py`` itself says is not a prevented loss.
+  value, which ``impact.py`` itself says is not a prevented loss.  Each
+  reject's estimate assumes the damage was certain, so the sum is a
+  worst-case exposure; ``loss_exposure_idr`` repeats it under that name and
+  ``value_model`` gives the probability-weighted value per 1,000 trucks
+  (``None`` when no benchmark summary is readable).
 * ``risk_score = (reject + 0.5 * escalate) / trucks`` rounded to 2 dp;
   ``flagged = trucks >= 3 and risk_score >= 0.34``.  A missing or blank
   supplier (all v1 records) is ``"unknown"``.
@@ -32,6 +38,7 @@ from datetime import datetime
 from typing import Any, Iterable
 
 from lynceus import audit, impact
+from lynceus.decision import LIGHT_CONTAMINANTS
 
 __all__ = [
     "FLAG_MIN_TRUCKS",
@@ -151,7 +158,12 @@ def build_report(
         by_verdict[decision] += 1
 
         detected = record.ai_outputs.vlm.detected or {}
-        labels = _labels(detected, "hard_contaminants") + _labels(detected, "light_contaminants")
+        # Light labels follow the decision policy: plastic film and textile
+        # are RDF feedstock, so the VLM's mention of them is not a catch.
+        labels = _labels(detected, "hard_contaminants") + [
+            label for label in _labels(detected, "light_contaminants")
+            if label in LIGHT_CONTAMINANTS
+        ]
         for label in dict.fromkeys(labels):  # once per truck, order kept
             contaminants[label] = contaminants.get(label, 0) + 1
 
@@ -205,6 +217,9 @@ def build_report(
         "by_verdict": by_verdict,
         "contaminants": dict(sorted(contaminants.items(), key=lambda kv: (-kv[1], kv[0]))),
         "prevented_loss_idr": prevented,
+        # Same figure under its honest name: worst-case exposure, not certain loss.
+        "loss_exposure_idr": prevented,
+        "value_model": impact.value_model_from_benchmark(),
         "median_seconds_per_truck": float(statistics.median(durations)) if durations else None,
         "suppliers": supplier_rows,
         "sample": trucks > 0 and sample_records == trucks,
@@ -363,7 +378,7 @@ def explain_supplier(row: dict, client: Any | None) -> str:
     if client is None or _failure_fresh(row):
         return fallback_explanation(row)
     try:
-        parsed, _latency_ms = client.assist(_messages(row), max_tokens=700)
+        parsed, _latency_ms = client.explain(_messages(row), max_tokens=700)
     except Exception:
         parsed = None
     text = _structured_explanation(parsed, row)

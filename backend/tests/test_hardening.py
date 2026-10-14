@@ -245,6 +245,31 @@ def test_resolve_assist_client_is_none_for_malformed_url(monkeypatch):
     assert pipeline.resolve_assist_client(get_settings()) is None
 
 
+def test_explain_client_probes_the_explain_endpoint(monkeypatch):
+    """Shift explanations call EXPLAIN_URL, so that is the host probed:
+    a live assist host must not hide a dead explain host."""
+    monkeypatch.setenv("ASSIST_URL", "http://assist.test/v1")
+    monkeypatch.setenv("EXPLAIN_URL", "http://explain.test/v1")
+    probed: list[str] = []
+
+    def fake_get(url, **kwargs):
+        probed.append(url)
+        if url.startswith("http://explain.test"):
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(pipeline.httpx, "get", fake_get)
+    assert pipeline.resolve_explain_client(get_settings()) is None
+    assert probed == ["http://explain.test/v1/models"]
+    assert pipeline.resolve_assist_client(get_settings()) is not None
+
+    monkeypatch.setattr(
+        pipeline.httpx, "get",
+        lambda url, **k: httpx.Response(200, request=httpx.Request("GET", url)),
+    )
+    assert pipeline.resolve_explain_client(get_settings()) is not None
+
+
 def test_inspect_with_malformed_vlm_url_degrades_to_labelled_fallback(
     tmp_path, monkeypatch
 ):
@@ -287,6 +312,9 @@ class _FakeStream:
 
         return json.dumps({"choices": [{"message": {"content": self._content}}]}).encode()
 
+    def iter_bytes(self):
+        yield self.read()
+
 
 def _capture_timeouts(monkeypatch, content: str) -> list[float]:
     seen: list[float] = []
@@ -308,14 +336,16 @@ def test_vlm_keeps_90s_llm_gets_45s(monkeypatch):
     )
     client.vlm(_b64(_JPEG_HEAD + b"x"))
     client.llm("waybill", {})
-    assert seen == [90.0, 45.0]
+    # httpx gets what is left of each budget: a hair under 90 s / 45 s.
+    assert seen == pytest.approx([90.0, 45.0], abs=1.0)
+    assert seen[0] <= 90.0 and seen[1] <= 45.0
 
 
 def test_assist_call_gets_30s(monkeypatch):
     client = pipeline.VLLMClient(settings=get_settings())
     seen = _capture_timeouts(monkeypatch, '{"answer": "x", "citations": []}')
     client.assist([{"role": "user", "content": "q"}])
-    assert seen == [30.0]
+    assert seen == pytest.approx([30.0], abs=1.0) and seen[0] <= 30.0
 
 
 def test_resolved_assist_client_uses_the_assist_budget(monkeypatch):
@@ -323,7 +353,7 @@ def test_resolved_assist_client_uses_the_assist_budget(monkeypatch):
     client = pipeline.resolve_assist_client(get_settings())
     seen = _capture_timeouts(monkeypatch, '{"answer": "x", "citations": []}')
     client.assist([{"role": "user", "content": "q"}])
-    assert seen == [30.0]
+    assert seen == pytest.approx([30.0], abs=1.0) and seen[0] <= 30.0
 
 
 def test_png_upload_is_labelled_png_for_the_vlm(monkeypatch):

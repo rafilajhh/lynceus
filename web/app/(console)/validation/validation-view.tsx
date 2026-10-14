@@ -8,6 +8,8 @@ import {
   ValidationError,
   fetchBenchmark,
   type BenchmarkSummary,
+  type Confusion,
+  type ReplaySummary,
 } from "@/lib/validation-api";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -145,14 +147,16 @@ export function ValidationView() {
         <Incomplete summary={summary} />
       </Panel>
 
+      {summary.replay ? <ReplayPanel summary={summary} replay={summary.replay} /> : null}
+
       <Panel>
-        <PanelHead title="Confusion matrix" meta="rows: expected · columns: gate verdict" />
+        <PanelHead title="Confusion matrix" meta="live run · rows: expected · columns: gate verdict" />
         <p className="m-0 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
           <strong className="font-semibold text-ink">Escalate is policy, not vision error:</strong>{" "}
-          light contaminants (plastic film, glass, textile) are escalated by rule; only metal,
-          rock, concrete, tyre and e-waste are rejected.
+          in this live run, light contaminants (plastic film, glass, textile) were escalated by
+          rule; only metal, rock, concrete, tyre and e-waste are rejected.
         </p>
-        <ConfusionTable summary={summary} />
+        <ConfusionTable confusion={summary.confusion} />
         <details className="group border-t border-seam px-4 py-3">
           <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
             Why accept and escalate disagree
@@ -160,12 +164,13 @@ export function ValidationView() {
           <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
             The headline above is the hard-contaminant gate only, with metal as the positive
             class. Where the matrix shows accept and escalate disagreeing, part of that reflects
-            policy (for example, textile trash and plastic expected to accept can carry plastic
-            film or textile, which the gate escalates), not vision error. In this run, one of the
-            three false rejects (a plastic image) came from the vision model&apos;s free-text
-            description mentioning a &quot;concrete floor&quot;, which the gate matches as a
-            hard-contaminant word: a conservative error that lowers precision. The Error column
-            counts refusals and failed requests; they are never counted as correct.
+            policy (textile trash and plastic expected to accept were escalated for plastic film
+            or textile, which the current rules treat as RDF feedstock), not vision error. In
+            this run, one of the three false rejects (a plastic image) came from the vision
+            model&apos;s free-text description mentioning a &quot;concrete floor&quot;, which the
+            gate then matched as a hard-contaminant word; the current rules read hard
+            contaminants from the structured list only. The Error column counts refusals and
+            failed requests; they are never counted as correct.
           </p>
         </details>
       </Panel>
@@ -261,7 +266,147 @@ function Incomplete({ summary }: { summary: BenchmarkSummary }) {
   );
 }
 
-function ConfusionTable({ summary }: { summary: BenchmarkSummary }) {
+/** Clean loads passed, loads sent to a person and escalate-expected loads escalated,
+ * counted from a confusion matrix (same definitions as backend/benchmark/metrics.py). */
+function operatorCounts(confusion: Confusion) {
+  const clean = confusion.accept;
+  const esc = confusion.escalate;
+  const graded = LABELS.reduce(
+    (sum, row) => sum + confusion[row].reject + confusion[row].escalate + confusion[row].accept,
+    0,
+  );
+  const escalated = LABELS.reduce((sum, row) => sum + confusion[row].escalate, 0);
+  return {
+    cleanPassed: clean.accept,
+    cleanN: clean.reject + clean.escalate + clean.accept + clean.error,
+    escalated,
+    graded,
+    escalateCaught: esc.escalate,
+    escalateN: esc.reject + esc.escalate + esc.accept + esc.error,
+  };
+}
+
+function share(k: number, n: number): string {
+  return n > 0 ? ratio(k / n) : "—";
+}
+
+/** The same recorded model outputs, scored by the rules the gate runs today. */
+function ReplayPanel({ summary, replay }: { summary: BenchmarkSummary; replay: ReplaySummary }) {
+  const live = operatorCounts(summary.confusion);
+  const now = operatorCounts(replay.confusion);
+  const lr = summary.reject;
+  const rr = replay.reject;
+  const rows = [
+    {
+      key: "recall",
+      label: "Metal recall",
+      live: ratio(lr.recall),
+      liveSub: `${lr.tp} of ${lr.tp + lr.fn}`,
+      now: ratio(rr.recall),
+      nowSub: `${rr.tp} of ${rr.tp + rr.fn}`,
+    },
+    {
+      key: "precision",
+      label: "Metal precision",
+      live: ratio(lr.precision),
+      liveSub: `${lr.tp} of ${lr.tp + lr.fp}`,
+      now: ratio(rr.precision),
+      nowSub: `${rr.tp} of ${rr.tp + rr.fp}`,
+    },
+    {
+      key: "clean",
+      label: "Clean loads passed",
+      live: share(live.cleanPassed, live.cleanN),
+      liveSub: `${live.cleanPassed} of ${live.cleanN}`,
+      now: share(now.cleanPassed, now.cleanN),
+      nowSub: `${now.cleanPassed} of ${now.cleanN}`,
+    },
+    {
+      key: "review",
+      label: "Sent to operator review",
+      live: share(live.escalated, live.graded),
+      liveSub: `${live.escalated} of ${live.graded}`,
+      now: share(now.escalated, now.graded),
+      nowSub: `${now.escalated} of ${now.graded}`,
+    },
+    {
+      key: "escalate-recall",
+      label: "Escalate-expected loads escalated",
+      live: share(live.escalateCaught, live.escalateN),
+      liveSub: `${live.escalateCaught} of ${live.escalateN}`,
+      now: share(now.escalateCaught, now.escalateN),
+      nowSub: `${now.escalateCaught} of ${now.escalateN}`,
+    },
+  ];
+  const changed = replay.changed ?? [];
+  return (
+    <Panel aria-labelledby="replay-title">
+      <PanelHead title="Current rules" meta="replay of this run" />
+      <p id="replay-title" className="m-0 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
+        <strong className="font-semibold text-ink">Replay:</strong> {replay.framing}
+      </p>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-raised">
+            <TableHead className="px-2 sm:px-4">Measure</TableHead>
+            <TableHead className="px-1.5 text-right sm:px-4">Live run</TableHead>
+            <TableHead className="px-1.5 text-right sm:px-4">Current rules</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.key} className="hover:bg-transparent">
+              <TableCell className="px-2 font-semibold text-ink sm:px-4">{row.label}</TableCell>
+              <TableCell className="figure px-1.5 text-right text-[13px] text-muted sm:px-4">
+                {row.live}
+                <span className="block text-[11.5px]">{row.liveSub}</span>
+              </TableCell>
+              <TableCell className="figure px-1.5 text-right text-[13px] font-semibold text-ink sm:px-4">
+                {row.now}
+                <span className="block text-[11.5px] font-normal text-muted">{row.nowSub}</span>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <details className="group border-t border-seam px-4 py-3">
+        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
+          What changed, and why this is not a new measurement
+        </summary>
+        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+          The replay scores both rule changes made after this run, not one. First, hard
+          contaminants are read from the vision model&apos;s structured list only, not its
+          free text: that change alone removes one false reject and moves metal precision.
+          Second, plastic film and textile are RDF feedstock, not light contaminants: that
+          raises clean loads passed, and costs one escalate-expected load (a glass image whose
+          only flag was plastic film) that now passes. Glass, organic residue and wet mix still
+          go to a person.{" "}
+          {replay.disclosure ?? null}
+        </p>
+        {replay.llm_note ? (
+          <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+            {replay.llm_note}
+          </p>
+        ) : null}
+        {changed.length ? (
+          <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+            <span className="figure text-ink">{changed.length}</span> of{" "}
+            <span className="figure text-ink">{replay.n}</span> verdicts changed:{" "}
+            {changed
+              .map((c) => `${c.image} (expected ${c.expected}: ${c.recorded} → ${c.replay})`)
+              .join("; ")}
+            .
+          </p>
+        ) : null}
+        <div className="mt-3">
+          <ConfusionTable confusion={replay.confusion} />
+        </div>
+      </details>
+    </Panel>
+  );
+}
+
+function ConfusionTable({ confusion }: { confusion: Confusion }) {
   return (
     <Table>
       <TableHeader>
@@ -287,7 +432,7 @@ function ConfusionTable({ summary }: { summary: BenchmarkSummary }) {
                     : "figure px-1.5 text-right text-[13px] text-muted sm:px-4"
                 }
               >
-                {summary.confusion[expected][c]}
+                {confusion[expected][c]}
               </TableCell>
             ))}
           </TableRow>
