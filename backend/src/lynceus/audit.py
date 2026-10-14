@@ -64,6 +64,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -925,12 +926,13 @@ def _normalize_validation_error(exc: Exception, source: str) -> AuditError:
 
 
 def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
-    """Write JSON atomically: sibling temp file → ``os.replace()``.
+    """Write JSON atomically: unique sibling temp file → ``os.replace()``.
 
     A failed replace leaves any previously valid record intact
-    (invariant 1; atomic-write rule).
+    (invariant 1; atomic-write rule).  The temp name is unique per call so
+    two concurrent writers can never clobber each other's staging file.
     """
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
     try:
         with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
             json.dump(payload, fh, sort_keys=True, ensure_ascii=False, allow_nan=False, indent=2)
@@ -1149,6 +1151,64 @@ def finish_record(
             str(record_path),
             "audit record not found — cannot finish a record that was never begun",
         )
+
+    # Single-shot finalization is claimed with an exclusive lock file so two
+    # concurrent finalizers cannot both pass the in_progress check and both
+    # write (invariant 2).  O_CREAT|O_EXCL fails for the loser; the winner
+    # removes the lock in `finally`.  record_id is unique per inspection, so
+    # a stale lock from a crash only blocks re-finishing that one record —
+    # acceptable, since a terminal transition is by definition one-shot.
+    lock_path = record_path.with_name(record_path.name + ".finish.lock")
+    lock_fd = None
+    try:
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        raise _err(
+            _ERR_STATE,
+            "execution_status",
+            f"record {record_id!r} is already being finalized by another "
+            "process (finish lock held); terminal records are never "
+            "finalized twice",
+        ) from exc
+    try:
+        return _finish_record_locked(
+            record_path,
+            record_id,
+            execution_status,
+            finished_at_utc,
+            application,
+            inputs,
+            ai_outputs,
+            engine_outputs,
+            verdict,
+            gates,
+            input_digests,
+            frozen_inputs=frozen_inputs,
+        )
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+        try:
+            lock_path.unlink()
+        except OSError:
+            pass
+
+
+def _finish_record_locked(
+    record_path: Path,
+    record_id: str,
+    execution_status: str,
+    finished_at_utc: str,
+    application: Dict[str, str],
+    inputs: Dict[str, Any],
+    ai_outputs: Dict[str, Any],
+    engine_outputs: Dict[str, Any],
+    verdict: Dict[str, Any],
+    gates: Dict[str, Any],
+    input_digests: Optional[Dict[str, str]] = None,
+    *,
+    frozen_inputs: Optional[Dict[str, bytes]] = None,
+) -> AuditRecord:
 
     # Single-shot: terminal records are immutable (invariant 2).
     current = load_record(record_path)
