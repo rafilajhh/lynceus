@@ -40,7 +40,7 @@ const GATE_STATE_LABEL: Record<GateState, string> = {
 
 const GATE_LABEL: Record<string, string> = {
   vlm_confidence: "VLM Confidence",
-  ocr_confidence: "OCR Confidence",
+  ocr_confidence: "Manifest confidence",
   weight_plausibility: "Weight Plausibility",
   gas_plausibility: "Gas Plausibility",
   manifest_crosscheck: "Manifest Cross-check",

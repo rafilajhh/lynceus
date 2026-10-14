@@ -29,7 +29,7 @@
 | [ ] | Project title | **≤50 karakter** | Lihat opsi judul di bawah | ___ | ___ |
 | [ ] | Short description | **≤255 karakter** | Lihat draf di bawah | ___ | ___ |
 | [ ] | Long description | **≥100 kata** | Lihat draf (~129 kata) di bawah | ___ | ___ |
-| [ ] | Technology & category tags | Daftar tag platform | AMD ROCm, AMD Instinct MI300X, vLLM, Qwen2.5-VL, Vision-Language Model, FastAPI, Python, Predictive Maintenance, Waste-to-Energy, Computer Vision | ___ | ___ |
+| [ ] | Technology & category tags | Daftar tag platform | AMD Token Factory, DeepSeek-V4.1-Flash (VLM), DeepSeek-V4-Flash (LLM), Vision-Language Model, FastAPI, Python, Predictive Maintenance, Waste-to-Energy, Computer Vision | ___ | ___ |
 | [ ] | Cover image | 16:9, PNG/JPG | Desain dengan logo Lynceus + visual gerbang inspeksi; ekspor 1920×1080 | ___ | ___ |
 | [ ] | Video demo | **MP4, <5 menit, <300MB** | Skenario: problem → demo live → impact (lihat §3 kriteria Presentation) | ___ | ___ |
 | [ ] | Slide presentation | PDF | 10–12 slide: problem, market, arsitektur, demo, roadmap | ___ | ___ |
@@ -50,14 +50,14 @@
 
 | # | Draf | Karakter |
 |---|---|---|
-| A | Inspeksi AI di gerbang pabrik: foto truk, OCR manifes, dan sensor gas dianalisis Qwen2.5-VL di AMD Instinct MI300X untuk verdict ter-audit — mencegah kontaminan menghentikan kiln senilai US$28.000 per jam. | 205 |
-| B | Gerbang AI untuk bahan bakar alternatif di kiln: Qwen2.5-VL di AMD ROCm menyaring kontaminan dari foto, manifes, dan sensor gas — setiap keputusan tercatat dalam audit trail SHA-256. | 182 |
+| A | Inspeksi gerbang: foto, teks manifes ketikan operator, berat dan gas dianalisis dengan DeepSeek-V4.1-Flash (VLM) + DeepSeek-V4-Flash (LLM) di AMD Token Factory. Verdict rule-based disimpan dalam file lokal tamper-evident ber-SHA-256. | 233 |
+| B | Gerbang RDF: DeepSeek-V4.1-Flash (VLM) + DeepSeek-V4-Flash (LLM) di AMD Token Factory menganalisis foto dan teks surat jalan manual; engine menerbitkan verdict dengan audit SHA-256 tamper-evident. | 196 |
 
 > Rekomendasi: **opsi A** — memuat angka bisnis (US$28.000/jam) yang langsung menjawab kriteria Business Value.
 
-### Draf long description (≥100 kata — terverifikasi 129 kata)
+### Draf long description (≥100 kata)
 
-> Lynceus adalah gerbang inspeksi AI di pintu masuk fasilitas pengolahan bahan bakar alternatif. Setiap truk sampah difoto, manifes kertasnya dibaca lewat OCR, dan data timbangan serta sensor gas dikumpulkan — semuanya diproses oleh model vision-language Qwen2.5-VL yang dijalankan vLLM di atas AMD Instinct MI300X dengan ROCm. Hasilnya bukan sekadar deteksi: engine keputusan berbasis regulasi (ISO 21640, EN 15359) memberi verdict accept, reject, atau refuse, dan setiap keputusan tersimpan dalam audit record immutable ber-SHA-256 yang bisa diperiksa ulang. Dampak bisnisnya konkret: satu kontaminan logam yang lolos dapat menghentikan kiln semen — downtime senilai US$28.000–125.000 per jam menurut riset industri. Biaya mencegah lewat inspeksi otomatis jauh lebih murah daripada satu jam kiln mati. Tim kami membangun layer AI AMD, fusion multi-modal, dan antarmuka web di atas engine open-source MIT kami sendiri.
+> Lynceus adalah gerbang inspeksi AI di pintu masuk fasilitas pengolahan bahan bakar alternatif. Setiap truk sampah difoto, operator mengetik teks surat jalan secara manual (tanpa OCR), dan data timbangan serta gas dikumpulkan. Gas berasal dari digital twin kecuali gateway sensor dikonfigurasi. Analisis foto memakai DeepSeek-V4.1-Flash (VLM), sedangkan analisis teks surat jalan memakai DeepSeek-V4-Flash (LLM), keduanya melalui AMD Token Factory, bukan model self-hosted. Hasilnya bukan sekadar deteksi: engine keputusan berbasis regulasi memberi verdict accept, escalate, atau reject, dan setiap keputusan tersimpan dalam file audit lokal tamper-evident ber-SHA-256 yang bisa diperiksa ulang. Dampak bisnisnya konkret: satu kontaminan logam yang lolos dapat menghentikan kiln semen, dengan downtime senilai US$28.000–125.000 per jam menurut riset industri. Biaya mencegah lewat inspeksi otomatis jauh lebih murah daripada satu jam kiln mati. Tim kami membangun layer AI AMD, fusion multi-modal, dan antarmuka web di atas engine open-source MIT kami sendiri.
 
 ---
 
@@ -65,10 +65,10 @@
 
 | Kriteria | Apa yang dicari juri | Bukti yang harus kita siapkan | Status | PJ |
 |---|---|---|---|---|
-| **Application of Technology** | Integrasi model AMD dalam *working product* | (1) Endpoint AMD live — vLLM serve Qwen2.5-VL di MI300X (ADC), `curl` smoke test terdokumentasi; (2) diagram arsitektur di slide + README; (3) log inferensi nyata (timestamp, model identity, latency per request) | [ ] | ___ |
+| **Application of Technology** | Integrasi model AMD dalam *working product* | (1) Endpoint AMD Token Factory live: DeepSeek-V4.1-Flash (VLM) + DeepSeek-V4-Flash (LLM), `curl` smoke test terdokumentasi; (2) diagram arsitektur di slide + README; (3) log inferensi nyata (timestamp, model identity, latency per request) | [ ] | ___ |
 | **Presentation** | Video <5 menit: problem → demo → impact; plus market analysis & future plans | Script video 4 menit: 0:00–0:40 problem (downtime kiln), 0:40–3:00 demo live inspeksi truk → verdict → audit record, 3:00–4:00 impact + market + roadmap. Slide memuat market analysis & future plans eksplisit | [ ] | ___ |
 | **Business Value** | Angka dampak & biaya cegah vs biaya rugi | Downtime **US$28.000/jam** (shutdown kiln semen AS; 68% akibat maintenance terlewat) dan **US$125.000/jam** (survey ABB/Sapio 3.215 responden) — sumber lengkap di `research/demo-assets.md` §(a). Pitch andalan: satu shredder RDF industri ratusan juta rupiah vs satu jam kiln mati ±Rp450 juta → inspeksi otomatis = "biaya cegah" yang jauh lebih murah | [ ] | ___ |
-| **Originality** | Bukan chatbot generik | AI vision + **decision engine berbasis regulasi** (ISO 21640, EN 15359) + **audit trail immutable ber-SHA-256** (pola engine: snapshot beku, refuse-to-answer, gates closed-enum — lihat `research/audit-provenance.md`). Fusion multi-modal: foto + OCR manifes + berat + gas | [ ] | ___ |
+| **Originality** | Bukan chatbot generik | AI vision + **decision engine berbasis regulasi** (ISO 21640, EN 15359) + **audit trail tamper-evident (file lokal) ber-SHA-256** (pola engine: snapshot beku, refuse-to-answer, gates closed-enum — lihat `research/audit-provenance.md`). Fusion multi-modal: foto + teks manifes ketikan operator + berat + gas | [ ] | ___ |
 
 **Checklist bukti:**
 
@@ -83,7 +83,7 @@
 
 | [ ] | Item | Detail | PJ | Kapan |
 |---|---|---|---|---|
-| [ ] | README menyatakan provenance engine | Kalimat wajib (atau padanan): *"Decision engine Lynceus dibangun untuk Lynceus. Yang dibangun dalam hackathon ini: layer AI AMD (Qwen2.5-VL + vLLM + ROCm), fusion multi-modal (foto/OCR/berat/gas), dan antarmuka web."* | ___ | ___ |
+| [ ] | README menyatakan provenance engine | Kalimat wajib (atau padanan): *"Decision engine Lynceus dibangun untuk Lynceus. Yang dibangun dalam hackathon ini: layer AI AMD Token Factory (DeepSeek-V4.1-Flash VLM + DeepSeek-V4-Flash LLM), fusion multi-modal (foto/teks surat jalan manual/berat/gas), dan antarmuka web."* | ___ | ___ |
 | [ ] | Pitch/video menyatakan hal yang sama | Slide provenance + 1 kalimat di voice-over video | ___ | ___ |
 | [ ] | Tidak ada API key / secret ter-commit | Audit `git log -p` + scan repo; kunci hanya via env var / `.env.example` tanpa nilai riil | ___ | ___ |
 | [ ] | Lisensi repo MIT | File `LICENSE` di root repo | ___ | ___ |
@@ -96,7 +96,7 @@
 | Tanggal | Fokus | Deliverable hari itu | Status | PJ |
 |---|---|---|---|---|
 | 12 Okt (Sen) | Administratif + ADP credit request | Enroll lablab.ai, daftar ADP, Discord, skeleton repo | [ ] | ___ |
-| 13 Okt (Sel) | Tim + provisioning GPU | Tim terbentuk di platform, VM ADC nyala, vLLM serve Qwen2.5-VL | [ ] | ___ |
+| 13 Okt (Sel) | Tim + akses AMD Token Factory | Tim terbentuk di platform, endpoint DeepSeek-V4.1-Flash (VLM) + DeepSeek-V4-Flash (LLM) diuji dengan kunci tim | [ ] | ___ |
 | 14 Okt (Rab) | Pipeline inti | Endpoint inspeksi end-to-end (foto → verdict → audit record) | [ ] | ___ |
 | 15 Okt (Kam) | Web + demo data | UI demo siap, dataset demo + manifes contoh terpasang | [ ] | ___ |
 | 16 Okt (Jum) | Asset submission | Video direkam, slide selesai, README fresh-clone tested | [ ] | ___ |

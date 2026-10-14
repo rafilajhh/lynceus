@@ -193,7 +193,7 @@ export function GateStrip({
           the gates resolve, when the judge's eye is on the strip. */}
       {allResolved ? (
         <p className="mt-1.5 text-center text-[11px] leading-relaxed text-faint">
-          VLM visual contaminants · OCR waybill read · XCHECK waybill vs
+          VLM visual contaminants · MANIFEST manual waybill text · XCHECK waybill vs
           observed load · GAS gate sensors · WEIGHT weighbridge vs declared
         </p>
       ) : null}

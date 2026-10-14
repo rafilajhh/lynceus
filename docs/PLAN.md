@@ -8,7 +8,7 @@
 
 ## 1. Ringkasan Eksekutif
 
-**Lynceus** adalah sistem inspeksi pintu gerbang bahan bakar alternatif (RDF/refuse-derived fuel) berbasis AI yang berjalan penuh di GPU AMD Instinct MI300X. Ketika truk sampah tiba di pabrik semen atau PLTSa, operator mengunggah foto muatan, surat jalan, berat timbangan, dan data gas — Lynceus memadukan **VLM (Qwen2.5-VL-7B)** untuk deteksi kontaminan visual dan estimasi basah/kering, **LLM (Qwen2.5-7B-Instruct)** untuk membaca surat jalan dan crosscheck klaim vs observasi, serta **engine rule-based Lynceus** untuk scoring suitability dan rekomendasi rute — semuanya menghasilkan verdict **HIJAU/KUNING/MERAH** beserta alasan, confidence, dan **audit record immutable** dalam hitungan detik. Track: AI pada AMD GPU. Value proposition: satu jam kiln mati = **US$28.000** (±Rp450 juta) — inspeksi otomatis Lynceus adalah "biaya cegah" yang jauh lebih murah daripada satu kontaminan logam/batu yang lolos ke shredder bernilai ratusan juta rupiah dan mematikan kiln.
+**Lynceus** adalah sistem inspeksi pintu gerbang bahan bakar alternatif (RDF/refuse-derived fuel) berbasis AI yang mengakses model melalui AMD Token Factory. Ketika truk sampah tiba di pabrik semen atau PLTSa, operator mengunggah foto muatan, mengetik teks surat jalan secara manual (tanpa OCR), serta memasukkan berat timbangan dan data gas — Lynceus memadukan **VLM (DeepSeek-V4.1-Flash)** untuk deteksi kontaminan visual dan estimasi basah/kering, **LLM (DeepSeek-V4-Flash)** untuk membaca surat jalan dan crosscheck klaim vs observasi, serta **engine rule-based Lynceus** untuk scoring suitability dan rekomendasi rute — semuanya menghasilkan verdict **HIJAU/KUNING/MERAH** beserta alasan, confidence, dan **audit record tamper-evident (file lokal)** dalam hitungan detik. Track: AI pada AMD GPU. Value proposition: satu jam kiln mati = **US$28.000** (±Rp450 juta) — inspeksi otomatis Lynceus adalah "biaya cegah" yang jauh lebih murah daripada satu kontaminan logam/batu yang lolos ke shredder bernilai ratusan juta rupiah dan mematikan kiln.
 
 ---
 
@@ -40,7 +40,7 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 
 ```
 ┌─────────────────────────── INPUT (operator, via web dashboard) ───────────────────────────┐
-│  Foto muatan (kamera gerbang)   Surat jalan (scan/foto → OCR/LLM)                          │
+│  Foto muatan (kamera gerbang)   Surat jalan (teks ketikan operator → LLM)                          │
 │  Berat (weighbridge, kg)        Gas (digital twin: virtual_sensor step_response)           │
 └──────────────┬─────────────────────────────────────────────────────────────────────────────┘
                │  (semua input dibekukan + digest SHA-256 sebelum AI berjalan — snapshot beku)
@@ -50,8 +50,8 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 │  Struktur data tunggal untuk AI & engine; missing inputs dilaporkan, tidak ditebak          │
 └──────────────┬───────────────────────────────────────┬─────────────────────────────────────┘
                ▼                                       ▼
-┌───────── VLM (AMD MI300X) ──────────┐   ┌───────── LLM (AMD MI300X) ──────────┐
-│  Qwen2.5-VL-7B-Instruct via vLLM    │   │  Qwen2.5-7B-Instruct via vLLM       │
+┌───────── VLM (Token Factory) ──────────┐   ┌───────── LLM (Token Factory) ──────────┐
+│  DeepSeek-V4.1-Flash via Token Factory    │   │  DeepSeek-V4-Flash via Token Factory       │
 │  • deteksi kontaminan visual        │   │  • baca surat jalan (field: jenis,  │
 │    (logam, batu, ban, e-waste)      │   │    asal, berat klaim, kualitas)     │
 │  • estimasi basah/kering visual     │   │  • crosscheck klaim manifest vs     │
@@ -73,7 +73,7 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 └──────────────┬─────────────────────────────────────────────────────────────────────────────┘
                ▼
 ┌───────── AUDIT RECORD (skema audit engine) ───────────────────────────────────────────────────┐
-│  audit-NNN.json immutable: format_version, record_id, execution_status, timestamps UTC,    │
+│  audit-NNN.json tamper-evident (file lokal): format_version, record_id, execution_status, timestamps UTC,    │
 │  inputs (digest SHA-256 per input), ai_outputs (model identity + prompt hash),             │
 │  engine_outputs, verdict, gates, digest — atomic write, finalisasi single-shot             │
 └──────────────┬─────────────────────────────────────────────────────────────────────────────┘
@@ -121,23 +121,23 @@ Detail skema audit record: `docs/research/audit-provenance.md` §(b).
 
 | Komponen | Pilihan | Justifikasi |
 |---|---|---|
-| Backend | **FastAPI** (Python) | Serialize `asdict` engine Lynceus; endpoint `POST /assess`; OpenAI-compatible client ke vLLM |
+| Backend | **FastAPI** (Python) | Serialize `asdict` engine Lynceus; endpoint `POST /assess`; OpenAI-compatible client ke AMD Token Factory |
 | Frontend | **Next.js/React** (alternatif sederhana: Vite+React SPA, atau FastAPI + Jinja/HTMX bila waktu sempit) | Dashboard operator: upload, tiket verdict, audit view |
-| Serving AI | **vLLM Docker `rocm/vllm`** di **AMD Developer Cloud, 1× MI300X** (192 GB HBM3) | First-class ROCm; Quick Start image vLLM tersedia langsung di ADC |
-| VLM | **Qwen2.5-VL-7B-Instruct** (BF16) | Satu-satunya VLM dengan resep + benchmark resmi vLLM yang eksplisit menargetkan MI300X/MI325X/MI355X; kuat OCR/dokumen (DocVQA 95,7); ~17–24 GB |
-| LLM | **Qwen2.5-7B-Instruct** | Keluarga Qwen2 terbukti di ROCm blog AMD; tokenizer/chat API konsisten dengan VLM |
-| Benchmark acuan | Qwen2.5-VL-7B DP=4 di MI300X: **13,09 req/s; 1.455 tok/s output; TTFT mean 4,43 s; TPOT 58 ms** | Realistis untuk demo interaktif <10 s per truk |
-| Quantization (bila perlu) | **FP8 via AMD Quark** | **AWQ/GPTQ/bitsandbytes INT8 ❌ tidak didukung vLLM di ROCm**; FP8 & GGUF ✅ |
-| Kredit | ADC direct: 25 jam (~$50, 10 hari); **ADP: $100, 30 hari setelah aktivasi** | VM ditagih walau dimatikan — destroy setelah selesai |
+| Serving AI | **AMD Token Factory** | Endpoint bersama OpenAI-compatible pada GPU AMD, bukan self-hosted MI300X |
+| VLM | **DeepSeek-V4.1-Flash** | Analisis foto muatan melalui AMD Token Factory |
+| LLM | **DeepSeek-V4-Flash** | Analisis teks surat jalan ketikan operator dan crosscheck |
+| Benchmark acuan | Ukur request end-to-end pada AMD Token Factory | Angka benchmark Qwen self-hosted tidak mewakili deployment ini |
+| Quantization (bila perlu) | Dikelola penyedia endpoint | Tidak ada konfigurasi quantization self-hosted pada demo |
+| Kredit | Akses AMD Token Factory dengan kunci tim | Kredit VM ADC bukan prasyarat demo |
 
-Perintah deploy ringkas (dari riset §6): ADC droplet 1× MI300X image Quick Start vLLM → `vllm serve Qwen/Qwen2.5-VL-7B-Instruct --port 8000` (VLM) + `vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001` (LLM), tuning `VLLM_ROCM_USE_AITER=1`, `VLLM_USE_TRITON_FLASH_ATTN=0`, `--num-scheduler-steps 10`.
+Konfigurasi deploy: arahkan endpoint OpenAI-compatible VLM dan LLM ke AMD Token Factory, pilih `DeepSeek-V4.1-Flash` (VLM) dan `DeepSeek-V4-Flash` (LLM), lalu pasang kunci tim melalui environment variable. Tidak perlu menjalankan vLLM atau menyediakan VM MI300X.
 
 ---
 
 ## 6. Alur Demo (end-to-end < 10 detik per truk)
 
 1. Truk tiba di gerbang; operator buka demo URL di dashboard Lynceus.
-2. Operator upload: **foto muatan** + **surat jalan** (scan/foto) + input **berat** (kg); gas dihasilkan digital twin `virtual_sensor`.
+2. Operator upload: **foto muatan** + **teks surat jalan ketikan operator** (tanpa OCR) + input **berat** (kg); gas dihasilkan digital twin `virtual_sensor`.
 3. Pipeline berjalan (freeze input → VLM deteksi kontaminan + estimasi basah/kering → LLM baca surat jalan + crosscheck → engine `assess_batch` → fusion verdict → audit record).
 4. < 10 detik: dashboard menampilkan **tiket verdict** (HIJAU/KUNING/MERAH) + penjelasan + confidence + missing inputs + **link audit record**.
 
@@ -156,8 +156,8 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 ## 7. Rencana 6 Hari
 
 ### Day 1 — Setup
-- **Deliverable**: repo GitHub (struktur monorepo: `backend/`, `web/`, `docs/`); instance ADC 1× MI300X dibuat (image Quick Start vLLM); klaim kredit ADP ($100) diajukan; akun lablab.ai, ADP, Discord tim disiapkan; skeleton web (Next.js/Vite) dengan halaman upload + hasil stub; README initial.
-- **Acceptance**: `docker exec -it rocm bash` sukses via SSH dan `rocm-smi` menampilkan MI300X; skeleton web jalan di localhost; semua anggota tim punya akses repo + ADC + Discord.
+- **Deliverable**: repo GitHub (struktur monorepo: `backend/`, `web/`, `docs/`); akses AMD Token Factory dan kunci tim disiapkan; akun lablab.ai, ADP, Discord tim disiapkan; skeleton web (Next.js/Vite) dengan halaman upload + hasil stub; README initial.
+- **Acceptance**: smoke test endpoint AMD Token Factory berhasil; skeleton web jalan di localhost; semua anggota tim punya akses repo + Token Factory + Discord.
 - **Risiko**: approval kredit ADP butuh 2–3 hari kerja → **Mitigasi**: ajukan Day 1 pagi; gunakan kredit 25 jam ADC sebagai jembatan; kartu kredit valid disiapkan sejak awal.
 
 ### Day 2 — Integrasi Engine Keputusan
@@ -166,8 +166,8 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 - **Risiko**: mismatch asumsi engine vs input truk → **Mitigasi**: mapping layer eksplisit input truk → composition/moisture/tonnage; unit test konversi.
 
 ### Day 3 — Pipeline VLM+LLM di AMD
-- **Deliverable**: vLLM serve Qwen2.5-VL-7B (port 8000) + Qwen2.5-7B (port 8001) di ADC; prompt VLM (deteksi kontaminan + estimasi basah/kering + klasifikasi) dan prompt LLM (ekstraksi surat jalan + crosscheck); parsing JSON output terstruktur (schema + retry/repair); smoke test foto & dokumen nyata.
-- **Acceptance**: request pipeline tunggal (foto + teks surat jalan) mengembalikan JSON valid dengan confidence dalam <10 s (acuan TTFT 4,43 s VLM 7B); prompt disimpan dan di-hash.
+- **Deliverable**: integrasi DeepSeek-V4.1-Flash (VLM) + DeepSeek-V4-Flash (LLM) melalui AMD Token Factory; prompt VLM (deteksi kontaminan + estimasi basah/kering + klasifikasi) dan prompt LLM (ekstraksi surat jalan + crosscheck); parsing JSON output terstruktur (schema + retry/repair); smoke test foto & dokumen nyata.
+- **Acceptance**: request pipeline tunggal (foto + teks surat jalan) mengembalikan JSON valid dengan confidence dengan latensi end-to-end yang diukur pada AMD Token Factory; prompt disimpan dan di-hash.
 - **Risiko**: output model tidak valid JSON → **Mitigasi**: prompt ketat + constrained decoding/skema Pydantic + retry dengan pesan error; fallback parse parsial.
 
 ### Day 4 — Fusion, Verdict, Audit, Dashboard
@@ -204,8 +204,8 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 
 ## 9. Metrik Sukses
 
-1. **Demo URL jalan < 10 detik per truk** — upload → tiket verdict tampil (acuan benchmark: TTFT VLM 4,43 s di MI300X).
+1. **Demo URL jalan < 10 detik per truk** — upload → tiket verdict tampil (target, bukan hasil benchmark; ukur latensi end-to-end AMD Token Factory).
 2. **Verdict + alasan + audit tampil** — setiap tiket menampilkan warna, penjelasan (reasoning VLM/LLM + rule engine), confidence, caveats, dan link audit record yang lolos validasi loader strict.
 3. **3 varian demo** — hijau/kuning/merah berjalan konsisten (≥3x run berturut-turut per varian).
 4. **Video demo < 5 menit** — mencakup alur end-to-end dan pitch business value.
-5. **README run-able** — orang lain bisa clone → setup → deploy (ADC + vLLM + backend + web) mengikuti README tanpa bantuan tim.
+5. **README run-able** — orang lain bisa clone → setup → deploy (AMD Token Factory + backend + web) mengikuti README tanpa bantuan tim.
