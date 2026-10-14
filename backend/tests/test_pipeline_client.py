@@ -387,8 +387,10 @@ def test_request_timeout_is_the_budget_left(monkeypatch):
     client = VLLMClient(settings=get_settings(), timeout_s=1.0)
     deadline = time.monotonic() + 1.0
     assert client._chat_attempt("http://x/v1", "m", [], 8, deadline) == "y"
-    # 0.2 s of the 1 s budget went on the slot wait: httpx gets the rest.
-    assert 0.5 < seen[0] <= 0.8
+    # 0.2 s of the 1 s budget went on the slot wait: httpx gets the rest,
+    # never the full budget. The upper bound leaves room for the ~15 ms
+    # resolution of sleep/monotonic on Windows.
+    assert 0.5 < seen[0] < 0.9
 
 
 def test_fast_stream_within_deadline_still_returns(monkeypatch):

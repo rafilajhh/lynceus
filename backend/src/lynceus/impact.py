@@ -14,6 +14,7 @@ summary file for the expected-value model (:func:`value_model`).
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -367,6 +368,18 @@ _REPO_BLOB = "https://github.com/rafilajhh/lynceus/blob/main/"
 _RESEARCH_DOC = _REPO_BLOB + "docs/research/realcase-indonesia.md"
 _MANUAL_TIME_SEARCH = _REPO_BLOB + "docs/research/token-factory-probe.md"
 
+#: Lynceus's own price: a proposal (docs/BUSINESS.md §7, Rp 6 million per
+#: gate a month), not a sourced figure.  Spread over calendar days.
+SUBSCRIPTION_IDR_PER_GATE_MONTH = 6_000_000.0
+DAYS_PER_YEAR = 365.0
+
+#: Actual RDF output per plant, tonnes/day (RDI 2024 Table III.2, research
+#: doc §2e): Banyumas 35, Cilacap 75, Bantargebang 400.
+RDF_PLANT_OUTPUT_SOURCE = (
+    "https://dashboard.rdiglobal.org/storage/publications/file/"
+    "OgidnCyQqXihV2iFnsOB2cDOTmjDRVkOZ9cSFMUM.pdf"
+)
+
 #: One escaped hard item that does cause damage: shredder + 1 h of kiln.
 DAMAGE_COST_IDR = SHREDDER_COST_IDR + (
     KILN_DOWNTIME_USD_PER_HOUR * KILN_DOWNTIME_HOURS * USD_IDR_RATE
@@ -412,8 +425,10 @@ def benchmark_rates(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     Metal); clean loads its ``accept`` class.  The re-score summary's
     ``clean_*_rate`` keys win over the confusion matrix; ``reject.recall``
     wins for the hard reject rate.  A pipeline error counts as a flag for
-    the manual check (the gate cannot pass a truck it could not inspect).
-    ``None`` when the summary cannot supply every rate.  Pure.
+    the manual check (the gate cannot pass a truck it could not inspect), so
+    a class's errored share is added to its escalate rate whichever source
+    that rate came from.  ``None`` when the summary cannot supply every
+    rate.  Pure.
     """
     if not isinstance(summary, dict):
         return None
@@ -431,7 +446,9 @@ def benchmark_rates(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     clean_escalate = _fraction(summary.get("clean_escalate_rate"))
     if (clean_reject is None or clean_escalate is None) and clean is not None:
         clean_reject = clean[0]["reject"]
-        clean_escalate = clean[0]["escalate"] + clean[0]["error"]
+        clean_escalate = clean[0]["escalate"]
+    if clean_escalate is not None and clean is not None:
+        clean_escalate += clean[0]["error"]
 
     if hard_reject is None or clean_reject is None or clean_escalate is None:
         return None
@@ -464,6 +481,22 @@ def load_benchmark_summary(
     return None
 
 
+#: z for a two-sided 95% interval (the /validation page uses the same).
+_WILSON_Z = 1.96
+
+
+def _wilson(p: float, n: Optional[int]) -> Tuple[float, float]:
+    """95% Wilson score interval for an observed share ``p`` of ``n`` images;
+    ``(p, p)`` when ``n`` is unknown.  Pure."""
+    if not n:
+        return p, p
+    z2 = _WILSON_Z * _WILSON_Z
+    denom = 1.0 + z2 / n
+    centre = (p + z2 / (2 * n)) / denom
+    half = _WILSON_Z * math.sqrt(p * (1.0 - p) / n + z2 / (4 * n * n)) / denom
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
 def _param(
     key: str,
     label: str,
@@ -489,18 +522,39 @@ def _param(
     }
 
 
-def _parameters(rates: Dict[str, Any], summary_name: str) -> List[Dict[str, Any]]:
+def _parameters(
+    rates: Dict[str, Any], summary_name: str, summary: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     bench = (_REPO_BLOB + "backend/benchmark/results/" + summary_name,)
     hard_n = f" ({rates['n_hard']} images)" if rates.get("n_hard") else ""
     clean_n = f" ({rates['n_clean']} images)" if rates.get("n_clean") else ""
-    bench_note = (
-        "Measured on public RealWaste photos, not plant data; held fixed "
-        "across scenarios."
-    )
+    bench_note = "Measured on public RealWaste photos, not plant data."
+    if summary.get("kind") == "replay" or summary_name.endswith(".rescore.summary.json"):
+        disclosure = summary.get("disclosure")
+        bench_note = (
+            "From a replay of the recorded live model outputs under the current "
+            "decision rules, not a held-out measurement."
+            + (f" {disclosure}" if isinstance(disclosure, str) and disclosure else "")
+            + " " + bench_note
+        )
 
-    def measured(key: str, label: str, value: float, rationale: str) -> Dict[str, Any]:
-        return _param(key, label, "share", value, value, value,
-                      sources=bench, rationale=f"{rationale} {bench_note}")
+    def measured(key: str, label: str, value: float, rationale: str,
+                 low: float, high: float, n: Optional[int]) -> Dict[str, Any]:
+        spread = (
+            "Low and high: the 95% Wilson interval for this sample size."
+            if n else "Held fixed across scenarios."
+        )
+        return _param(key, label, "share", low, value, high, sources=bench,
+                      rationale=f"{rationale} {bench_note} {spread}")
+
+    # Low is the end least favourable to Lynceus: fewer hard loads rejected,
+    # more clean loads rejected or flagged.  Each level keeps a class's
+    # shares summing to at most 1.
+    n_hard, n_clean = rates.get("n_hard"), rates.get("n_clean")
+    hard_reject_lo, hard_reject_hi = _wilson(rates["hard_reject_rate"], n_hard)
+    clean_reject_lo, clean_reject_hi = _wilson(rates["clean_reject_rate"], n_clean)
+    clean_esc_lo, clean_esc_hi = _wilson(rates["clean_escalate_rate"], n_clean)
+    hard_escalate = rates["hard_escalate_rate"]
 
     return [
         _param(
@@ -515,17 +569,26 @@ def _parameters(rates: Dict[str, Any], summary_name: str) -> List[Dict[str, Any]
         ),
         measured("hard_reject_rate", "Lynceus rejects a hard-contaminant load",
                  rates["hard_reject_rate"],
-                 f"Reject recall on the metal class{hard_n}."),
-        measured("hard_escalate_rate", "Lynceus escalates a hard-contaminant load",
-                 rates["hard_escalate_rate"],
-                 f"Escalated (or errored) share of the metal class{hard_n}; "
-                 "these go to the manual check."),
+                 f"Reject recall on the metal class{hard_n}.",
+                 hard_reject_lo, hard_reject_hi, n_hard),
+        _param(
+            "hard_escalate_rate", "Lynceus escalates a hard-contaminant load", "share",
+            hard_escalate, hard_escalate, min(hard_escalate, 1.0 - hard_reject_hi),
+            sources=bench,
+            rationale=(
+                f"Escalated (or errored) share of the metal class{hard_n}; these "
+                f"go to the manual check. {bench_note} Held fixed, except that "
+                "high caps it so the metal class's shares sum to at most 1."
+            ),
+        ),
         measured("clean_reject_rate", "Lynceus wrongly rejects a clean load",
                  rates["clean_reject_rate"],
-                 f"Rejected share of the clean class{clean_n}."),
+                 f"Rejected share of the clean class{clean_n}.",
+                 clean_reject_hi, clean_reject_lo, n_clean),
         measured("clean_escalate_rate", "Lynceus sends a clean load to the manual check",
                  rates["clean_escalate_rate"],
-                 f"Escalated (or errored) share of the clean class{clean_n}."),
+                 f"Escalated (or errored) share of the clean class{clean_n}.",
+                 min(clean_esc_hi, 1.0 - clean_reject_hi), clean_esc_lo, n_clean),
         _param(
             "manual_catch_rate", "Manual visual check catches a visible hard item",
             "share", 0.9, 0.7, 0.5, assumption=True,
@@ -604,6 +667,33 @@ def _parameters(rates: Dict[str, Any], summary_name: str) -> List[Dict[str, Any]
                 "40 h/week × 52)."
             ),
         ),
+        _param(
+            "subscription_idr_per_month", "Lynceus subscription per gate a month",
+            "IDR", SUBSCRIPTION_IDR_PER_GATE_MONTH, SUBSCRIPTION_IDR_PER_GATE_MONTH,
+            SUBSCRIPTION_IDR_PER_GATE_MONTH, assumption=True,
+            rationale=(
+                "Proposal, not a sourced figure: the Indonesian price in "
+                "docs/BUSINESS.md §7 (Rp 72 million a year). Spread over "
+                f"{DAYS_PER_YEAR:.0f} days a year (assumption: the gate takes "
+                "trucks every day; fewer operating days raise the fee per "
+                "truck). Install hardware is quoted at cost and model "
+                "inference cost is not yet known; neither is included. Held "
+                "fixed."
+            ),
+        ),
+        _param(
+            "gate_rdf_tonnes_per_day", "RDF received at one gate a day", "t/day",
+            35.0, 75.0, 400.0, assumption=True, sources=(RDF_PLANT_OUTPUT_SOURCE,),
+            rationale=(
+                "Actual RDF output of three Indonesian plants (RDI 2024, Table "
+                "III.2): Banyumas 35, Cilacap 75, Bantargebang 400 t/day. "
+                "Assumption: one plant's output crosses one gate in trucks of "
+                f"the load above ({ARM_ROLL_TRIP_KG / 1000:.1f} t), so about "
+                "6.7 / 14.4 / 76.9 trucks a day and 148.6 / 69.3 / 13.0 days "
+                "per 1,000 trucks. Low (the smallest plant) spreads the monthly "
+                "fee over the fewest trucks."
+            ),
+        ),
     ]
 
 
@@ -641,6 +731,10 @@ def scenario_value(
     minutes_saved = minutes_without - minutes_with
     time_value = minutes_saved * p["operator_cost_idr_per_minute"]
     net = loss_avoided - false_reject_cost + time_value
+    # Days one gate needs to receive ``trucks`` trucks, and the subscription
+    # paid over those days.
+    days = trucks * p["load_tonnes"] / p["gate_rdf_tonnes_per_day"]
+    subscription = p["subscription_idr_per_month"] * 12.0 / DAYS_PER_YEAR * days
     return {
         "without": {
             "escaped_hard_loads": round(escaped_without, 2),
@@ -663,6 +757,9 @@ def scenario_value(
         "operator_minutes_saved": round(minutes_saved, 1),
         "operator_time_value_idr": round(time_value),
         "net_value_idr": round(net),
+        "days_per_1000_trucks": round(days * VALUE_MODEL_TRUCKS / trucks, 1),
+        "subscription_cost_idr": round(subscription),
+        "net_after_subscription_idr": round(net - subscription),
     }
 
 
@@ -674,7 +771,7 @@ def value_model(summary: Dict[str, Any], summary_name: str) -> Optional[Dict[str
     rates = benchmark_rates(summary)
     if rates is None:
         return None
-    params = _parameters(rates, summary_name)
+    params = _parameters(rates, summary_name, summary)
     scenarios = {
         level: scenario_value({row["key"]: row[level] for row in params})
         for level in ("low", "base", "high")
@@ -692,10 +789,12 @@ def value_model(summary: Dict[str, Any], summary_name: str) -> Optional[Dict[str
         "note": (
             "Expected value, not a forecast: escaped hard items are weighted "
             "by the probability that one causes damage. Low uses every "
-            "adjustable parameter at the end least favourable to Lynceus, high "
-            "the most favourable. Loads are either hard-contaminated or clean; "
-            "wet or organic loads are not modelled. Lynceus's own running "
-            "cost (model API, hardware) is not included."
+            "adjustable parameter, and each measured rate's 95% interval, at "
+            "the end least favourable to Lynceus, high the most favourable. Loads are either hard-contaminated or clean; "
+            "wet or organic loads are not modelled. Net after subscription "
+            "subtracts Lynceus's proposed per-gate fee over the days one gate "
+            "takes to receive these trucks; install hardware and model "
+            "inference cost are not included."
         ),
     }
 

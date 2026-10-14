@@ -44,13 +44,17 @@ function moneyFormatter(currency: Currency, eurIdrRate: number | null): Money {
     const abs = Math.abs(idr);
     if (currency === "EUR" && eurIdrRate) {
       const eur = abs / eurIdrRate;
+      const digits = eur < 100 ? 2 : opts?.full ? 0 : 1;
       return (
         sign +
         new Intl.NumberFormat("en-GB", {
           style: "currency",
           currency: "EUR",
           notation: opts?.full ? "standard" : "compact",
-          maximumFractionDigits: eur < 100 ? 2 : opts?.full ? 0 : 1,
+          // Both bounds set: a lone maximumFractionDigits below the currency's
+          // default minimum (2 for EUR) throws a RangeError on older engines.
+          minimumFractionDigits: eur < 100 ? 2 : 0,
+          maximumFractionDigits: digits,
         }).format(eur)
       );
     }
@@ -280,7 +284,10 @@ function sourceHost(url: string): string {
  */
 function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
   const { low, base, high } = model.scenarios;
-  const net = base.net_value_idr;
+  const fee = base.subscription_cost_idr ?? null;
+  const net = base.net_after_subscription_idr ?? base.net_value_idr;
+  const lowNet = low.net_after_subscription_idr ?? low.net_value_idr;
+  const highNet = high.net_after_subscription_idr ?? high.net_value_idr;
   const rows: { key: string; label: string; without: string; with: string }[] = [
     {
       key: "damage",
@@ -345,7 +352,7 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
 
       <div className="flex flex-col gap-1 border-t border-seam px-4 py-3">
         <p className="m-0 text-[13.5px] text-ink">
-          Net expected value{" "}
+          Net expected value{fee !== null ? " after subscription" : ""}{" "}
           <strong
             title={money(net, { full: true })}
             className={cn(
@@ -355,13 +362,22 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
           >
             {money(net)}
           </strong>{" "}
-          per {formatCount(model.trucks, 0)} trucks, before Lynceus&apos;s own running cost.
+          per {formatCount(model.trucks, 0)} trucks.
         </p>
         <p className="figure m-0 text-[12px] text-muted">
           = {money(base.expected_loss_avoided_idr)} loss avoided − {money(base.false_reject_cost_idr)}{" "}
           wrong rejects {base.operator_time_value_idr < 0 ? "−" : "+"}{" "}
-          {money(Math.abs(base.operator_time_value_idr))} staff time · range {money(low.net_value_idr)}{" "}
-          to {money(high.net_value_idr)}
+          {money(Math.abs(base.operator_time_value_idr))} staff time
+          {fee !== null ? (
+            <>
+              {" "}
+              = {money(base.net_value_idr)} before the fee − {money(fee)} subscription
+              {base.days_per_1000_trucks != null
+                ? ` (${formatCount(base.days_per_1000_trucks)} days at one gate)`
+                : ""}
+            </>
+          ) : null}{" "}
+          · range {money(lowNet)} to {money(highNet)}
         </p>
       </div>
 

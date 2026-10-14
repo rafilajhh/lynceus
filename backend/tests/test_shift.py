@@ -483,6 +483,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setenv(LYNCEUS_STORAGE_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(pipeline, "_vlm_reachable", lambda *a, **k: False)
     monkeypatch.setattr(pipeline, "resolve_assist_client", lambda *a, **k: None)
+    monkeypatch.setattr(pipeline, "resolve_explain_client", lambda *a, **k: None)
     return TestClient(create_app())
 
 
@@ -510,7 +511,7 @@ def test_shift_report_endpoint_explains_flagged_rows(api, monkeypatch):
     row = dict(ROW, trucks=3, reject=3, escalate=0, risk_score=1.0)
     text = _visual_explanation(row)
     fake = FakeClient(_structured_reply(row))
-    monkeypatch.setattr(pipeline, "resolve_assist_client", lambda *a, **k: fake)
+    monkeypatch.setattr(pipeline, "resolve_explain_client", lambda *a, **k: fake)
 
     resp = api.get("/shift-report")
     assert resp.status_code == 200, resp.text

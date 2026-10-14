@@ -24,14 +24,16 @@ const supplierRowSchema = z.object({
   explanation_source: z.enum(["model", "rule"]).nullish().catch(null),
 });
 
-const money = z.number().catch(0);
+/** Value-model figures carry no fallback: a malformed one fails the scenario,
+    which drops the whole value model (below) rather than render as Rp 0. */
+const money = z.number();
 
 const sideSchema = z.object({
-  escaped_hard_loads: z.number().catch(0),
+  escaped_hard_loads: z.number(),
   expected_damage_idr: money,
-  trucks_checked_by_hand: z.number().catch(0),
-  operator_minutes: z.number().catch(0),
-  false_rejects: z.number().catch(0),
+  trucks_checked_by_hand: z.number(),
+  operator_minutes: z.number(),
+  false_rejects: z.number(),
   false_reject_cost_idr: money,
 });
 
@@ -40,9 +42,15 @@ const scenarioSchema = z.object({
   with: sideSchema,
   expected_loss_avoided_idr: money,
   false_reject_cost_idr: money,
-  operator_minutes_saved: z.number().catch(0),
+  operator_minutes_saved: z.number(),
   operator_time_value_idr: money,
   net_value_idr: money,
+  /** Lynceus's proposed per-gate fee over the days one gate takes to receive
+      these trucks. Nullish for an older backend; no .catch, so a malformed
+      value still drops the model. */
+  days_per_1000_trucks: z.number().nullish(),
+  subscription_cost_idr: money.nullish(),
+  net_after_subscription_idr: money.nullish(),
 });
 
 const valueParameterSchema = z.object({
