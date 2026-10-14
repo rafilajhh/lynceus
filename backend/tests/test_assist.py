@@ -86,6 +86,34 @@ def test_grounded_answer_is_kept_with_live_provenance():
     assert len(client.calls) == 1
 
 
+@pytest.mark.parametrize("text, grounded", [
+    ("Source: Keep the truck at the gate.", True),
+    ("Source: Keep the truck\n  at the gate.", True),
+    ("The load is safe to burn immediately.", False),
+    ("at the gate", False),
+])
+def test_cited_chunk_requires_twelve_character_verbatim_span(monkeypatch, text, grounded):
+    chunk = kb.Chunk("N", "Gate", "Keep the truck at the gate.", "test.md")
+    monkeypatch.setattr(kb, "search", lambda *a, **k: [chunk])
+    out = assist.answer(QUESTION, None, FakeClient({"answer": text, "citations": ["N"]}))
+    assert out["grounded"] is grounded
+    if grounded:
+        assert out["answer"] == text
+    else:
+        assert out["answer"] == assist.CANNOT_ANSWER
+        assert text not in out["answer"]
+
+
+def test_every_cited_chunk_requires_its_own_span(monkeypatch):
+    chunks = [kb.Chunk("N", "Gate", "Keep the truck at the gate.", "test.md"),
+              kb.Chunk("M", "Review", "Request a supervisor review.", "test.md")]
+    monkeypatch.setattr(kb, "search", lambda *a, **k: chunks)
+    out = assist.answer(QUESTION, None, FakeClient({
+        "answer": chunks[0].text, "citations": ["N", "M"],
+    }))
+    assert out["grounded"] is False
+
+
 def test_citation_outside_retrieved_set_is_cannot_answer():
     # REG-NIOSH-H2S is a real id but is not retrieved for a tipping question.
     client = FakeClient({"answer": "H2S ceiling is 10 ppm.", "citations": ["REG-NIOSH-H2S"]})
@@ -122,7 +150,7 @@ def test_missing_or_malformed_model_json_is_cannot_answer(reply):
 
 
 def test_record_citation_allowed_only_when_record_given():
-    reply = {"answer": "The verdict is reject.", "citations": ["RECORD"]}
+    reply = {"answer": 'The record says "decision":"reject".', "citations": ["RECORD"]}
     with_record = assist.answer("What was the verdict?", _record(), FakeClient(reply))
     assert with_record["grounded"] is True
     assert with_record["citations"] == ["RECORD"]
@@ -286,7 +314,8 @@ def test_api_uses_live_client_and_loads_record(api, monkeypatch):
     def check(messages):
         seen["system"] = messages[0]["content"]
 
-    fake = FakeClient({"answer": "It was rejected.", "citations": ["RECORD"]}, check=check)
+    fake = FakeClient({"answer": 'The record says "decision":"reject".',
+                       "citations": ["RECORD"]}, check=check)
     monkeypatch.setattr(pipeline, "resolve_assist_client", lambda *a, **k: fake)
     resp = api.post("/assist", json={"question": "What was the verdict?", "record_id": rid})
     assert resp.status_code == 200, resp.text

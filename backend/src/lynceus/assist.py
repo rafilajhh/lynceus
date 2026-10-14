@@ -151,9 +151,10 @@ def answer(question: str, record: dict | None, client: Any | None) -> dict:
         "latency_ms": 0.0,
     }
     retrieved = kb.search(question, list(_chunks()), k=4)
-    allowed = {c.id for c in retrieved}
+    sources = {c.id: c.text for c in retrieved}
     if record is not None:
-        allowed.add(RECORD_ID)
+        sources[RECORD_ID] = record_block(record).split("\n", 1)[1]
+    allowed = set(sources)
 
     started = time.perf_counter()
     try:
@@ -169,5 +170,10 @@ def answer(question: str, record: dict | None, client: Any | None) -> dict:
     )
     if not isinstance(text, str) or not text.strip() or citations is None:
         return _refusal(provenance)
+    flat_answer = " ".join(text.split())
+    for cid in citations:
+        source = " ".join(sources[cid].split())
+        if not any(source[i:i + 12] in flat_answer for i in range(len(source) - 11)):
+            return _refusal(provenance)
     return {"answer": text.strip(), "citations": citations, "grounded": True,
             "provenance": provenance}

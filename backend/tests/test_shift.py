@@ -9,6 +9,7 @@ constants in ``lynceus.impact`` — never from the code under test.
 from __future__ import annotations
 
 import copy
+import importlib
 import sys
 from pathlib import Path
 
@@ -331,6 +332,16 @@ FALLBACK = (
 )
 
 
+def _structured_reply(row=ROW, recommendation="visual_check"):
+    return {"stats": {k: row[k] for k in ("trucks", "reject", "escalate", "risk_score")},
+            "recommendation": recommendation}
+
+
+def _visual_explanation(row=ROW):
+    return (f"{row['supplier']}: {row['reject']} of {row['trucks']} loads rejected "
+            f"and {row['escalate']} escalated. Hold the next delivery for a full visual check.")
+
+
 class FakeClient:
     def __init__(self, reply=None, error: Exception | None = None):
         self.reply = reply
@@ -344,18 +355,39 @@ class FakeClient:
         return self.reply, 9.0
 
 
+def test_model_cannot_name_a_supplier_absent_from_records():
+    records = [_rec("reject", supplier="CV Uji") for _ in range(3)]
+    row = _row(shift.build_report(records, None, None), "CV Uji")
+    client = FakeClient({"explanation": "PT Invented had 3 of 3 loads rejected. Review it."})
+    text = shift.explain_supplier(row, client)
+    assert text.startswith("CV Uji:")
+    assert "PT Invented" not in text
+
+
+def test_supplier_identity_in_structured_fields_is_not_rendered():
+    client = FakeClient({
+        "supplier": "PT Invented",
+        "stats": {"trucks": 7, "reject": 3, "escalate": 1, "risk_score": 0.5},
+        "recommendation": "Review PT Invented before delivery.",
+    })
+    assert shift.explain_supplier(ROW, client) == FALLBACK
+
+
+def test_structured_statistics_must_match_aggregated_row():
+    reply = _structured_reply()
+    reply["stats"]["reject"] = 7
+    assert shift.explain_supplier(ROW, FakeClient(reply)) == FALLBACK
+
+
 def test_no_client_gives_fallback_text():
     assert shift.explain_supplier(ROW, None) == FALLBACK
 
 
 def test_grounded_explanation_is_returned_and_sees_only_the_row():
-    text = ("UD Sinar Abadi had 3 of 7 loads rejected and 1 escalated this shift. "
-            "Its risk score is 0.5, the highest at the gate. "
-            "Hold its next delivery for a full visual check.")
-    client = FakeClient({"explanation": text})
-    assert shift.explain_supplier(ROW, client) == text
+    client = FakeClient(_structured_reply())
+    assert shift.explain_supplier(ROW, client) == _visual_explanation()
     prompt = "\n".join(m["content"] for m in client.calls[0])
-    assert "UD Sinar Abadi" in prompt and '"trucks": 7' in prompt
+    assert "UD Sinar Abadi" not in prompt and '"trucks": 7' in prompt
 
 
 def test_invented_number_falls_back():
@@ -368,15 +400,14 @@ def test_invented_percentage_falls_back_but_risk_percent_is_accepted():
     bad = FakeClient({"explanation": "43% of UD Sinar Abadi loads were rejected."})
     assert shift.explain_supplier(ROW, bad) == FALLBACK
     shift.clear_explanation_cache()
-    good = FakeClient({"explanation": "UD Sinar Abadi carries a 50% risk score "
-                                      "over 7 loads. Review it."})
-    assert shift.explain_supplier(ROW, good).startswith("UD Sinar Abadi carries a 50%")
+    good = FakeClient(_structured_reply())
+    assert shift.explain_supplier(ROW, good) == _visual_explanation()
 
 
 def test_risk_score_decimal_and_thousands_forms():
     row = dict(ROW, trucks=1200, reject=600, escalate=0, risk_score=0.5)
-    client = FakeClient({"explanation": "UD Sinar Abadi: 600 of 1,200 loads were rejected."})
-    assert "1,200" in shift.explain_supplier(row, client)
+    client = FakeClient(_structured_reply(row))
+    assert "600 of 1200" in shift.explain_supplier(row, client)
 
 
 def test_more_than_three_sentences_falls_back():
@@ -395,8 +426,8 @@ def test_client_error_falls_back():
 
 
 def test_explanations_cached_per_supplier_and_stats():
-    text = "UD Sinar Abadi had 3 rejected loads. Review it."
-    client = FakeClient({"explanation": text})
+    text = _visual_explanation()
+    client = FakeClient(_structured_reply())
     assert shift.explain_supplier(ROW, client) == text
     assert shift.explain_supplier(dict(ROW), client) == text
     assert len(client.calls) == 1
@@ -416,8 +447,7 @@ def test_failed_explanations_are_not_cached_forever(monkeypatch):
     # … after it, the model is asked again.
     real = shift._now
     monkeypatch.setattr(shift, "_now", lambda: real() + shift.FAILURE_RETRY_S + 1)
-    text = "UD Sinar Abadi had 3 rejected loads."
-    assert shift.explain_supplier(ROW, FakeClient({"explanation": text})) == text
+    assert shift.explain_supplier(ROW, FakeClient(_structured_reply())) == _visual_explanation()
 
 
 # ---------------------------------------------------------------------------
@@ -454,8 +484,9 @@ def test_shift_report_endpoint_explains_flagged_rows(api, monkeypatch):
     for _ in range(3):
         _inspect(api, "red", "UD Sinar Abadi")
     _inspect(api, "green", "CV Sumber Bersih")
-    text = "UD Sinar Abadi had 3 of 3 loads rejected. Review it."
-    fake = FakeClient({"explanation": text})
+    row = dict(ROW, trucks=3, reject=3, escalate=0, risk_score=1.0)
+    text = _visual_explanation(row)
+    fake = FakeClient(_structured_reply(row))
     monkeypatch.setattr(pipeline, "resolve_assist_client", lambda *a, **k: fake)
 
     resp = api.get("/shift-report")
@@ -509,7 +540,7 @@ def test_seed_demo_shift_writes_24_sample_records(tmp_path, monkeypatch):
     monkeypatch.setenv(LYNCEUS_STORAGE_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(pipeline, "_vlm_reachable", lambda *a, **k: False)
     sys.modules.pop("seed_demo", None)
-    import seed_demo
+    seed_demo = importlib.import_module("seed_demo")
 
     (tmp_path / "inspection-000099").mkdir()  # an old record --reset removes
     assert seed_demo.main(["--reset", "--shift", "--storage-dir", str(tmp_path)]) == 0
@@ -557,9 +588,10 @@ def test_dot_grouped_number_is_one_number():
 
 def test_counts_and_risk_percent_still_accepted():
     shift.clear_explanation_cache()
-    text = ("UD Sinar Abadi had 3 of 7 loads rejected and 1 escalated, a 50% risk score. "
-            "Hold its next delivery for a full visual check.")
-    assert shift.explain_supplier(ROW, FakeClient({"explanation": text})) == text
+    reply = dict(_structured_reply(), supplier="PT Invented", explanation="PT Invented is risky.")
+    text = shift.explain_supplier(ROW, FakeClient(reply))
+    assert text == _visual_explanation()
+    assert "PT Invented" not in text
 
 
 def test_rp_amount_rejected_even_when_zero_is_an_allowed_number():
