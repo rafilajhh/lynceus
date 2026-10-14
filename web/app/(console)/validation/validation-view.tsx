@@ -266,10 +266,11 @@ function Incomplete({ summary }: { summary: BenchmarkSummary }) {
   );
 }
 
-/** Clean loads passed and loads sent to a person, counted from a confusion matrix
- * (same definitions as backend/benchmark/metrics.py). */
+/** Clean loads passed, loads sent to a person and escalate-expected loads escalated,
+ * counted from a confusion matrix (same definitions as backend/benchmark/metrics.py). */
 function operatorCounts(confusion: Confusion) {
   const clean = confusion.accept;
+  const esc = confusion.escalate;
   const graded = LABELS.reduce(
     (sum, row) => sum + confusion[row].reject + confusion[row].escalate + confusion[row].accept,
     0,
@@ -280,6 +281,8 @@ function operatorCounts(confusion: Confusion) {
     cleanN: clean.reject + clean.escalate + clean.accept + clean.error,
     escalated,
     graded,
+    escalateCaught: esc.escalate,
+    escalateN: esc.reject + esc.escalate + esc.accept + esc.error,
   };
 }
 
@@ -326,6 +329,14 @@ function ReplayPanel({ summary, replay }: { summary: BenchmarkSummary; replay: R
       now: share(now.escalated, now.graded),
       nowSub: `${now.escalated} of ${now.graded}`,
     },
+    {
+      key: "escalate-recall",
+      label: "Escalate-expected loads escalated",
+      live: share(live.escalateCaught, live.escalateN),
+      liveSub: `${live.escalateCaught} of ${live.escalateN}`,
+      now: share(now.escalateCaught, now.escalateN),
+      nowSub: `${now.escalateCaught} of ${now.escalateN}`,
+    },
   ];
   const changed = replay.changed ?? [];
   return (
@@ -363,9 +374,13 @@ function ReplayPanel({ summary, replay }: { summary: BenchmarkSummary; replay: R
           What changed, and why this is not a new measurement
         </summary>
         <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-          The current rules treat plastic film and textile as RDF feedstock, not as light
-          contaminants, and read hard contaminants from the vision model&apos;s structured list
-          only. Glass, organic residue and wet mix still go to a person.{" "}
+          The replay scores both rule changes made after this run, not one. First, hard
+          contaminants are read from the vision model&apos;s structured list only, not its
+          free text: that change alone removes one false reject and moves metal precision.
+          Second, plastic film and textile are RDF feedstock, not light contaminants: that
+          raises clean loads passed, and costs one escalate-expected load (a glass image whose
+          only flag was plastic film) that now passes. Glass, organic residue and wet mix still
+          go to a person.{" "}
           {replay.disclosure ?? null}
         </p>
         {replay.llm_note ? (

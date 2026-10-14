@@ -58,6 +58,8 @@ _DEFAULT_RETRY_AFTER_S = 1.0
 #: One process-wide budget across VLM, LLM, assist and shift calls. Four leaves
 #: headroom for teammates under Token Factory's eight-concurrent shared-key cap.
 _OUTBOUND_SLOTS = threading.BoundedSemaphore(4)
+#: Floor for the per-request httpx timeout passed as the budget left.
+_MIN_REQUEST_TIMEOUT_S = 0.05
 
 
 def _parse_retry_after(value: Any) -> float:
@@ -104,6 +106,7 @@ __all__ = [
     "StubAIClients",
     "resolve_clients",
     "resolve_assist_client",
+    "resolve_explain_client",
     "run_inspection",
 ]
 
@@ -352,6 +355,11 @@ class VLLMClient:
         if not _OUTBOUND_SLOTS.acquire(timeout=max(deadline - time.monotonic(), 0.0)):
             raise _deadline_error(budget_s)
         try:
+            # The slot may arrive just as the caller gave up: never send then,
+            # and give httpx only what is left of the budget, so an abandoned
+            # worker cannot hold the slot for another full budget.
+            _check_deadline(deadline, budget_s)
+            remaining_s = max(deadline - time.monotonic(), _MIN_REQUEST_TIMEOUT_S)
             with httpx.stream(
                 "POST",
                 f"{base_url.rstrip('/')}/chat/completions",
@@ -362,7 +370,7 @@ class VLLMClient:
                     "temperature": 0.1,
                 },
                 headers=self._auth_headers(),
-                timeout=budget_s,
+                timeout=remaining_s,
             ) as response:
                 if response.status_code == 429:
                     raise _RateLimitedError(
@@ -708,11 +716,15 @@ def resolve_clients(
     )
 
 
-def _assist_reachable(settings: Settings, timeout_s: float = 2.0) -> bool:
-    """Cheap liveness probe of the assist endpoint (``GET /models``)."""
+def _assist_reachable(
+    settings: Settings, timeout_s: float = 2.0, *, base_url: Optional[str] = None
+) -> bool:
+    """Cheap liveness probe of the assist endpoint, or of ``base_url`` when
+    given (the explain role), via ``GET /models``."""
+    url = base_url if base_url is not None else settings.assist_url
     try:
         response = httpx.get(
-            f"{settings.assist_url.rstrip('/')}/models",
+            f"{url.rstrip('/')}/models",
             headers=VLLMClient(settings=settings)._auth_headers(),
             timeout=timeout_s,
         )
@@ -732,6 +744,22 @@ def resolve_assist_client(
     """
     settings = settings or get_settings()
     if _assist_reachable(settings):
+        return VLLMClient(settings=settings)
+    return None
+
+
+def resolve_explain_client(
+    settings: Optional[Settings] = None,
+) -> Optional[VLLMClient]:
+    """The live client for shift-report explanations, or ``None`` when the
+    explain endpoint (``EXPLAIN_URL``, defaulting to the assist one) is down.
+
+    Probes the endpoint :meth:`VLLMClient.explain` calls, not the assist one:
+    with the explain role on its own endpoint a dead explain host must
+    select the rule sentence up front instead of costing a timeout per row.
+    """
+    settings = settings or get_settings()
+    if _assist_reachable(settings, base_url=settings.explain_url):
         return VLLMClient(settings=settings)
     return None
 

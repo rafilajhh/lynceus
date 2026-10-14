@@ -965,10 +965,10 @@ def create_app() -> FastAPI:
             ) from exc
 
         flagged = [row for row in report["suppliers"] if row["flagged"]]
-        # Probe the assist endpoint only when some row still needs the model:
+        # Probe the explain endpoint only when some row still needs the model:
         # cached explanations must not cost a request per page load.
         client = (
-            pipeline.resolve_assist_client(settings)
+            pipeline.resolve_explain_client(settings)
             if any(shift.needs_model(row) for row in flagged)
             else None
         )

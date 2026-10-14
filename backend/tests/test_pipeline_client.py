@@ -343,6 +343,54 @@ def test_stalled_stream_returns_at_deadline_and_frees_slot(monkeypatch):
     assert _slots_restored()
 
 
+class _LateSlot:
+    """An outbound slot that is granted only after ``delay_s`` (the deadline
+    has passed by then); counts releases."""
+
+    def __init__(self, delay_s: float) -> None:
+        self.delay_s = delay_s
+        self.released = 0
+
+    def acquire(self, timeout=None):
+        time.sleep(self.delay_s)
+        return True
+
+    def release(self):
+        self.released += 1
+
+
+def test_slot_granted_after_deadline_sends_nothing(monkeypatch):
+    sent: list = []
+    monkeypatch.setattr(pipeline.httpx, "stream", lambda *a, **k: sent.append(k))
+    slot = _LateSlot(delay_s=0.1)
+    monkeypatch.setattr(pipeline, "_OUTBOUND_SLOTS", slot)
+    client = VLLMClient(settings=get_settings(), timeout_s=0.05)
+    deadline = time.monotonic() + 0.05
+    with pytest.raises(httpx.ReadTimeout):
+        client._chat_attempt("http://x/v1", "m", [], 8, deadline)
+    assert sent == []  # the request was never sent
+    assert slot.released == 1  # and the slot went straight back
+
+
+def test_request_timeout_is_the_budget_left(monkeypatch):
+    seen: list[float] = []
+
+    def transport(*args, **kwargs):
+        seen.append(kwargs["timeout"])
+        return _streaming_transport(
+            lambda: iter([b'data: {"choices": [{"delta": {"content": "y"}}]}\n',
+                          b"data: [DONE]\n"])
+        )(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline.httpx, "stream", transport)
+    monkeypatch.setattr(pipeline, "_OUTBOUND_SLOTS", _LateSlot(delay_s=0.2))
+    client = VLLMClient(settings=get_settings(), timeout_s=1.0)
+    deadline = time.monotonic() + 1.0
+    assert client._chat_attempt("http://x/v1", "m", [], 8, deadline) == "y"
+    # 0.2 s of the 1 s budget went on the slot wait: httpx gets the rest.
+    assert 0.5 < seen[0] <= 0.8
+
+
 def test_fast_stream_within_deadline_still_returns(monkeypatch):
     def finished():
         yield _SSE_CHUNK + b'data: {"choices": [{"delta": {"content": "y"}}]}\n'

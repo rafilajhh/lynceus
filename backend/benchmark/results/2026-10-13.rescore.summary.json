@@ -46,7 +46,7 @@
   "source_run": "2026-10-13",
   "framing": "Re-scored: the recorded live model outputs of the 2026-10-13 AMD Token Factory run, replayed through the current decision rules. No new model calls.",
   "scope": "component validation on public RealWaste images — not field data from a plant",
-  "disclosure": "The rule change this replay scores (plastic film and textile are RDF feedstock and no longer escalate a load) was motivated by this same run's data, so these rates are not a held-out result. Only a new live run on unseen images can confirm them.",
+  "disclosure": "The replay scores every decision-rule change made after the live run, not one: hard contaminants are now read from the structured fields only, not from the model's prose (one recorded reject, plastic_277.jpg, came from the word 'concrete' in prose; that change alone moves metal precision from 0.86 to 0.90), and plastic film and textile are RDF feedstock and no longer escalate a load. Both changes were motivated by this same run's data, so these rates are not a held-out result. Only a new live run on unseen images can confirm them.",
   "llm_note": "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence of 0.95. That confidence only fills the ocr_confidence gate value, which has no threshold and never moves the verdict. The VLM prompt was not changed for this re-score; latency is not re-measured (no model was called).",
   "date": "2026-10-13",
   "rescored_on": "2026-10-14",

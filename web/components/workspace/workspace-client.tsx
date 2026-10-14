@@ -73,17 +73,23 @@ async function downscaledJpeg(file: File): Promise<Blob | null> {
   }
 }
 
-/** Base64 + MIME of the bytes actually sent for the load photo. */
-async function encodeLoadPhoto(file: File): Promise<{ base64: string; mime: string }> {
+/** Base64 + MIME of the bytes actually sent for the load photo, and whether
+ * they were re-encoded to JPEG here. Original bytes keep the file's own MIME,
+ * empty when the browser does not know it (e.g. HEIC): the backend reads the
+ * image type from the bytes, never from a name or MIME. */
+async function encodeLoadPhoto(
+  file: File,
+): Promise<{ base64: string; mime: string; reencoded: boolean }> {
   const small = await downscaledJpeg(file);
   return small
-    ? { base64: await blobToBase64(small), mime: "image/jpeg" }
-    : { base64: await blobToBase64(file), mime: file.type || "image/jpeg" };
+    ? { base64: await blobToBase64(small), mime: "image/jpeg", reencoded: true }
+    : { base64: await blobToBase64(file), mime: file.type, reencoded: false };
 }
 
-/** The audit names the bytes it stores: a re-encoded photo is a .jpg. */
-function sentFilename(name: string | null, mime: string): string | null {
-  if (!name || mime !== "image/jpeg" || /\.jpe?g$/i.test(name)) return name;
+/** The audit names the bytes it stores: only a photo re-encoded here becomes
+ * a .jpg; original bytes keep their original name. */
+function sentFilename(name: string | null, reencoded: boolean): string | null {
+  if (!name || !reencoded || /\.jpe?g$/i.test(name)) return name;
   return `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
 }
 
@@ -115,7 +121,7 @@ export function WorkspaceClient() {
   const [loadUpload, setLoadUpload] = useState<UploadSlot>(EMPTY_SLOT);
   const [waybillUpload, setWaybillUpload] = useState<UploadSlot>(EMPTY_SLOT);
   const loadBase64 = useRef<string | null>(null);
-  const loadMime = useRef<string>("image/jpeg");
+  const loadSent = useRef({ mime: "image/jpeg", reencoded: false });
   const waybillBase64 = useRef<string | null>(null);
 
   // The photo the current verdict is about, frozen at submit: the intake
@@ -137,8 +143,8 @@ export function WorkspaceClient() {
       setSlot: (s: UploadSlot) => void,
       base64Ref: { current: string | null },
       previous: UploadSlot,
-      encode: (file: File) => Promise<{ base64: string; mime: string }>,
-      mimeRef?: { current: string },
+      encode: (file: File) => Promise<{ base64: string; mime: string; reencoded?: boolean }>,
+      sentRef?: { current: { mime: string; reencoded: boolean } },
     ) => {
       if (previous.previewUrl) URL.revokeObjectURL(previous.previewUrl);
       base64Ref.current = null;
@@ -149,10 +155,10 @@ export function WorkspaceClient() {
       }
       setSlot({ previewUrl: URL.createObjectURL(file), filename: file.name });
       const job: Promise<void> = encode(file).then(
-        ({ base64, mime }) => {
+        ({ base64, mime, reencoded }) => {
           if (encoding.current.get(base64Ref) !== job) return;
           base64Ref.current = base64;
-          if (mimeRef) mimeRef.current = mime;
+          if (sentRef) sentRef.current = { mime, reencoded: reencoded ?? false };
         },
         () => undefined, // unreadable file: no bytes are stored
       );
@@ -164,7 +170,7 @@ export function WorkspaceClient() {
 
   const onLoadPhoto = useCallback(
     (file: File | null) =>
-      pickFile(file, setLoadUpload, loadBase64, loadUpload, encodeLoadPhoto, loadMime),
+      pickFile(file, setLoadUpload, loadBase64, loadUpload, encodeLoadPhoto, loadSent),
     [pickFile, loadUpload],
   );
 
@@ -227,7 +233,7 @@ export function WorkspaceClient() {
     // a data: URL so a later upload revoking its object URL cannot blank
     // the verdict's photo.
     const uploadSrc = loadBase64.current
-      ? `data:${loadMime.current};base64,${loadBase64.current}`
+      ? `data:${loadSent.current.mime || "application/octet-stream"};base64,${loadBase64.current}`
       : loadUpload.previewUrl;
     setEvidence({
       src: uploadSrc ?? null,
@@ -257,7 +263,7 @@ export function WorkspaceClient() {
         truck_id: values.truck_id.trim(),
         supplier: values.supplier.trim() || null,
         photo_base64: loadBase64.current,
-        photo_filename: sentFilename(loadUpload.filename, loadMime.current),
+        photo_filename: sentFilename(loadUpload.filename, loadSent.current.reencoded),
         demo_case: null,
         manifest_text: values.manifest_text.trim() || null,
         waybill_image_base64: waybillBase64.current,

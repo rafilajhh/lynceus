@@ -49,9 +49,13 @@ FRAMING = (
 )
 #: The replay is not a held-out evaluation; the summary says so.
 DISCLOSURE = (
-    "The rule change this replay scores (plastic film and textile are RDF feedstock and "
-    "no longer escalate a load) was motivated by this same run's data, so these rates are "
-    "not a held-out result. Only a new live run on unseen images can confirm them."
+    "The replay scores every decision-rule change made after the live run, not one: "
+    "hard contaminants are now read from the structured fields only, not from the "
+    "model's prose (one recorded reject, plastic_277.jpg, came from the word "
+    "'concrete' in prose; that change alone moves metal precision from 0.86 to 0.90), "
+    "and plastic film and textile are RDF feedstock and no longer escalate a load. "
+    "Both changes were motivated by this same run's data, so these rates are not a "
+    "held-out result. Only a new live run on unseen images can confirm them."
 )
 #: How the LLM side of the replay is built (the live rows kept only gate states).
 LLM_NOTE = (
