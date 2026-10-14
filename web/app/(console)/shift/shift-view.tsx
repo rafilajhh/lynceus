@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { formatRupiah, formatRupiahCompact, providerName } from "@/lib/format";
+import { formatRupiah, formatRupiahCompact } from "@/lib/format";
 import {
   FLAG_MIN_RISK,
   FLAG_MIN_TRUCKS,
@@ -46,10 +46,6 @@ function windowLabel(report: ShiftReport): string {
   return first.day === last.day
     ? `${first.day} ${first.time}–${last.time} UTC`
     : `${first.day} ${first.time} – ${last.day} ${last.time} UTC`;
-}
-
-function humanLabel(label: string): string {
-  return label.replace(/_/g, " ");
 }
 
 /** Drill-through: the flag is an accusation; make its evidence one click away. */
@@ -154,7 +150,6 @@ export function ShiftView() {
         </h1>
         <HeadlineRun report={report} />
         <HandoverLine report={report} />
-        <BreakdownLine report={report} />
       </Panel>
       <SupplierPanel report={report} />
     </div>
@@ -172,29 +167,25 @@ function SampleNote({ report }: { report: ShiftReport }) {
       <span aria-hidden="true" className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-dot-warn" />
       {report.sample ? (
         <p className="m-0">
-          <strong className="font-semibold text-ink">Sample shift — scripted data.</strong>{" "}
-          Every truck here comes from the demo seed or the scripted demo buttons, not a
-          live gate.
+          <strong className="font-semibold text-ink">Sample shift</strong> — scripted
+          demo data.
         </p>
       ) : (
         <p className="m-0">
-          <strong className="font-semibold text-ink">Includes scripted data:</strong>{" "}
+          <strong className="font-semibold text-ink">Includes scripted data</strong> —{" "}
           <span className="figure">{report.sample_records}</span> of{" "}
-          <span className="figure">{report.trucks}</span> trucks come from the demo seed
-          or the scripted demo buttons.
+          <span className="figure">{report.trucks}</span> trucks.
         </p>
       )}
     </div>
   );
 }
 
-/** The four headline figures as one inline run (DESIGN.md: no KPI cards). */
+/** The headline figures: trucks, rejected, prevented loss. */
 function HeadlineRun({ report }: { report: ShiftReport }) {
   const rejected = report.by_verdict.reject ?? 0;
-  const median = report.median_seconds_per_truck;
-  const hasMedian = typeof median === "number" && median > 0;
   const prevented = report.prevented_loss_idr;
-  const parts: { key: string; value: string; unit?: string; label: string; tone?: string; title?: string }[] = [
+  const parts: { key: string; value: string; label: string; tone?: string; title?: string }[] = [
     { key: "trucks", value: String(report.trucks), label: report.trucks === 1 ? "truck" : "trucks" },
     { key: "rejected", value: String(rejected), label: "rejected", tone: rejected > 0 ? "text-verdict-red" : undefined },
     {
@@ -204,17 +195,9 @@ function HeadlineRun({ report }: { report: ShiftReport }) {
       label: "prevented loss",
       tone: prevented > 0 ? "text-verdict-green" : undefined,
     },
-    {
-      key: "median",
-      value: hasMedian ? median.toFixed(1) : "—",
-      unit: hasMedian ? "s" : undefined,
-      label: hasMedian ? "median per truck" : "median (no live inspections)",
-    },
   ];
-  // A fixed 4-up grid keeps every figure on its own cell, so a long money
-  // string can never push a neighbour onto an orphaned second line.
   return (
-    <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-4 px-4 pt-5 pb-4 lg:grid-cols-4">
+    <dl className="m-0 grid grid-cols-3 gap-x-6 px-4 pt-5 pb-4">
       {parts.map((part) => (
         <div key={part.key} className="flex flex-col gap-1">
           <dd
@@ -225,7 +208,6 @@ function HeadlineRun({ report }: { report: ShiftReport }) {
             )}
           >
             {part.value}
-            {part.unit ? <span className="ml-1 text-[0.62em]">{part.unit}</span> : null}
           </dd>
           <dt className="smallcaps">{part.label}</dt>
         </div>
@@ -234,14 +216,6 @@ function HeadlineRun({ report }: { report: ShiftReport }) {
   );
 }
 
-const VERDICT_ORDER = [
-  ["accept", "accepted"],
-  ["escalate_human", "escalated"],
-  ["reject", "rejected"],
-  ["refuse_insufficient_input", "refused"],
-] as const;
-
-/** One plain-text line a supervisor can paste into a handover note. */
 function buildSummaryText(report: ShiftReport): string {
   const rejected = report.by_verdict.reject ?? 0;
   const escalated = report.by_verdict.escalate_human ?? 0;
@@ -298,9 +272,6 @@ function HandoverLine({ report }: { report: ShiftReport }) {
             <span className="figure font-semibold">{open}</span>{" "}
             {open === 1 ? "truck needs" : "trucks need"} resolution before
             handover{" "}
-            <span className="text-muted">
-              ({escalated} escalated · {rejected} rejected)
-            </span>{" "}
             <Link
               href="/inspections"
               className="text-amber underline underline-offset-2"
@@ -322,37 +293,6 @@ function HandoverLine({ report }: { report: ShiftReport }) {
       >
         {copied ? "Copied" : "Copy shift summary"}
       </Button>
-    </div>
-  );
-}
-
-/** Hairline under the figures: every verdict and every contaminant caught. */
-function BreakdownLine({ report }: { report: ShiftReport }) {
-  const contaminants = Object.entries(report.contaminants);
-  return (
-    <div className="flex flex-col gap-1.5 border-t border-seam px-4 py-3 text-[13px] text-muted">
-      <p className="m-0 flex flex-wrap items-baseline gap-y-1">
-        <span className="smallcaps mr-2 whitespace-nowrap">Verdicts</span>
-        {VERDICT_ORDER.map(([key, label], i) => (
-          <span key={key} className="whitespace-nowrap">
-            {i > 0 ? <span aria-hidden="true" className="px-1.5 text-faint">·</span> : null}
-            <span className="figure text-ink">{report.by_verdict[key] ?? 0}</span> {label}
-          </span>
-        ))}
-      </p>
-      <p className="m-0 flex flex-wrap items-baseline gap-y-1">
-        <span className="smallcaps mr-2 whitespace-nowrap">Contaminants caught</span>
-        {contaminants.length === 0 ? (
-          <span>none detected</span>
-        ) : (
-          contaminants.map(([label, n], i) => (
-            <span key={label} className="whitespace-nowrap">
-              {i > 0 ? <span aria-hidden="true" className="px-1.5 text-faint">·</span> : null}
-              {humanLabel(label)} <span className="figure text-ink">{n}</span>
-            </span>
-          ))
-        )}
-      </p>
     </div>
   );
 }
@@ -411,11 +351,12 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
         ))}
       </ul>
 
-      <p className="figure m-0 border-t border-seam px-4 py-3 text-[11px] leading-relaxed text-faint">
-        Risk = (rejected + 0.5 × escalated) ÷ trucks. Flagged at ≥ {FLAG_MIN_TRUCKS} trucks and
-        risk ≥ {FLAG_MIN_RISK.toFixed(2)} (tick on the bar). Prevented loss counts rejected and
-        escalated loads only (impact model, docs/research/realcase-indonesia.md); an accepted
-        load&apos;s market value is not counted.
+      <p
+        title="Risk = (rejected + 0.5 × escalated) ÷ trucks. Prevented loss counts rejected and escalated loads only (impact model, docs/research/realcase-indonesia.md)."
+        className="m-0 border-t border-seam px-4 py-2.5 text-[12px] text-muted"
+      >
+        A supplier is flagged at ≥ {FLAG_MIN_TRUCKS} trucks and risk ≥{" "}
+        {FLAG_MIN_RISK.toFixed(2)} (tick on the bar).
       </p>
     </Panel>
   );
@@ -434,7 +375,7 @@ function SupplierTableRows({ row, report }: { row: SupplierRow; report: ShiftRep
         <TableCell>
           <RiskBar row={row} />
         </TableCell>
-        <TableCell>
+        <TableCell className="whitespace-nowrap">
           <StatusMark row={row} />
         </TableCell>
       </TableRow>
@@ -479,41 +420,24 @@ function StatusMark({ row }: { row: SupplierRow }) {
   if (row.flagged) return <Badge variant="escalate">Flagged</Badge>;
   return (
     <Badge variant="default">
-      {row.trucks < FLAG_MIN_TRUCKS ? "Too few trucks" : "Within limit"}
+      {row.trucks < FLAG_MIN_TRUCKS ? "Few trucks" : "Within limit"}
     </Badge>
   );
 }
 
-/** The explanation plus where it came from, stated exactly. */
+/** The actionable sentence for a flagged supplier. */
 function Explanation({
   row,
-  report,
   className,
 }: {
   row: SupplierRow;
   report: ShiftReport;
   className?: string;
 }) {
-  const fromModel = row.explanation_source === "model";
-  const source = fromModel
-    ? [
-        "Assist model",
-        report.explanation_provider ? providerName(report.explanation_provider) : null,
-        report.explanation_model,
-        "every number checked against this row",
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "Rule-based summary from this row's counts (no checked model text available)";
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <p className="m-0 text-[13.5px] leading-relaxed text-ink">{row.explanation}</p>
-      <p className="figure m-0 flex items-start gap-1.5 text-[11px] text-faint">
-        <span
-          aria-hidden="true"
-          className={cn("mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full", fromModel ? "bg-dot-ok" : "bg-dot-idle")}
-        />
-        {source}
+      <p className="m-0 max-w-[78ch] text-[13.5px] leading-relaxed text-ink">
+        {row.explanation}
       </p>
     </div>
   );
