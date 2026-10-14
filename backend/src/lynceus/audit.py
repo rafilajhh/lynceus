@@ -56,6 +56,7 @@ Only stdlib + pydantic v2.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -1246,7 +1247,31 @@ def load_record(path: "str | os.PathLike[str]") -> AuditRecord:
             str(record_path),
             f"record must be a JSON object (got {type(data).__name__})",
         )
-    return _decode_strict(data, str(record_path))
+
+    # Schema first: a structurally invalid record must fail with its specific
+    # error (enum, timestamp, format_version, ...), not a digest complaint.
+    record = _decode_strict(data, str(record_path))
+
+    # Tamper evidence (invariant 6): a record that is schema-valid but whose
+    # body no longer matches its stored digest was edited after writing.
+    # Recompute over the canonical digestless serialization with the writer's
+    # exact canonicalization and compare in constant time.
+    digest = data["digest"]
+    stored = digest["record_sha256"]
+    recomputed_payload = dict(data)
+    recomputed = dict(digest)
+    recomputed["record_sha256"] = EMPTY_SHA256_FIELD
+    recomputed_payload["digest"] = recomputed
+    _stamp_record_digest(recomputed_payload)
+    expected = recomputed_payload["digest"]["record_sha256"]
+    if not isinstance(stored, str) or not hmac.compare_digest(stored, expected):
+        raise _err(
+            _ERR_FORMAT,
+            str(record_path),
+            "digest.record_sha256 mismatch: record body does not match its stored digest",
+        )
+
+    return record
 
 
 def list_inspections(storage_dir: "str | os.PathLike[str]") -> List[Dict[str, Any]]:

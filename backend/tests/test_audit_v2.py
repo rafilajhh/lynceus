@@ -136,6 +136,11 @@ def test_reads_v1_record(tmp_path):
     for key in ("provider", "latency_ms"):
         data["ai_outputs"]["llm"].pop(key, None)
     data["engine_outputs"]["recommendation"].pop("actions", None)
+    # Downgrading the body changes the canonical serialization, so the stored
+    # digest must be re-stamped exactly as the v1 writer would have produced
+    # it; otherwise the load-time tamper check correctly rejects the record.
+    data["digest"]["record_sha256"] = A.EMPTY_SHA256_FIELD
+    A._stamp_record_digest(data)
     path.write_text(json.dumps(data), encoding="utf-8")
 
     loaded = A.load_record(path)

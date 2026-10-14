@@ -196,9 +196,15 @@ def test_audit_invariants():
     p1 = storage / "inspection-000001" / "audit.json"
     orig = p1.read_text(encoding="utf-8")
 
-    def edit_and_load(mutate):
+    def edit_and_load(mutate, restamp=False):
         data = json.loads(orig)
         mutate(data)
+        if restamp:
+            # A schema-valid body change (e.g. a v1 downgrade) must re-stamp
+            # the digest exactly as that writer would have, or the load-time
+            # tamper check correctly rejects the record.
+            data["digest"]["record_sha256"] = A.EMPTY_SHA256_FIELD
+            A._stamp_record_digest(data)
         p1.write_text(json.dumps(data), encoding="utf-8")
         try:
             A.load_record(p1)
@@ -217,7 +223,7 @@ def test_audit_invariants():
 
     check("hand-edit status enum rejected", "execution_status" in (edit_and_load(set_status) or ""))
     check("future format_version rejected", "format_version" in (edit_and_load(bump_version) or ""))
-    check("v1 format_version still readable", edit_and_load(lambda d: d.update(format_version=1)) is None)
+    check("v1 format_version still readable", edit_and_load(lambda d: d.update(format_version=1), restamp=True) is None)
     check("bad digest regex rejected", "inputs.photo.sha256" in (edit_and_load(bad_digest) or ""))
     check("extra key rejected (extra=forbid)", "sneaky" in (edit_and_load(extra_key) or ""))
     check("non-Z timestamp rejected", "verdict.decided_at_utc" in (edit_and_load(bad_ts) or ""))
@@ -254,10 +260,33 @@ def test_audit_invariants():
 
     print("== invariant 5 docstring: completed != correct ==")
     check("gates state not_evaluated explicit at begin", all(
-        getattr(rec.gates, g).state == "not_evaluated" for g in A.GATE_NAMES) or True)
+        getattr(rec.gates, g).state == "not_evaluated" for g in A.GATE_NAMES))
     final_loaded = A.load_record(p1)
     check("completed record still carries failed gate",
           final_loaded.execution_status == "completed" and final_loaded.gates.manifest_crosscheck.state == "failed")
+
+    print("== tamper evidence: body edit invalidates the stored digest ==")
+    tampered = json.loads(p1.read_text(encoding="utf-8"))
+    tampered["inputs"]["truck_id"] = "HACKED-TRUCK"
+    p1.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
+    try:
+        A.load_record(p1)
+        check("hand-edited record body is rejected on load", False, "loaded without error")
+    except A.AuditError:
+        check("hand-edited record body is rejected on load", True)
+
+    tampered2 = json.loads(p1.read_text(encoding="utf-8"))
+    # restore truck_id, tamper the verdict decision instead
+    tampered2["inputs"]["truck_id"] = rec.inputs.truck_id
+    tampered2["verdict"]["decision"] = "reject"
+    p1.write_text(json.dumps(tampered2, indent=2), encoding="utf-8")
+    try:
+        A.load_record(p1)
+        check("tampered verdict is rejected on load", False, "loaded without error")
+    except A.AuditError:
+        check("tampered verdict is rejected on load", True)
+    # restore the pristine record for subsequent checks
+    A._atomic_write_json(p1, json.loads(json.dumps(final_loaded.model_dump(mode="json"))))
 
     print("== failed finish on nonexistent record ==")
     raises("finish unknown record", A.finish_record, storage, "inspection-999999", "failed", "2099-01-01T02:15:41Z",

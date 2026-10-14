@@ -463,6 +463,10 @@ def test_legacy_record_without_ai_gas_still_decodes(client, tmp_path):
     path = tmp_path / resp.json()["record_id"] / RECORD_FILENAME
     data = json.loads(path.read_text(encoding="utf-8"))
     data["ai_outputs"].pop("gas")
+    # Removing a field changes the canonical body, so re-stamp the digest as
+    # the legacy (pre-gas) writer would have produced it.
+    data["digest"]["record_sha256"] = audit.EMPTY_SHA256_FIELD
+    audit._stamp_record_digest(data)
     path.write_text(json.dumps(data), encoding="utf-8")
     record = audit.load_record(path)
     assert record.ai_outputs.gas is None
