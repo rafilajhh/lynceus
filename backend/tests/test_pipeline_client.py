@@ -6,8 +6,14 @@ and the pipeline concurrency tests use in-process fake clients.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import threading
 import time
+from email.utils import parsedate_to_datetime
+
+import httpx
+
 
 import pytest
 
@@ -85,6 +91,62 @@ def test_llm_result_carries_provider_and_latency(monkeypatch):
     result = client.llm("waybill", {})
     assert result["provider"] == "openai-compatible"
     assert result["latency_ms"] >= 0
+
+
+@pytest.mark.parametrize(
+    "header, expected",
+    [
+        ("Wed, 21 Oct 2015 07:28:05 GMT", 5.0),
+        ("Wed, 21 Oct 2015 07:27:59 GMT", 0.0),
+        ("garbage", 1.0),
+        ("3600", 10.0),
+        ("Wed, 21 Oct 2015 08:28:00 GMT", 10.0),
+    ],
+)
+def test_retry_after_date_and_cap(monkeypatch, header, expected):
+    now = parsedate_to_datetime("Wed, 21 Oct 2015 07:28:00 GMT").timestamp()
+    monkeypatch.setattr(pipeline.time, "time", lambda: now)
+    assert pipeline._parse_retry_after(header) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("status", [200, 429, 500])
+def test_outbound_call_acquires_shared_budget_and_releases(monkeypatch, status):
+    budget = getattr(pipeline, "_OUTBOUND_SLOTS", None)
+    assert isinstance(budget, threading.BoundedSemaphore)
+
+    @contextlib.contextmanager
+    def transport(*args, **kwargs):
+        # One slot is held by _chat_once; only three remain available.
+        acquired = 0
+        try:
+            while budget.acquire(blocking=False):
+                acquired += 1
+            assert acquired == 3
+        finally:
+            for _ in range(acquired):
+                budget.release()
+        yield httpx.Response(
+            status,
+            request=httpx.Request("POST", "http://x/v1/chat/completions"),
+            json={"choices": [{"message": {"content": "ok"}}]},
+        )
+
+    monkeypatch.setattr(pipeline.httpx, "stream", transport)
+    client = VLLMClient(settings=get_settings())
+    if status == 200:
+        assert client._chat_once("http://x/v1", "m", []) == "ok"
+    else:
+        error = _RateLimitedError if status == 429 else httpx.HTTPStatusError
+        with pytest.raises(error):
+            client._chat_once("http://x/v1", "m", [])
+    acquired = 0
+    try:
+        while budget.acquire(blocking=False):
+            acquired += 1
+        assert acquired == 4
+    finally:
+        for _ in range(acquired):
+            budget.release()
 
 
 def test_429_retry_then_raises(monkeypatch):

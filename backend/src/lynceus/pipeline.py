@@ -23,8 +23,11 @@ import copy
 import json
 import math
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Optional, Protocol
 
 import httpx
@@ -47,26 +50,30 @@ class LiveAIUnavailableError(RuntimeError):
     """Live AI failed and stub fallback is disabled (fail-closed mode)."""
 
 
-#: A 429 asking us to wait longer than this is surfaced at once: sleeping on
-#: a judging-day request thread for a minute (or an hour) helps nobody.
+#: Bound each retry wait so a shared-key 429 cannot stall a request indefinitely.
 MAX_RETRY_AFTER_S = 10.0
 _DEFAULT_RETRY_AFTER_S = 1.0
 
+#: One process-wide budget across VLM, LLM, assist and shift calls. Four leaves
+#: headroom for teammates under Token Factory's eight-concurrent shared-key cap.
+_OUTBOUND_SLOTS = threading.BoundedSemaphore(4)
+
 
 def _parse_retry_after(value: Any) -> float:
-    """Seconds to wait from a ``Retry-After`` header, never raising.
-
-    Only the numeric-seconds form is honoured; an HTTP-date, garbage, or
-    ``nan`` falls back to 1 s.  Negative values become 0.  Large values are
-    returned as-is — the caller gives up above :data:`MAX_RETRY_AFTER_S`.
-    """
+    """Parse numeric seconds or an HTTP-date, bounded to a 0..10 s wait."""
     try:
         seconds = float(value)
     except (TypeError, ValueError):
-        return _DEFAULT_RETRY_AFTER_S
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            seconds = retry_at.timestamp() - time.time()
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            return _DEFAULT_RETRY_AFTER_S
     if math.isnan(seconds):
         return _DEFAULT_RETRY_AFTER_S
-    return max(seconds, 0.0)
+    return min(MAX_RETRY_AFTER_S, max(seconds, 0.0))
 
 
 class _RateLimitedError(Exception):
@@ -255,7 +262,7 @@ class VLLMClient:
         self, base_url: str, model: str, messages: list, max_tokens: int = 512
     ) -> str:
         """Single chat-completions attempt; raises on transport/HTTP errors."""
-        with httpx.stream(
+        with _OUTBOUND_SLOTS, httpx.stream(
             "POST",
             f"{base_url.rstrip('/')}/chat/completions",
             json={
@@ -287,24 +294,19 @@ class VLLMClient:
         The response is read through two paths: SSE when the endpoint streams
         (``text/event-stream``), plain JSON otherwise.  Shared endpoints
         (AMD Token Factory) rate-limit per key, so a 429 is retried after
-        its ``Retry-After`` hint (at most 10 s each; a longer ask surfaces at
-        once) — up to two waits, then the error surfaces
+        its ``Retry-After`` hint (capped at 10 s including jitter), with
+        up to two waits before the error surfaces
         (and the honest stub-fallback / fail-closed path takes over).
         """
         for attempt in range(3):
             try:
                 return self._chat_once(base_url, model, messages, max_tokens)
             except _RateLimitedError as exc:
-                if exc.retry_after > MAX_RETRY_AFTER_S:
-                    raise ValueError(
-                        f"endpoint rate-limited; asked to wait {exc.retry_after:g}s "
-                        f"(> {MAX_RETRY_AFTER_S:g}s cap), giving up ({base_url})"
-                    ) from exc
                 if attempt == 2:
                     raise ValueError(
                         f"endpoint rate-limited after 3 attempts ({base_url})"
                     ) from exc
-                time.sleep(exc.retry_after + 0.25 * (attempt + 1))
+                time.sleep(min(MAX_RETRY_AFTER_S, exc.retry_after + 0.25 * (attempt + 1)))
         raise AssertionError("unreachable")
 
     def _chat_json(

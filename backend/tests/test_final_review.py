@@ -42,7 +42,7 @@ def _client_with_429(monkeypatch, retry_after):
         ("2", 2.0),
         ("0", 0.0),
         ("-5", 0.0),
-        ("Wed, 21 Oct 2026 07:28:00 GMT", 1.0),  # HTTP-date: not seconds
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 0.0),
         ("soon", 1.0),
         ("nan", 1.0),
         (None, 1.0),
@@ -55,22 +55,22 @@ def test_retry_after_is_parsed_safely(monkeypatch, header, expected):
     assert err.value.retry_after == expected
 
 
-def test_retry_after_http_date_does_not_raise_value_error_and_waits_1s(monkeypatch):
-    client = _client_with_429(monkeypatch, "Wed, 21 Oct 2026 07:28:00 GMT")
+def test_retry_after_past_http_date_retries_without_date_delay(monkeypatch):
+    client = _client_with_429(monkeypatch, "Wed, 21 Oct 2015 07:28:00 GMT")
     sleeps = []
     monkeypatch.setattr(pipeline.time, "sleep", sleeps.append)
     with pytest.raises(ValueError, match="rate-limited after 3 attempts"):
         client._chat("http://x/v1", "m", [])
-    assert len(sleeps) == 2 and all(1.0 <= s <= 2.0 for s in sleeps)
+    assert sleeps == [0.25, 0.5]
 
 
-def test_retry_after_over_10s_gives_up_immediately(monkeypatch):
+def test_retry_after_over_10s_waits_only_at_cap(monkeypatch):
     client = _client_with_429(monkeypatch, "3600")
     sleeps = []
     monkeypatch.setattr(pipeline.time, "sleep", sleeps.append)
     with pytest.raises(ValueError, match="rate-limited"):
         client._chat("http://x/v1", "m", [])
-    assert sleeps == []
+    assert sleeps == [10.0, 10.0]
 
 
 def test_retry_after_within_cap_still_sleeps(monkeypatch):
@@ -79,7 +79,7 @@ def test_retry_after_within_cap_still_sleeps(monkeypatch):
     monkeypatch.setattr(pipeline.time, "sleep", sleeps.append)
     with pytest.raises(ValueError, match="rate-limited after 3 attempts"):
         client._chat("http://x/v1", "m", [])
-    assert len(sleeps) == 2 and all(10.0 <= s <= 11.0 for s in sleeps)
+    assert sleeps == [10.0, 10.0]
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +144,8 @@ def test_resolve_clients_unreachable_variants(monkeypatch):
     monkeypatch.setenv("LYNCEUS_ALLOW_STUB_FALLBACK", "1")
     clients = pipeline.resolve_clients({}, get_settings())
     assert clients.provenance == "stub_fallback_live_error"
+    assert isinstance(clients, pipeline.StubAIClients)
+    assert clients.fallback_reason is not None
     assert "unreachable" in clients.fallback_reason
     out = pipeline.run_inspection({"photo_base64": "x"}, clients)
     assert out["provenance"] == "stub_fallback_live_error"
