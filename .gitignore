@@ -52,3 +52,8 @@ backend/benchmark/runs/
 
 # Local Docker env file (holds the key)
 deploy/lynceus.env
+
+# QA screenshots (agent artifacts, not part of the app)
+/app-*.png
+/shift-*.png
+/validation-*.png
