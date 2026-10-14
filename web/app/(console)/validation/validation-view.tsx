@@ -135,19 +135,24 @@ export function ValidationView() {
         <h1 id="validation-title" className="sr-only">
           Validation benchmark
         </h1>
-        <p className="m-0 px-4 pt-4 text-[15px] font-semibold text-ink">{framing}.</p>
-        <p className="m-0 max-w-[78ch] px-4 pt-1.5 text-[13px] leading-relaxed text-muted">
-          Each image was posted live through the gate&apos;s API code to the vision model on AMD
-          Token Factory, with the same neutral waybill and a consistent weight, so the weight
-          and cross-check gates pass and the photo decides. Scripted demo cases were not used.
-        </p>
         <HeadlineRun summary={summary} />
+        <p className="m-0 max-w-[78ch] border-t border-seam px-4 pt-3 text-[13px] leading-relaxed text-muted">
+          {framing}. Each image was posted live through the gate&apos;s API code to the vision
+          model on AMD Token Factory, with the same neutral waybill and a consistent weight, so
+          the weight and cross-check gates pass and the photo decides. Scripted demo cases were
+          not used.
+        </p>
         <Incomplete summary={summary} />
         <Retries summary={summary} />
       </Panel>
 
       <Panel>
         <PanelHead title="Confusion matrix" meta="rows: expected · columns: gate verdict" />
+        <p className="m-0 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
+          <strong className="font-semibold text-ink">Escalate is policy, not vision error:</strong>{" "}
+          light contaminants (plastic film, glass, textile) are escalated by rule; only metal,
+          rock, concrete, tyre and e-waste are rejected.
+        </p>
         <ConfusionTable summary={summary} />
         <p className="m-0 max-w-[78ch] border-t border-seam px-4 py-3 text-[12.5px] leading-relaxed text-muted">
           <strong className="font-semibold text-ink">Read this with the policy in mind.</strong>{" "}
@@ -178,36 +183,45 @@ export function ValidationView() {
   );
 }
 
-/** Headline as one inline run (DESIGN.md: no KPI-card grid). */
+/** Headline: the verdict on the gate, in numbers and in words. */
 function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
   const r = summary.reject;
+  const caught = `${r.tp} of ${r.tp + r.fn}`;
   const parts = [
     {
       key: "recall",
       value: ratio(r.recall),
-      label: `recall: ${r.tp} of ${r.tp + r.fn} metal images rejected (95% interval ${wilson(r.tp, r.tp + r.fn)})`,
+      label: "recall",
+      sub: `${caught} metal images rejected (95% interval ${wilson(r.tp, r.tp + r.fn)})`,
     },
     {
       key: "precision",
       value: ratio(r.precision),
-      label: `precision: ${r.tp} of ${r.tp + r.fp} rejects were metal (95% interval ${wilson(r.tp, r.tp + r.fp)})`,
+      label: "precision",
+      sub: `${r.tp} of ${r.tp + r.fp} rejects were metal (95% interval ${wilson(r.tp, r.tp + r.fp)})`,
     },
-    { key: "f1", value: ratio(r.f1), label: "F1" },
+    { key: "f1", value: ratio(r.f1), label: "F1", sub: null as string | null },
   ];
   return (
-    <div className="mt-4 border-t border-seam px-4 pt-4 pb-4">
-      <p className="smallcaps m-0 mb-2">REJECT gate, metal as positive</p>
-      <p className="m-0 flex flex-col gap-y-1.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-6 sm:gap-y-2">
+    <div className="px-4 pt-4 pb-4">
+      <p className="smallcaps m-0 mb-3">REJECT gate, metal as positive</p>
+      <dl className="m-0 grid grid-cols-3 gap-x-6">
         {parts.map((part) => (
-          <span key={part.key} className="inline-flex flex-wrap items-baseline gap-x-2">
-            <strong className="figure text-[clamp(24px,3vw,34px)] leading-tight font-semibold text-ink">
+          <div key={part.key} className="flex flex-col gap-1">
+            <dd className="figure m-0 whitespace-nowrap text-[clamp(24px,3vw,34px)] leading-tight font-semibold text-ink">
               {part.value}
-            </strong>
-            <span className="text-[13px] text-muted">{part.label}</span>
-          </span>
+            </dd>
+            <dt className="text-[14px] font-semibold text-ink">{part.label}</dt>
+            {part.sub ? (
+              <p className="m-0 text-[12px] leading-snug text-muted">{part.sub}</p>
+            ) : null}
+          </div>
         ))}
+      </dl>
+      <p className="m-0 mt-3 text-[14px] font-medium text-ink">
+        Out of every {r.tp + r.fn} loads carrying metal, the gate rejected {r.tp}.
       </p>
-      <p className="figure m-0 mt-3 text-[12px] text-faint">
+      <p className="figure m-0 mt-2 text-[12px] text-faint">
         n = {summary.n} images · {summary.errors} errors or refusals in the final results (an error on a
         metal image counts as a miss) · one run, small sample: the intervals are wide
       </p>
