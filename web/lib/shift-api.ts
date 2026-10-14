@@ -24,6 +24,54 @@ const supplierRowSchema = z.object({
   explanation_source: z.enum(["model", "rule"]).nullish().catch(null),
 });
 
+const money = z.number().catch(0);
+
+const sideSchema = z.object({
+  escaped_hard_loads: z.number().catch(0),
+  expected_damage_idr: money,
+  trucks_checked_by_hand: z.number().catch(0),
+  operator_minutes: z.number().catch(0),
+  false_rejects: z.number().catch(0),
+  false_reject_cost_idr: money,
+});
+
+const scenarioSchema = z.object({
+  without: sideSchema,
+  with: sideSchema,
+  expected_loss_avoided_idr: money,
+  false_reject_cost_idr: money,
+  operator_minutes_saved: z.number().catch(0),
+  operator_time_value_idr: money,
+  net_value_idr: money,
+});
+
+const valueParameterSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  unit: z.string(),
+  low: z.number(),
+  base: z.number(),
+  high: z.number(),
+  sources: z.array(z.string()).catch([]),
+  assumption: z.boolean().catch(true),
+  rationale: z.string().catch(""),
+});
+
+/** Expected value per 1,000 trucks, with vs without Lynceus (impact.value_model).
+    Any malformed part drops the whole model: half a value model would mislead. */
+const valueModelSchema = z.object({
+  trucks: z.number().int().positive(),
+  scenarios: z.object({ low: scenarioSchema, base: scenarioSchema, high: scenarioSchema }),
+  parameters: z.array(valueParameterSchema),
+  worst_case_per_incident_idr: z.number().nonnegative(),
+  benchmark_file: z.string(),
+  benchmark_reject_precision: z.number().nullish(),
+  eur_idr_rate: z.number().positive(),
+  eur_idr_rate_date: z.string(),
+  eur_idr_source_url: z.string(),
+  note: z.string().nullish(),
+});
+
 const shiftReportSchema = z.object({
   window: z
     .object({
@@ -36,7 +84,11 @@ const shiftReportSchema = z.object({
   trucks: count,
   by_verdict: z.record(z.string(), count).catch({}),
   contaminants: z.record(z.string(), count).catch({}),
+  /** Sum of per-verdict estimates; each reject's assumes certain damage, so
+      this is worst-case exposure (loss_exposure_idr is the same figure). */
   prevented_loss_idr: z.number().nonnegative().catch(0),
+  loss_exposure_idr: z.number().nonnegative().nullish().catch(null),
+  value_model: valueModelSchema.nullish().catch(null),
   median_seconds_per_truck: z.number().nonnegative().nullish().catch(null),
   suppliers: z
     .array(z.unknown())
@@ -55,6 +107,8 @@ const shiftReportSchema = z.object({
 
 export type ShiftReport = z.infer<typeof shiftReportSchema>;
 export type SupplierRow = ShiftReport["suppliers"][number];
+export type ValueModel = NonNullable<ShiftReport["value_model"]>;
+export type ValueScenario = ValueModel["scenarios"]["base"];
 
 /** Risk rule, mirrored from backend/src/lynceus/shift.py for the legend. */
 export const FLAG_MIN_TRUCKS = 3;

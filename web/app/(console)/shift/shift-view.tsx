@@ -10,6 +10,7 @@ import {
   fetchShiftReport,
   type ShiftReport,
   type SupplierRow,
+  type ValueModel,
 } from "@/lib/shift-api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,37 @@ type LoadState =
   | { kind: "ready"; report: ShiftReport };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+type Currency = "IDR" | "EUR";
+/** Money in the display currency: compact by default, full for tooltips/rates. */
+type Money = (idr: number, opts?: { full?: boolean }) => string;
+
+/** EUR uses the backend's stated ECB reference rate; without it, IDR only. */
+function moneyFormatter(currency: Currency, eurIdrRate: number | null): Money {
+  return (idr, opts) => {
+    if (!Number.isFinite(idr)) return "—";
+    const sign = idr < 0 ? "−" : "";
+    const abs = Math.abs(idr);
+    if (currency === "EUR" && eurIdrRate) {
+      const eur = abs / eurIdrRate;
+      return (
+        sign +
+        new Intl.NumberFormat("en-GB", {
+          style: "currency",
+          currency: "EUR",
+          notation: opts?.full ? "standard" : "compact",
+          maximumFractionDigits: eur < 100 ? 2 : opts?.full ? 0 : 1,
+        }).format(eur)
+      );
+    }
+    return sign + (opts?.full ? formatRupiah(abs) : formatRupiahCompact(abs));
+  };
+}
+
+/** "1.000" / "0,6": the console's id-ID number register (as formatWeight). */
+function formatCount(n: number, digits = 1): string {
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: digits }).format(n);
+}
 
 /** "2026-10-13T09:53:07Z" → { day: "13 Oct", time: "09:53" } (UTC, no locale drift). */
 function utcParts(iso: string | null | undefined): { day: string; time: string } | null {
@@ -66,6 +98,7 @@ function SupplierLink({ name, className }: { name: string; className?: string })
 
 export function ShiftView() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [currency, setCurrency] = useState<Currency>("IDR");
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState({ kind: "loading" });
@@ -140,19 +173,253 @@ export function ShiftView() {
     );
   }
 
+  const model = report.value_model ?? null;
+  const money = moneyFormatter(currency, model?.eur_idr_rate ?? null);
+
   return (
     <div className="flex flex-col gap-4">
       <SampleNote report={report} />
+      {model ? (
+        <CurrencyToggle currency={currency} onChange={setCurrency} model={model} />
+      ) : null}
       <Panel aria-labelledby="shift-headline">
         <PanelHead title="Shift report" meta={windowLabel(report)} />
         <h1 id="shift-headline" className="sr-only">
           Shift report
         </h1>
-        <HeadlineRun report={report} />
+        <HeadlineRun report={report} money={money} />
         <HandoverLine report={report} />
       </Panel>
+      {model ? <ValuePanel model={model} money={money} /> : null}
       <SupplierPanel report={report} />
     </div>
+  );
+}
+
+/** IDR/EUR display toggle; the EUR rate and its source are stated, never implied. */
+function CurrencyToggle({
+  currency,
+  onChange,
+  model,
+}: {
+  currency: Currency;
+  onChange: (currency: Currency) => void;
+  model: ValueModel;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[12px] text-muted">
+      {currency === "EUR" ? (
+        <span>
+          EUR at the{" "}
+          <a
+            href={model.eur_idr_source_url}
+            className="text-amber underline underline-offset-2"
+          >
+            ECB reference rate
+          </a>{" "}
+          of {model.eur_idr_rate_date}:{" "}
+          <span className="figure text-ink">€1 = Rp {formatCount(model.eur_idr_rate, 2)}</span>
+        </span>
+      ) : null}
+      <div
+        role="group"
+        aria-label="Display currency"
+        className="inline-flex rounded-[8px] border border-seam p-0.5"
+      >
+        {(["IDR", "EUR"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={currency === option}
+            onClick={() => onChange(option)}
+            className={cn(
+              "figure rounded-[6px] px-2.5 py-1 text-[12px] transition-colors duration-100",
+              currency === option ? "bg-raised text-ink" : "text-muted hover:text-ink",
+            )}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** "50 h" from minutes. */
+function hours(minutes: number): string {
+  return `${formatCount(minutes / 60)} h`;
+}
+
+/** One parameter value in its unit: share → %, money → display currency. */
+function paramValue(unit: string, value: number, money: Money): string {
+  switch (unit) {
+    case "share":
+      return `${formatCount(value * 100)}%`;
+    case "IDR":
+      return money(value);
+    case "IDR/t":
+      return `${money(value, { full: true })}/t`;
+    case "IDR/min":
+      return `${money(value, { full: true })}/min`;
+    default:
+      return `${formatCount(value)} ${unit}`;
+  }
+}
+
+function sourceHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Expected value per 1,000 trucks, with vs without Lynceus (impact.value_model).
+ * With/without lead; every assumption sits one click away, never hidden.
+ */
+function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
+  const { low, base, high } = model.scenarios;
+  const net = base.net_value_idr;
+  const rows: { key: string; label: string; without: string; with: string }[] = [
+    {
+      key: "damage",
+      label: "Expected damage from escaped hard items",
+      without: money(base.without.expected_damage_idr),
+      with: money(base.with.expected_damage_idr),
+    },
+    {
+      key: "escaped",
+      label: "Hard-contaminant loads that get through",
+      without: formatCount(base.without.escaped_hard_loads),
+      with: formatCount(base.with.escaped_hard_loads),
+    },
+    {
+      key: "hand",
+      label: "Trucks checked by hand",
+      without: formatCount(base.without.trucks_checked_by_hand, 0),
+      with: formatCount(base.with.trucks_checked_by_hand, 0),
+    },
+    {
+      key: "time",
+      label: "Gate staff time",
+      without: hours(base.without.operator_minutes),
+      with: hours(base.with.operator_minutes),
+    },
+    {
+      key: "false",
+      label: "Clean loads wrongly rejected",
+      without: formatCount(base.without.false_rejects, 0),
+      with: `${formatCount(base.with.false_rejects, 0)} · ${money(base.with.false_reject_cost_idr)}`,
+    },
+  ];
+
+  return (
+    <Panel aria-labelledby="value-head">
+      <PanelHead title={`Value per ${formatCount(model.trucks, 0)} trucks`} meta="expected value · base case" />
+      <h2 id="value-head" className="sr-only">
+        Value per {model.trucks} trucks
+      </h2>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-raised">
+            <TableHead />
+            <TableHead className="text-right">Without Lynceus</TableHead>
+            <TableHead className="text-right">With Lynceus</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.key} className="hover:bg-transparent">
+              <TableCell className="text-[12.5px] text-muted">{row.label}</TableCell>
+              <TableCell className="figure whitespace-nowrap text-right text-[12.5px] text-ink">
+                {row.without}
+              </TableCell>
+              <TableCell className="figure whitespace-nowrap text-right text-[12.5px] text-ink">
+                {row.with}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      <div className="flex flex-col gap-1 border-t border-seam px-4 py-3">
+        <p className="m-0 text-[13.5px] text-ink">
+          Net expected value{" "}
+          <strong
+            title={money(net, { full: true })}
+            className={cn(
+              "figure font-semibold",
+              net > 0 ? "text-verdict-green" : net < 0 ? "text-verdict-red" : undefined,
+            )}
+          >
+            {money(net)}
+          </strong>{" "}
+          per {formatCount(model.trucks, 0)} trucks, before Lynceus&apos;s own running cost.
+        </p>
+        <p className="figure m-0 text-[12px] text-muted">
+          = {money(base.expected_loss_avoided_idr)} loss avoided − {money(base.false_reject_cost_idr)}{" "}
+          wrong rejects {base.operator_time_value_idr < 0 ? "−" : "+"}{" "}
+          {money(Math.abs(base.operator_time_value_idr))} staff time · range {money(low.net_value_idr)}{" "}
+          to {money(high.net_value_idr)}
+        </p>
+      </div>
+
+      <details className="group border-t border-seam px-4 py-3">
+        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
+          Assumptions and sources
+        </summary>
+        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
+          The shift&apos;s worst-case exposure books {money(model.worst_case_per_incident_idr)} for
+          every rejected hard contaminant, as if each would certainly have destroyed a shredder
+          and stopped the kiln for an hour. This model weights that damage by its probability
+          and compares a manual check of every truck (without) with Lynceus screening every
+          truck and sending only flagged ones to that check (with). Range: low sets every
+          adjustable value to the end least favourable to Lynceus, high to the most favourable.
+          {model.note ? ` ${model.note}` : ""}
+        </p>
+        <ul className="m-0 mt-3 flex list-none flex-col gap-2.5 p-0">
+          {model.parameters.map((param) => (
+            <li key={param.key} className="text-[12.5px] leading-relaxed">
+              <span className="text-ink">{param.label}</span>{" "}
+              <span className="figure text-ink">
+                {paramValue(param.unit, param.base, money)}
+              </span>
+              {param.low !== param.base || param.high !== param.base ? (
+                <span className="figure text-muted">
+                  {" "}
+                  (low {paramValue(param.unit, param.low, money)}, high{" "}
+                  {paramValue(param.unit, param.high, money)})
+                </span>
+              ) : null}
+              {param.assumption ? (
+                <Badge variant="escalate" className="ml-2 align-middle">
+                  Assumption
+                </Badge>
+              ) : null}
+              <span className="block text-muted">
+                {param.rationale}
+                {param.sources.map((url) => (
+                  <span key={url}>
+                    {" "}
+                    <a href={url} className="text-amber underline underline-offset-2">
+                      {sourceHost(url)}
+                    </a>
+                  </span>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="m-0 mt-3 text-[12px] text-muted">
+          Benchmark rates from {model.benchmark_file}. EUR figures use the{" "}
+          <a href={model.eur_idr_source_url} className="text-amber underline underline-offset-2">
+            ECB reference rate
+          </a>{" "}
+          of {model.eur_idr_rate_date} (€1 = Rp {formatCount(model.eur_idr_rate, 2)}).
+        </p>
+      </details>
+    </Panel>
   );
 }
 
@@ -181,18 +448,21 @@ function SampleNote({ report }: { report: ShiftReport }) {
   );
 }
 
-/** The headline figures: trucks, rejected, prevented loss. */
-function HeadlineRun({ report }: { report: ShiftReport }) {
+/** The headline figures: trucks, rejected, worst-case loss exposure avoided. */
+function HeadlineRun({ report, money }: { report: ShiftReport; money: Money }) {
   const rejected = report.by_verdict.reject ?? 0;
-  const prevented = report.prevented_loss_idr;
+  const prevented = report.loss_exposure_idr ?? report.prevented_loss_idr;
   const parts: { key: string; value: string; label: string; tone?: string; title?: string }[] = [
     { key: "trucks", value: String(report.trucks), label: report.trucks === 1 ? "truck" : "trucks" },
     { key: "rejected", value: String(rejected), label: "rejected", tone: rejected > 0 ? "text-verdict-red" : undefined },
     {
       key: "prevented",
-      value: formatRupiahCompact(prevented),
-      title: prevented > 0 ? formatRupiah(prevented) : undefined,
-      label: "prevented loss",
+      value: money(prevented),
+      title:
+        prevented > 0
+          ? `${money(prevented, { full: true })}: each reject booked as certain shredder damage plus 1 h of kiln downtime.${report.value_model ? " The probability-weighted value is below." : ""}`
+          : undefined,
+      label: "worst-case exposure",
       tone: prevented > 0 ? "text-verdict-green" : undefined,
     },
   ];
@@ -227,7 +497,7 @@ function buildSummaryText(report: ShiftReport): string {
     `${accepted} accepted`,
     `${escalated} escalated`,
     `${rejected} rejected`,
-    `prevented loss ${formatRupiah(report.prevented_loss_idr)}`,
+    `worst-case loss exposure avoided ${formatRupiah(report.loss_exposure_idr ?? report.prevented_loss_idr)}`,
     open > 0 ? `${open} need resolution before handover` : "all resolved",
   ];
   return parts.join(" · ");
@@ -352,7 +622,7 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
       </ul>
 
       <p
-        title="Risk = (rejected + 0.5 × escalated) ÷ trucks. Prevented loss counts rejected and escalated loads only (impact model, docs/research/realcase-indonesia.md)."
+        title="Risk = (rejected + 0.5 × escalated) ÷ trucks. Worst-case exposure counts rejected and escalated loads only (impact model, docs/research/realcase-indonesia.md)."
         className="m-0 border-t border-seam px-4 py-2.5 text-[12px] text-muted"
       >
         A supplier is flagged at ≥ {FLAG_MIN_TRUCKS} trucks and risk ≥{" "}

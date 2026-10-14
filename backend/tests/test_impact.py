@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from lynceus import impact
 from lynceus.audit import Decision
 
@@ -168,3 +170,124 @@ def test_notes_and_labels_are_english_not_indonesian():
         ).lower()
         for marker in indonesian_markers:
             assert marker not in blob.lower(), (verdict, marker, blob)
+
+
+def test_reject_note_calls_the_figure_worst_case_exposure():
+    out = impact.estimate_prevented_loss("reject", _vlm(hard=["metal"]), 5200.0)
+    assert "worst-case loss exposure" in out["note"]
+    assert "certainly" in out["note"]
+
+
+# ---------------------------------------------------------------------------
+# Expected-value model (with vs without Lynceus, per 1,000 trucks).
+# Expected numbers are worked by hand in the comments, never from the code.
+# ---------------------------------------------------------------------------
+
+#: Hard class 20 images: 18 reject, 2 escalate → reject 0.9, escalate 0.1.
+#: Clean class 40 images: 2 reject, 8 escalate, 30 accept → 0.05 / 0.20.
+_SUMMARY = {
+    "confusion": {
+        "reject": {"reject": 18, "escalate": 2, "accept": 0, "error": 0},
+        "escalate": {"reject": 0, "escalate": 20, "accept": 0, "error": 0},
+        "accept": {"reject": 2, "escalate": 8, "accept": 30, "error": 0},
+    },
+    "reject": {"precision": 0.9, "recall": 0.9},
+}
+
+
+def test_benchmark_rates_from_confusion():
+    rates = impact.benchmark_rates(_SUMMARY)
+    assert rates["hard_reject_rate"] == pytest.approx(0.9)
+    assert rates["hard_escalate_rate"] == pytest.approx(0.1)
+    assert rates["clean_reject_rate"] == pytest.approx(0.05)
+    assert rates["clean_escalate_rate"] == pytest.approx(0.2)
+    assert rates["n_hard"] == 20 and rates["n_clean"] == 40
+
+
+def test_benchmark_rates_prefer_rescore_clean_keys():
+    summary = {**_SUMMARY, "clean_reject_rate": 0.0, "clean_escalate_rate": 0.1,
+               "clean_accept_rate": 0.9}
+    rates = impact.benchmark_rates(summary)
+    assert rates["clean_reject_rate"] == 0.0
+    assert rates["clean_escalate_rate"] == 0.1
+
+
+def test_benchmark_rates_none_when_unusable():
+    assert impact.benchmark_rates({}) is None
+    assert impact.benchmark_rates({"reject": {"recall": 0.9}}) is None
+
+
+def test_base_scenario_hand_computed():
+    model = impact.value_model(_SUMMARY, "fixture.summary.json")
+    base = model["scenarios"]["base"]
+    # 1,000 trucks × 2% = 20 hard loads, 980 clean.
+    # One escape that does damage: 5% × (Rp 350M + US$28k × 16,000) = Rp 39.9M.
+    # Without: 20 × (1 − 0.7) = 6 escape → 6 × 39.9M = Rp 239.4M; 1,000 × 3 min.
+    assert base["without"]["escaped_hard_loads"] == pytest.approx(6.0)
+    assert base["without"]["expected_damage_idr"] == 239_400_000
+    assert base["without"]["operator_minutes"] == pytest.approx(3000.0)
+    assert base["without"]["false_reject_cost_idr"] == 0
+    # With: caught 20 × (0.9 + 0.1 × 0.7) = 19.4 → 0.6 escape → Rp 23.94M.
+    assert base["with"]["escaped_hard_loads"] == pytest.approx(0.6)
+    assert base["with"]["expected_damage_idr"] == 23_940_000
+    # Flagged 20 × 1.0 + 980 × 0.25 = 265; minutes 1,000 × 0.5 + 265 × 3 = 1,295.
+    assert base["with"]["trucks_checked_by_hand"] == pytest.approx(265.0)
+    assert base["with"]["operator_minutes"] == pytest.approx(1295.0)
+    # False rejects 980 × 0.05 = 49 × 5.2 t × Rp 375,000 = Rp 95.55M.
+    assert base["with"]["false_rejects"] == pytest.approx(49.0)
+    assert base["false_reject_cost_idr"] == 95_550_000
+    assert base["expected_loss_avoided_idr"] == 215_460_000
+    # 1,705 min × (Rp 1.497B / 32 / 2,080 h / 60) = Rp 639,118.84.
+    assert base["operator_minutes_saved"] == pytest.approx(1705.0)
+    assert base["operator_time_value_idr"] == 639_119
+    # 215.46M − 95.55M + 0.639M.
+    assert base["net_value_idr"] == 120_549_119
+
+
+def test_low_scenario_hand_computed_can_be_negative():
+    low = impact.value_model(_SUMMARY, "fixture.summary.json")["scenarios"]["low"]
+    # 5 hard loads; harm per escape 2% × 798M = Rp 15.96M.
+    # Without 5 × 0.1 = 0.5 escape → Rp 7.98M.  With 5 × (0.9 + 0.1 × 0.9)
+    # = 4.95 caught → 0.05 escape → Rp 0.798M.  Avoided Rp 7.182M.
+    assert low["expected_loss_avoided_idr"] == 7_182_000
+    # False rejects 995 × 0.05 = 49.75 × 5.2 × Rp 450,000 = Rp 116.415M.
+    assert low["false_reject_cost_idr"] == 116_415_000
+    assert low["net_value_idr"] < 0
+
+
+def test_scenarios_ordered_and_parameters_honest():
+    model = impact.value_model(_SUMMARY, "fixture.summary.json")
+    nets = [model["scenarios"][k]["net_value_idr"] for k in ("low", "base", "high")]
+    assert nets == sorted(nets)
+    assert model["trucks"] == 1000
+    assert model["worst_case_per_incident_idr"] == 798_000_000
+    for row in model["parameters"]:
+        assert row["sources"] or row["assumption"], row["key"]
+        assert row["rationale"], row["key"]
+        assert all(url.startswith("https://") for url in row["sources"]), row["key"]
+    assumed = {row["key"] for row in model["parameters"] if row["assumption"]}
+    assert {"hard_load_rate", "manual_catch_rate", "damage_probability",
+            "manual_check_minutes", "capture_minutes"} <= assumed
+    assert model["eur_idr_rate"] == 20_004.87
+    assert "ecb.europa.eu" in model["eur_idr_source_url"]
+
+
+def test_value_model_prefers_rescore_file_and_falls_back(tmp_path):
+    import json
+
+    live = tmp_path / "2026-10-13.summary.json"
+    live.write_text(json.dumps(_SUMMARY), encoding="utf-8")
+    model = impact.value_model_from_benchmark(tmp_path)
+    assert model["benchmark_file"] == "2026-10-13.summary.json"
+
+    rescore = {**_SUMMARY, "clean_reject_rate": 0.0, "clean_escalate_rate": 0.1}
+    (tmp_path / "2026-10-13.rescore.summary.json").write_text(
+        json.dumps(rescore), encoding="utf-8"
+    )
+    model = impact.value_model_from_benchmark(tmp_path)
+    assert model["benchmark_file"] == "2026-10-13.rescore.summary.json"
+    assert model["scenarios"]["base"]["false_reject_cost_idr"] == 0
+
+
+def test_value_model_none_without_benchmark(tmp_path):
+    assert impact.value_model_from_benchmark(tmp_path) is None

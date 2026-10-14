@@ -144,7 +144,9 @@ def test_aggregation_counts_verdicts_contaminants_loss_and_median():
     assert report["by_verdict"] == {
         "accept": 2, "reject": 1, "escalate_human": 1, "refuse_insufficient_input": 1,
     }
-    assert report["contaminants"] == {"metal": 1, "plastic_film": 2, "wet_mix": 1}
+    # plastic_film is RDF feedstock under the decision policy, so the VLM
+    # naming it is not tallied as a contaminant.
+    assert report["contaminants"] == {"metal": 1, "wet_mix": 1}
 
     # Prevented loss counts reject + escalate only; an accepted load's figure
     # is its market value, not a prevented loss (impact.py's own note).
@@ -164,6 +166,27 @@ def test_aggregation_counts_verdicts_contaminants_loss_and_median():
     # Durations 10, 20, 30, 40, 50 s → median 30.
     assert report["median_seconds_per_truck"] == 30.0
     assert report["sample"] is False
+
+
+def test_report_names_exposure_and_carries_value_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("LYNCEUS_BENCHMARK_DIR", str(tmp_path))
+    report = shift.build_report([_rec("reject", hard=["metal"])], None, None)
+    assert report["loss_exposure_idr"] == report["prevented_loss_idr"] > 0
+    assert report["value_model"] is None  # no benchmark summary in tmp_path
+
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "2026-10-13.summary.json").write_text(
+        '{"confusion": {"reject": {"reject": 19, "accept": 1},'
+        ' "accept": {"reject": 2, "escalate": 26, "accept": 12}},'
+        ' "reject": {"recall": 0.95, "precision": 0.86}}',
+        encoding="utf-8",
+    )
+    model = shift.build_report([], None, None)["value_model"]
+    assert model["trucks"] == 1000
+    assert set(model["scenarios"]) == {"low", "base", "high"}
+    # Base: 20 hard loads, 6 escape without vs 1 with → 5 × 5% × Rp 798M.
+    assert model["scenarios"]["base"]["expected_loss_avoided_idr"] == 199_500_000
 
 
 def test_contaminant_label_counted_once_per_truck():
@@ -348,7 +371,7 @@ class FakeClient:
         self.error = error
         self.calls: list[list] = []
 
-    def assist(self, messages, max_tokens: int = 700):
+    def explain(self, messages, max_tokens: int = 700):
         self.calls.append(messages)
         if self.error:
             raise self.error

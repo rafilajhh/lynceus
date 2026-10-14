@@ -130,8 +130,8 @@ function LedgerViewInner() {
     const rejected = ready.filter(
       (item) => item.decision === "reject",
     ).length;
-    // Two different things, never summed: loss avoided by rejecting or
-    // escalating, and the market value of loads that were let through.
+    // Two different things, never summed: worst-case loss exposure avoided
+    // by rejecting or escalating, and the market value of loads let through.
     const prevented = ready.reduce(
       (total, item) => total + item.prevented_loss_idr,
       0,
@@ -291,7 +291,12 @@ function LedgerViewInner() {
               </span>
               <span className="figure whitespace-nowrap text-verdict-green">
                 {formatRupiah(summary.prevented)}{" "}
-                <span className="text-muted">prevented loss</span>
+                <span
+                  className="text-muted"
+                  title="Each reject is booked as if the contaminant would certainly have damaged the shredder and stopped the kiln for an hour. The probability-weighted value is on the Shift report."
+                >
+                  worst-case exposure avoided
+                </span>
               </span>
               <span aria-hidden="true" className="text-faint">
                 ·
@@ -384,7 +389,7 @@ function LedgerViewInner() {
                       When
                     </SortButton>
                   </TableHead>
-                  <TableHead className="text-right">Prevented loss</TableHead>
+                  <TableHead className="text-right">Worst-case exposure</TableHead>
                   <TableHead className="text-right">RDF value admitted</TableHead>
                 </TableRow>
               </TableHeader>
@@ -507,7 +512,7 @@ function LedgerViewInner() {
                     >
                       {row.admitted_value_idr > 0
                         ? `${formatRupiah(row.admitted_value_idr)} RDF value admitted`
-                        : `${formatRupiah(row.prevented_loss_idr)} prevented loss`}
+                        : `${formatRupiah(row.prevented_loss_idr)} worst-case exposure`}
                     </div>
                   </button>
                   {selectedId === row.record_id ? (

@@ -15,15 +15,16 @@ export function ImpactCounter({
   preventedLossIdr,
   preventedLossUsd,
   runKey,
-  label = "Prevented loss",
+  label = "Worst-case loss exposure",
   className,
 }: {
   preventedLossIdr: number;
   preventedLossUsd: number;
   /** Increment on each new verdict; 0 = no result yet. */
   runKey: number;
-  /** What the figure is: "Prevented loss" for reject/escalate, but an
-      accepted load's figure is its market value, never a prevented loss. */
+  /** What the figure is: the worst-case loss exposure for reject/escalate
+      (damage booked as certain), but an accepted load's figure is its
+      market value, never an avoided loss. */
   label?: string;
   className?: string;
 }) {
