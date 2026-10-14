@@ -234,10 +234,9 @@ export default function LandingPage() {
             Watch it reject the truck that would have stopped the kiln.
           </h2>
           <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
-            Three scripted sample cases (clean, suspicious, contaminated) run
-            instantly through the same decision engine. &ldquo;Run live on
-            AMD&rdquo; sends the same photo to the live AMD pipeline, from
-            photo to sealed audit record in {LIVE_LATENCY_COPY} (
+            Upload a load photo and type the waybill text: the live AMD
+            pipeline takes it from photo to sealed audit record in{" "}
+            {LIVE_LATENCY_COPY} (
             <Link href="/validation" className="text-amber underline underline-offset-2">
               measured over 80 live runs
             </Link>

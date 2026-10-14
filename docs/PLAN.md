@@ -8,7 +8,7 @@
 
 ## 1. Ringkasan Eksekutif
 
-**Lynceus** adalah sistem inspeksi pintu gerbang bahan bakar alternatif (RDF/refuse-derived fuel) berbasis AI yang mengakses model melalui AMD Token Factory. Ketika truk sampah tiba di pabrik semen atau PLTSa, operator mengunggah foto muatan, mengetik teks surat jalan secara manual (tanpa OCR), serta memasukkan berat timbangan dan data gas — Lynceus memadukan **VLM (DeepSeek-V4.1-Flash)** untuk deteksi kontaminan visual dan estimasi basah/kering, **LLM (DeepSeek-V4-Flash)** untuk membaca surat jalan dan crosscheck klaim vs observasi, serta **engine rule-based Lynceus** untuk scoring suitability dan rekomendasi rute — semuanya menghasilkan verdict **HIJAU/KUNING/MERAH** beserta alasan, confidence, dan **audit record tamper-evident (file lokal)** dalam hitungan detik. Track: AI pada AMD GPU. Value proposition: satu jam kiln mati = **US$28.000** (±Rp450 juta) — inspeksi otomatis Lynceus adalah "biaya cegah" yang jauh lebih murah daripada satu kontaminan logam/batu yang lolos ke shredder bernilai ratusan juta rupiah dan mematikan kiln.
+**Lynceus** adalah sistem inspeksi pintu gerbang bahan bakar alternatif (RDF/refuse-derived fuel) berbasis AI yang mengakses model melalui AMD Token Factory. Ketika truk sampah tiba di pabrik semen atau PLTSa, operator mengunggah foto muatan, mengetik teks surat jalan secara manual (tanpa OCR), serta memasukkan berat timbangan dan data gas — Lynceus memadukan **VLM (MiniCPM-V-4.7-35B-A3B)** untuk deteksi kontaminan visual dan estimasi basah/kering, **LLM (DeepSeek-V4-Flash)** untuk membaca surat jalan dan crosscheck klaim vs observasi, serta **engine rule-based Lynceus** untuk scoring suitability dan rekomendasi rute — semuanya menghasilkan verdict **HIJAU/KUNING/MERAH** beserta alasan, confidence, dan **audit record tamper-evident (file lokal)** dalam hitungan detik. Track 1: Intelligent Industry. Value proposition: satu jam kiln mati = **US$28.000** (±Rp450 juta) — inspeksi otomatis Lynceus adalah "biaya cegah" yang jauh lebih murah daripada satu kontaminan logam/batu yang lolos ke shredder bernilai ratusan juta rupiah dan mematikan kiln.
 
 ---
 
@@ -51,7 +51,7 @@ Standar ground truth demo: **ISO 21640:2021** (https://www.iso.org/standard/7130
 └──────────────┬───────────────────────────────────────┬─────────────────────────────────────┘
                ▼                                       ▼
 ┌───────── VLM (Token Factory) ──────────┐   ┌───────── LLM (Token Factory) ──────────┐
-│  DeepSeek-V4.1-Flash via Token Factory    │   │  DeepSeek-V4-Flash via Token Factory       │
+│  MiniCPM-V-4.7-35B-A3B via Token Factory    │   │  DeepSeek-V4-Flash via Token Factory       │
 │  • deteksi kontaminan visual        │   │  • baca surat jalan (field: jenis,  │
 │    (logam, batu, ban, e-waste)      │   │    asal, berat klaim, kualitas)     │
 │  • estimasi basah/kering visual     │   │  • crosscheck klaim manifest vs     │
@@ -124,13 +124,13 @@ Detail skema audit record: `docs/research/audit-provenance.md` §(b).
 | Backend | **FastAPI** (Python) | Serialize `asdict` engine Lynceus; endpoint `POST /assess`; OpenAI-compatible client ke AMD Token Factory |
 | Frontend | **Next.js/React** (alternatif sederhana: Vite+React SPA, atau FastAPI + Jinja/HTMX bila waktu sempit) | Dashboard operator: upload, tiket verdict, audit view |
 | Serving AI | **AMD Token Factory** | Endpoint bersama OpenAI-compatible pada GPU AMD, bukan self-hosted MI300X |
-| VLM | **DeepSeek-V4.1-Flash** | Analisis foto muatan melalui AMD Token Factory |
+| VLM | **MiniCPM-V-4.7-35B-A3B** | Analisis foto muatan melalui AMD Token Factory |
 | LLM | **DeepSeek-V4-Flash** | Analisis teks surat jalan ketikan operator dan crosscheck |
 | Benchmark acuan | Ukur request end-to-end pada AMD Token Factory | Angka benchmark Qwen self-hosted tidak mewakili deployment ini |
 | Quantization (bila perlu) | Dikelola penyedia endpoint | Tidak ada konfigurasi quantization self-hosted pada demo |
 | Kredit | Akses AMD Token Factory dengan kunci tim | Kredit VM ADC bukan prasyarat demo |
 
-Konfigurasi deploy: arahkan endpoint OpenAI-compatible VLM dan LLM ke AMD Token Factory, pilih `DeepSeek-V4.1-Flash` (VLM) dan `DeepSeek-V4-Flash` (LLM), lalu pasang kunci tim melalui environment variable. Tidak perlu menjalankan vLLM atau menyediakan VM MI300X.
+Konfigurasi deploy: arahkan endpoint OpenAI-compatible VLM dan LLM ke AMD Token Factory, pilih `MiniCPM-V-4.7-35B-A3B` (VLM) dan `DeepSeek-V4-Flash` (LLM), lalu pasang kunci tim melalui environment variable. Tidak perlu menjalankan vLLM atau menyediakan VM MI300X.
 
 ---
 
@@ -166,7 +166,7 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 - **Risiko**: mismatch asumsi engine vs input truk → **Mitigasi**: mapping layer eksplisit input truk → composition/moisture/tonnage; unit test konversi.
 
 ### Day 3 — Pipeline VLM+LLM di AMD
-- **Deliverable**: integrasi DeepSeek-V4.1-Flash (VLM) + DeepSeek-V4-Flash (LLM) melalui AMD Token Factory; prompt VLM (deteksi kontaminan + estimasi basah/kering + klasifikasi) dan prompt LLM (ekstraksi surat jalan + crosscheck); parsing JSON output terstruktur (schema + retry/repair); smoke test foto & dokumen nyata.
+- **Deliverable**: integrasi MiniCPM-V-4.7-35B-A3B (VLM) + DeepSeek-V4-Flash (LLM) melalui AMD Token Factory; prompt VLM (deteksi kontaminan + estimasi basah/kering + klasifikasi) dan prompt LLM (ekstraksi surat jalan + crosscheck); parsing JSON output terstruktur (schema + retry/repair); smoke test foto & dokumen nyata.
 - **Acceptance**: request pipeline tunggal (foto + teks surat jalan) mengembalikan JSON valid dengan confidence dengan latensi end-to-end yang diukur pada AMD Token Factory; prompt disimpan dan di-hash.
 - **Risiko**: output model tidak valid JSON → **Mitigasi**: prompt ketat + constrained decoding/skema Pydantic + retry dengan pesan error; fallback parse parsial.
 

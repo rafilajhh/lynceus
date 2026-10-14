@@ -31,8 +31,8 @@ sudo nano /etc/lynceus.env             # replace PASTE-THE-TEAM-KEY-HERE with th
 
 The template holds the Token Factory endpoints and models, `LOCALISATION_MODE=box`
 and `LYNCEUS_ALLOW_STUB_FALLBACK=0` (hosted demo: a live-AI failure answers HTTP 503
-instead of silently showing the offline stub; the scripted green/amber/red buttons
-keep working). It deliberately does not set `LYNCEUS_STORAGE_DIR`,
+instead of silently showing the offline stub; the sample shift stays
+readable offline). It deliberately does not set `LYNCEUS_STORAGE_DIR`,
 `LYNCEUS_WEB_DIR` or `LYNCEUS_BENCHMARK_DIR`: the image already points them at the
 volume and the staged assets. Never feed the dev `.env.example` / `backend/.env` to
 `--env-file`: it would override the storage path (the entrypoint exits with a clear
@@ -154,12 +154,12 @@ Back up first (above) if you want to keep the live records.
 
 1. `docker ps` shows `lynceus` as `healthy`; `curl -s https://your.domain.example/health` returns `"status":"ok"`.
 2. Open `/`, `/app`, `/shift` (sample shift shows 24 trucks), `/inspections`, `/validation` in a browser; each loads.
-3. Click the three scripted demo cases (green / amber / red): they work without the key and show "Scripted sample".
+3. Upload a load photo with waybill text in `/app`: with the key it returns a live verdict (see step 4); the sample shift on `/shift` needs no key.
 4. **Warm-up:** run one live inspection and one Pythia question yourself 10-15 minutes before judges arrive (a cold first request is the slowest, and it confirms the key works). Expect 20-35 s for the inspection; it shows "Live AMD".
-5. **Key quota:** the Token Factory key is rate-limited and shared by the team. Check nobody else is running benchmarks or scripts on it; if the endpoint is throttled, live requests fail with HTTP 503 (because `LYNCEUS_ALLOW_STUB_FALLBACK=0`) and the scripted demo cases still work. Do not re-run `benchmark.run` against the same key during judging.
+5. **Key quota:** the Token Factory key is rate-limited and shared by the team. Check nobody else is running benchmarks or scripts on it; if the endpoint is throttled, live requests fail with HTTP 503 (because `LYNCEUS_ALLOW_STUB_FALLBACK=0`) and the sample shift and `/validation` still load. Do not re-run `benchmark.run` against the same key during judging.
 6. Confirm `LYNCEUS_ALLOW_STUB_FALLBACK=0` is in `/etc/lynceus.env` (`docker exec lynceus printenv LYNCEUS_ALLOW_STUB_FALLBACK`).
 7. Take a backup of the volume (above) after the warm-up if you want to keep those records.
-8. Know the fallback: if live AI is down, present the scripted cases and the `/validation` page, and say so.
+8. Know the fallback: if live AI is down, present the sample shift and the `/validation` page, and say so.
 
 ## Reference
 

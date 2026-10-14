@@ -2,7 +2,7 @@
 
 /**
  * VerdictPanel: verdict banner (lights only after all five gates
- * resolve) with its provenance badge, headline, gate strip, photo
+ * resolve) with its headline, a one-line live-AI provenance note, gate strip, photo
  * evidence beside the SOP-cited next steps, impact counter, reasons,
  * caveats, Pythia, and the audit-record link.
  * States: idle placeholder | evaluating | resolved | error.
@@ -18,7 +18,7 @@ import { AuditModal } from "./audit-modal";
 import { NextSteps } from "./next-steps";
 import { PhotoEvidence } from "./photo-evidence";
 import type { InspectResponse } from "@/lib/inspect-api";
-import { LIVE_LATENCY_COPY } from "@/lib/format";
+import { LIVE_LATENCY_COPY, formatSeconds, providerName } from "@/lib/format";
 import { useElapsedSeconds } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
@@ -271,6 +271,19 @@ export function VerdictPanel({
 
         {phase === "evaluating" ? <EvaluatingNote runMode={runMode} /> : null}
 
+        {/* One quiet line of what ran: live results only. */}
+        {phase === "resolved" && data?.provenance === "live" && vlm?.model ? (
+          <p className="figure m-0 text-[12px] text-faint">
+            {[
+              vlm.model.replace(/-\d+B(-A\d+B)?$/, ""),
+              vlm.provider ? `on ${providerName(vlm.provider)}` : null,
+              formatSeconds(vlm.latency_ms),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
+
         {/* Live AI failed and the backend fell back to the scripted
             sample: say so plainly, next to the verdict it affects. */}
         {phase === "resolved" && data?.provenance === "stub_fallback_live_error" ? (
@@ -335,7 +348,7 @@ export function VerdictPanel({
             preventedLossIdr={preventedLossIdr}
             preventedLossUsd={preventedLossUsd}
             runKey={bannerLit ? impactRunKey : 0}
-            label={tone === "accept" ? "RDF value admitted" : "Prevented loss"}
+            label={tone === "accept" ? "RDF value admitted" : "Worst-case loss exposure"}
           />
         ) : null}
 
