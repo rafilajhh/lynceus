@@ -10,7 +10,6 @@
 
 import type { ReactNode } from "react";
 import { Panel, PanelHead } from "@/components/ui/panel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { GateStrip, type GateDisplay, type GatePhase } from "./gate-strip";
@@ -19,43 +18,13 @@ import { AuditModal } from "./audit-modal";
 import { NextSteps } from "./next-steps";
 import { PhotoEvidence } from "./photo-evidence";
 import type { InspectResponse } from "@/lib/inspect-api";
-import { LIVE_LATENCY_COPY, liveProvenance } from "@/lib/format";
+import { LIVE_LATENCY_COPY } from "@/lib/format";
 import { useElapsedSeconds } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
-/**
- * Where this verdict's AI output came from, stated exactly: the live
- * provider, model and vision latency, or a scripted sample. The status
- * dot reuses the service-dot language (ok = live, warn = stub, down =
- * live failed).
- */
-function ProvenanceBadge({ data }: { data: InspectResponse }) {
-  const vlm = data.ai_outputs.vlm;
-  let text: string;
-  let dot: string;
-  if (data.provenance === "live") {
-    text = liveProvenance(vlm?.provider ?? "", vlm?.model, vlm?.latency_ms);
-    dot = "bg-dot-ok";
-  } else if (data.provenance === "stub") {
-    text = "Scripted sample";
-    dot = "bg-dot-warn";
-  } else if (data.provenance === "stub_fallback_live_error") {
-    text = "Scripted fallback";
-    dot = "bg-dot-down";
-  } else {
-    return null;
-  }
-  return (
-    <Badge className="figure font-semibold tracking-[0.2px] whitespace-normal normal-case">
-      <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
-      {text}
-    </Badge>
-  );
-}
-
 /** How the operator asked for this inspection to run. Only "live" (the
     Run live on AMD action) may say a live model is working; whether one
-    actually ran is stated afterwards by the provenance badge. */
+    actually ran is stated afterwards by the photo-evidence source note. */
 export type RunMode = "scripted" | "live" | "other";
 
 /** Why the inspection request failed (see InspectError in lib/inspect-api). */
@@ -69,7 +38,7 @@ const EVALUATING_COPY: Record<RunMode, string> = {
   scripted: "Running the scripted sample through the decision engine.",
   live:
     `Live run requested on AMD: a full inspection takes ${LIVE_LATENCY_COPY} ` +
-    "(measured on the Validation page). The badge on the result states what actually ran.",
+    "(measured on the Validation page). The photo evidence states what actually ran.",
   other: "Running the inspection…",
 };
 
@@ -280,11 +249,8 @@ export function VerdictPanel({
         >
           {/* 10px radius: matches --radius-card for the banner container.
               4px tracking: industrial register for the verdict label (small-caps companion). */}
-          <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-[20px] font-bold tracking-[4px]">
-              {bannerLit ? style.label : "— — —"}
-            </span>
-            {phase === "resolved" && data ? <ProvenanceBadge data={data} /> : null}
+          <span className="text-[20px] font-bold tracking-[4px]">
+            {bannerLit ? style.label : "— — —"}
           </span>
           {phase === "resolved" && onReset ? (
             <Button type="button" size="sm" onClick={onReset} className="shrink-0 text-[13px]">
@@ -300,7 +266,7 @@ export function VerdictPanel({
             ? headlineFor(decision, data)
             : phase === "evaluating"
               ? "Evaluating interlock…"
-              : "Pick a demo case above, then press Inspect Load."}
+              : "Upload a load photo, fill the register, then press Inspect Load."}
         </p>
 
         {phase === "evaluating" ? <EvaluatingNote runMode={runMode} /> : null}
