@@ -17,10 +17,10 @@ Lynceus checks a truck of refuse-derived fuel (RDF, called SRF or CSS in Europe)
 
 ## 3. The problem and what it costs
 
-- **Hard objects reach the line, and today's checks act after tipping.** At an RDF plant in Albany, New York, about 10% of incoming trucks went to landfill because they held too much unshreddable material; magnets were "less effective in removing very heavy ferrous objects"; visual inspection on the tipping floor was "ineffective in removing all material which might damage the shredders"; and the shredders had 23 explosions in four and a half years [17]. This is a 1986 US case, the only one we found with measured numbers.
+- **Hard objects reach the line, and most checks act after tipping.** At an RDF plant in Albany, New York, about 10% of incoming trucks were already turned away to landfill because they held too much unshreddable material, so a gate check pays; still, magnets were "less effective in removing very heavy ferrous objects" and visual inspection on the tipping floor was "ineffective in removing all material which might damage the shredders" [17]. The same plant also recorded 23 shredder explosions in four and a half years, which the paper attributes to containers of volatile material, not to hard objects [17]. This is a 1986 US case, the only one we found with measured numbers.
 - **Shredders stop on metal.** A current supplier's shredder shuts down when metal enters, and an operator removes it by hand [16]. The line has already stopped.
 - **The equipment and the stop are expensive.** One shredder in an Indonesian RDF plant budget costs Rp 350 million (about US$21,900), with a 5-year life [9]. A US maintenance vendor puts unplanned kiln downtime at about US$28,000 per hour [12], a vendor benchmark, not a local measurement.
-- **Supply is already short, so every load counts.** Jakarta's Bantargebang plant makes about 700 t/day of RDF against 2,500 t/day wanted by its cement offtakers [8]. In Italy, CSS-Combustibile use fell 11.5% in 2022, mainly because one plant's supplier could not deliver steadily [3].
+- **Supply is already short, so every load counts.** Jakarta's Bantargebang plant is designed for about 700 t/day of RDF against 2,500 t/day wanted by its cement offtakers [8], and actually makes about 400 t/day (RDI 2024, Table III.2, in `docs/research/realcase-indonesia.md`). In Italy, CSS-Combustibile use fell 11.5% in 2022, mainly because one plant's supplier could not deliver steadily [3].
 
 **What we do not know yet:** how often a contaminated truck arrives at an RDF gate, and what one escalation costs a plant. No public source gives these numbers. `docs/operator-validation-kit.md` is how we will get them.
 
@@ -58,7 +58,26 @@ Going from 20.9% (2020 [2]) to the 47% target is a factor of about 2.2: at const
 
 ### Size of the first market, at the proposed price
 
-**Proposal.** Indonesia: 5 cement gates (SBI Narogong, Cilacap and Tuban; SIG Tuban; the Indocement plant that takes Jakarta RDF) plus 6 named RDF plants gives 11 gates, or Rp 792 million (about US$49,500) a year. Italy: about 14 authorised plants at €6,000 gives about €84,000 a year. The first market is small; it is where we get proof. The larger market is every gate that receives RDF or SRF (kilns, RDF producers, waste-to-energy plants). We found no sourced count of those gates, so we show no total market figure.
+**Proposal.** Indonesia: 5 cement gates (SBI Narogong, Cilacap and Tuban; SIG Tuban; the Indocement plant that takes Jakarta RDF) plus 6 named RDF plants gives 11 gates, or Rp 792 million (about US$49,500) a year. Italy: about 14 authorised plants at €6,000 gives about €84,000 a year. The first market is small; it is where we get proof. The larger market is every gate that receives RDF or SRF (kilns, RDF producers, waste-to-energy plants); the next subsection counts the part we could source.
+
+### Market size (bottom-up)
+
+**Proposal.** Section 7 prices, one gate per site (an assumption: a large plant with several weighbridge lanes would add gates). Counts are sites that could buy, not sites that have.
+
+| Segment | Sites | Gates per site | Subscription per gate a year | Total a year | Source |
+|---|---|---|---|---|---|
+| EU integrated cement plants (clinker kilns; grinding-only sites left out) | about 200 of 250 installations (2026) | 1 | €6,000 | about €1.2 million | [21] |
+| of which Italy, full-cycle plants of Aitec members | 27 (2019) | 1 | €6,000 | €162,000 | [1] |
+| Indonesia integrated cement plants (16 cement association members) | 23 (April 2024) | 1 | Rp 72 million | Rp 1,656 million (about US$103,500) | [22] |
+| Indonesia municipal-waste RDF plants listed by the cement association | 18: 4 completed, 14 ongoing or next (April 2024) | 1 | Rp 72 million | Rp 1,296 million (about US$81,000) | [22] |
+| **Serviceable market** (rows above, Italy counted once) | **241** | | | **about €1.2 million plus US$184,500** | |
+| Europe waste-to-energy plants (residual waste; EU plus UK, Norway, Switzerland) | 499 (2023) | 1 | €6,000 | about €3.0 million | [24] |
+| **Upper bound, not a forecast:** every cement plant tracked worldwide plus European waste-to-energy plants, all at the EU price | 3,884 + 499 = 4,383 (2026, 2023) | 1 | €6,000 | about €26.3 million | [23], [24] |
+
+- The serviceable rows count kilns that can burn RDF, not kilns that do: only half of the Italian plants are authorised [2]. We found no sourced count of EU plants that co-process SRF, so that row is left out rather than estimated.
+- 14 of the 18 Indonesian RDF plants are projects, not yet operating.
+- Waste-to-energy plants take residual municipal waste rather than RDF. The same gate checks (metal, rock, tyres, weight) apply, but we have not validated them there, so they sit outside the serviceable market.
+- The global count includes grinding-only and non-operating plants, which receive no fuel, and prices every plant at the EU fee rather than the Indonesian one. It is a ceiling.
 
 ## 5. Competition
 
@@ -72,7 +91,7 @@ Going from 20.9% (2020 [2]) to the 47% target is a factor of about 2.2: at const
 | AMCS Weighbridge and Vision AI [14] | Scale-house tickets; cameras on collection vehicles | Weights and tickets; bin contamination and overfill | The weighbridge brochure names no load inspection; vision is on collection trucks | No |
 | 3rd Eye [18] | Truck hoppers, scale houses, tipping floors | Bags, film, tyres, batteries, propane tanks | Built for haulers and MRFs; no RDF, cement, waybill check or SOP steps named | Partly |
 | MOBA MAWIS.AI VIEW [19] | On the collection vehicle during tipping | Batteries, hazardous items, 30+ fractions | Municipal collection, not plant gates | No |
-| **Lynceus** | **Weighbridge, truck still on the scale** | **Metal, rock, concrete, tyres, e-waste, wet loads, waybill mismatch, gate gas** | **No physical sorting; needs a lab for calorific value and chlorine** | **Yes** |
+| **Lynceus** | **Weighbridge, truck still on the scale** | **Metal (measured: 19 of 20 metal-waste photos); the rules also cover rock, concrete, tyres, e-waste, wet loads, waybill and weight mismatch and gate gas, not yet benchmarked** | **No physical sorting; needs a lab for calorific value and chlorine** | **Yes** |
 
 3rd Eye is the closest product: it already watches scale houses and tipping floors. Our answer is the RDF-specific layer (waybill check, rule engine, SOP-cited next steps, audit trail). A vision model on its own is not a moat.
 
@@ -133,7 +152,7 @@ How we set the prices:
 2. Federbeton, contribution to the PNGR consultation, 28 April 2022 (MiTE registry): https://va.mite.gov.it/File/Documento/621772
 3. MASE, Comitato di Vigilanza e Controllo, *Rapporto sull'applicazione del DM 22/2013, anno 2022*: https://www.mase.gov.it/sites/default/files/archivio/allegati/CSS/rapp_comitato_CSS_2022.pdf
 4. Heidelberg Materials Italia blog, citing the Federbeton 2023 report: https://blog.heidelbergmaterials.it/it/combustibili-alternativi-risorse-indispensabili-per-una-produzione-piu-sostenibile
-5. Ministry of Environment letter prot. 0179645, 28 March 2018 (18 vs 125 classes): https://www.regione.lazio.it/sites/default/files/documentazione/RIF_C_Ministero_Ambiente_Tutela_Territorio_Mare_0179645_28_03_2018.pdf
+5. Ministry of Environment letter prot. 0004843 (Lazio Region incoming register 0179645), 28 March 2018 (18 vs 125 classes): https://www.regione.lazio.it/sites/default/files/documentazione/RIF_C_Ministero_Ambiente_Tutela_Territorio_Mare_0179645_28_03_2018.pdf
 6. DM 14 February 2013 n. 22 on Normattiva: https://www.normattiva.it/uri-res/N2Ls?urn:nir:ministero.ambiente.e.tutela.territorio.e.mare:decreto:2013-02-14;22
 7. IDX Channel, Kemenperin on cement overcapacity, 14 July 2023: https://www.idxchannel.com/economics/kemenperin-ungkap-strategi-atasi-overcapacity-di-industri-semen/all
 8. `docs/research/realcase-indonesia.md` sections 2a to 2d (Kompas, SIG, SBI report, ASI/Kompas, SWITCH-Asia, PUPR Cipta Karya URLs listed there)
@@ -149,3 +168,7 @@ How we set the prices:
 18. 3rd Eye, contamination detection: https://www.3rdeyecam.com/solution/contamination-detection
 19. MOBA, MAWIS.AI VIEW: https://mobile-automation.eu/?p=20226
 20. Pentagull Weighbridge, UK G-Cloud 14 listing: https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud-14/services/555028591895331
+21. European Commission JRC, *Cement factsheet* (JRC144123), 2026 ("around 200 out of 250 installations"): https://publications.jrc.ec.europa.eu/repository/bitstream/JRC144123/Cement_factsheet_JRC144123.pdf
+22. Lilik Unggul Raharjo (Chairman, Indonesia Cement Association), *Cost Leadership and Plant Efficiency Enhancement in Indonesia Cement Industry*, World Cement Association conference, 30 April 2024, p. 2 (23 integrated plants) and p. 16 (RDF projects): https://www.worldcementassociation.org/images/download-selector/2024%20conference/Lilik%20Unggul%20Raharjo%20-%20Cost%20Leadership%20and%20Plant%20Efficiency%20Enhancement%20in%20Indonesia%20Cement%20Industry%20to%20support%20Decarbonization%20Initiatives.pdf
+23. Global Energy Monitor, Global Cement and Concrete Tracker, 2026 release (3,884 plants): https://globalenergymonitor.org/article/new-data-insights-global-cement-and-concrete-tracker
+24. CEWEP, *Waste-to-Energy in Europe in 2023* map (499 plants, hazardous-waste incinerators excluded): https://www.cewep.eu/wp-content/uploads/2026/02/EU-Map-2023.pdf

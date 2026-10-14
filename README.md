@@ -17,9 +17,10 @@ gate assistant that answers only from plant documents, with citations), and the
 repeat.
 
 > One escaped metal chunk can wreck a shredder and stop a kiln. On 80 public waste
-> photos run live on AMD Token Factory, the gate rejected 19 of 20 metal loads and,
-> under the current rules, passed 35 of 40 clean RDF loads straight through
-> ([Validation](#validation): component test on public images, not plant data).
+> photos run live on AMD Token Factory, the gate rejected 19 of 20 metal-waste photos;
+> replayed through the current rules, it passed 35 of 40 paper, cardboard, plastic
+> and textile photos straight through ([Validation](#validation): single-item
+> public photos, not plant data; the replay is not a held-out result).
 
 ## What the demo actually runs
 
@@ -90,15 +91,23 @@ see `backend/benchmark/images/ATTRIBUTION.md`), each posted live to
 | Metal gate (REJECT) precision | 0.86 (19/22) | 0.90 (19/21) |
 | Clean RDF loads passed (ACCEPT) | 0.30 (12/40) | 0.88 (35/40) |
 | Trucks sent to an operator (ESCALATE) | 0.55 (44/80) | 0.26 (21/80) |
+| Escalate-expected loads escalated (ESCALATE recall) | 0.90 (18/20) | 0.85 (17/20) |
 | n | 80, one run | same 80 recorded outputs |
 | Completed-request latency (end to end) | p50 19.5 s, p95 34.4 s | no new model calls |
 | Requests that needed a retry | 3 of 83 attempts | — |
 
-The live run escalated plastic film and textile as "light contaminants", although
-they are the calorific fraction RDF is made from. The current rules treat them as
-feedstock. The **replay** feeds the recorded live model outputs of the same run
-through the current decision rules, without new model calls; the rule change was
-motivated by this same data, so the replay is not a held-out measurement.
+The **replay** feeds the recorded live model outputs of the same run through the
+current decision rules, without new model calls, so it scores every rule change made
+after the run, not one. Two changes landed since: (1) hard contaminants are read only
+from the model's structured fields, not its prose — the live run rejected one plastic
+load (`plastic_277.jpg`) because the word "concrete" appeared in the description, and
+this change alone moves metal precision from 0.86 to 0.90; (2) plastic film and
+textile, which the live run escalated as "light contaminants", are the calorific
+fraction RDF is made from and are now treated as feedstock — this moves clean
+loads passed from 0.30 to 0.88. The cost is one escalate-expected load (a glass image,
+`glass_121.jpg`, whose only flag was plastic film) now passing: ESCALATE recall falls
+from 0.90 to 0.85. Both changes were motivated by this same data, so the replay is
+not a held-out measurement.
 
 Raw rows: `backend/benchmark/results/2026-10-13.jsonl`; summary:
 `2026-10-13.summary.json`; replay: `2026-10-13.rescore.{jsonl,summary.json}`.
