@@ -9,8 +9,7 @@ import {
   type PhotoInput,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { formatSeconds, formatWeight, liveProvenance, relativeTime } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
+import { formatWeight } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
@@ -46,6 +45,18 @@ const GATE_LABEL: Record<string, string> = {
   manifest_crosscheck: "Manifest Cross-check",
 };
 
+/**
+ * Record uncertainty carries raw pipeline diagnostics ("AI provenance: …,
+ * Live AI failed (ReadTimeout: …)"). Only a live failure is worth surfacing;
+ * for live verdicts the boilerplate screening disclaimer adds nothing.
+ */
+function uncertaintyNote(uncertainty: string): string | null {
+  const match = /Live AI failed \(([^)]*)\)/i.exec(uncertainty);
+  if (!match) return null;
+  const detail = match[1].replace(/^[A-Za-z]+Error:\s*/i, "");
+  return `Live AI failed (${detail}) — scripted fallback used.`;
+}
+
 /** Demo photos are public assets: a record whose photo came from one can
     show it again. Anything else needs a stored-photo path from the API. */
 const DEMO_PHOTO_PATH = /^\/demo\/[a-z0-9-]+\.(jpe?g|png)$/i;
@@ -56,27 +67,11 @@ function photoSrc(photo: PhotoInput | undefined): string | null {
   return DEMO_PHOTO_PATH.test(photo.filename) ? photo.filename : null;
 }
 
-type ModelOutput = {
-  model?: string | null;
-  provider?: string | null;
-  latency_ms?: number | null;
-} | null | undefined;
-
 /** "Scripted sample" / "Scripted fallback" for stub output, else null. The
     record's verdict.uncertainty states a live failure ("Live AI failed"). */
 function scriptedNote(model: string | null | undefined, uncertainty: string | undefined) {
   if (!(model ?? "").startsWith("stub")) return null;
   return (uncertainty ?? "").includes("Live AI failed") ? "Scripted fallback" : "Scripted sample";
-}
-
-/** One model's provenance, stated from what the record holds. */
-function modelProvenance(out: ModelOutput, uncertainty: string | undefined): string {
-  if (!out?.model) return "Not recorded";
-  if (out.provider) return liveProvenance(out.provider, out.model, out.latency_ms);
-  const note = scriptedNote(out.model, uncertainty);
-  if (note) return `${note} · ${out.model}`;
-  const latency = formatSeconds(out.latency_ms);
-  return `${out.model} · provider not recorded${latency ? ` · ${latency}` : ""}`;
 }
 
 type DetailLoad =
@@ -136,18 +131,22 @@ export function InspectionDetailPanel({
     <Panel ref={panelRef} tabIndex={-1} className={cn("focus:outline-none", className)}>
       <PanelHead
         title={`Record · ${recordId}`}
-        meta={state.kind === "ready" ? "audit record" : "loading"}
+        meta={
+          state.kind === "ready" && state.detail.digest?.record_sha256
+            ? `sha256 ${shortHash(state.detail.digest.record_sha256)}`
+            : "audit record"
+        }
       >
-      </PanelHead>
-      <div className="relative px-4 py-4">
         <button
           type="button"
           onClick={onClose}
           aria-label="Close detail panel"
-          className="absolute top-3 right-4 cursor-pointer rounded-[6px] border border-seam px-2.5 py-1 text-[12px] text-muted transition-colors duration-100 hover:border-seam-strong hover:text-ink"
+          className="cursor-pointer rounded-[6px] border border-seam px-2.5 py-1 text-[12px] text-muted normal-case tracking-normal transition-colors duration-100 hover:border-seam-strong hover:text-ink"
         >
           ✕
         </button>
+      </PanelHead>
+      <div className="px-4 py-4">
 
         {state.kind === "loading" ? (
           <div
@@ -184,10 +183,13 @@ export function InspectionDetailPanel({
 }
 
 function DetailBody({ detail }: { detail: InspectionDetail }) {
-  const sha = detail.digest?.record_sha256 ?? "—";
   const decision = detail.verdict?.decision ?? "unknown";
   const reasoning = detail.ai_outputs?.llm?.reasoning;
+  const reasoningText = reasoning
+    ? reasoning.replace(/\s*AI provenance:[^]*$/i, "").trim()
+    : undefined;
   const uncertainty = detail.verdict?.uncertainty;
+  const failureNote = uncertainty ? uncertaintyNote(uncertainty) : null;
   const reasons = detail.reasons ?? [];
   const gasReadings = detail.inputs?.gas?.readings_ppm;
   const gasInstrument = detail.ai_outputs?.gas?.instrument;
@@ -196,48 +198,35 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
   const photo = detail.inputs?.photo;
   const supplier = detail.inputs?.supplier;
   const vlm = detail.ai_outputs?.vlm;
-  const llm = detail.ai_outputs?.llm;
   const steps = detail.engine_outputs?.recommendation?.actions ?? [];
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ---- digest ---- */}
-      <section>
-        <h3 className="smallcaps mb-2">Record digest (SHA-256)</h3>
-        <p className="figure rounded-[6px] border border-seam bg-ground px-3 py-2.5 text-[12px] break-all text-muted">
-          {sha}
-        </p>
-      </section>
-
       {/* ---- gates grid ---- */}
       {detail.gates ? (
-        <section>
-          <h3 className="smallcaps mb-2">Gates</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
-            {Object.entries(detail.gates).map(([name, gate]) => (
-              <div
-                key={name}
-                className={`min-w-0 rounded-[6px] border bg-raised px-3 py-2 ${GATE_STATE_CLASS[gate.state]}`}
-              >
-                <div className="text-[12px] font-bold tracking-[0.6px] uppercase break-words">
-                  {GATE_LABEL[name] ?? name}
-                </div>
-                <div className="mt-0.5 text-[12.5px] font-bold">
-                  {GATE_STATE_LABEL[gate.state]}
-                </div>
-                {gate.value !== null ? (
-                  <div className="figure mt-0.5 text-[11px] text-muted break-words">
-                    value {typeof gate.value === "number" ? gate.value.toFixed(3) : gate.value}
-                    {gate.threshold !== null ? ` · threshold ${gate.threshold}` : ""}
+        <section aria-label="Gates">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
+            {Object.entries(detail.gates).map(([name, gate]) => {
+              const measured =
+                gate.value !== null
+                  ? `value ${typeof gate.value === "number" ? gate.value.toFixed(3) : gate.value}${gate.threshold !== null ? ` · threshold ${gate.threshold}` : ""}`
+                  : null;
+              const tip = [measured, gate.reason].filter(Boolean).join(" — ");
+              return (
+                <div
+                  key={name}
+                  title={tip || undefined}
+                  className={`flex min-w-0 flex-col justify-center rounded-[6px] border bg-raised px-3 py-2.5 ${GATE_STATE_CLASS[gate.state]}`}
+                >
+                  <div className="text-[12px] font-bold tracking-[0.6px] uppercase break-words">
+                    {GATE_LABEL[name] ?? name}
                   </div>
-                ) : null}
-                {gate.reason ? (
-                  <div className="mt-1 text-[13px] leading-snug text-muted break-words">
-                    {gate.reason}
+                  <div className="mt-1 text-[12.5px] font-bold">
+                    {GATE_STATE_LABEL[gate.state]}
                   </div>
-                ) : null}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -245,7 +234,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       {/* ---- inputs ---- */}
       <section>
         <h3 className="smallcaps mb-2">Inputs</h3>
-        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
             <div className="smallcaps mb-1">Truck</div>
             <div className="figure text-[13px] text-ink">
@@ -261,12 +250,19 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             <div className="figure text-[13px] text-ink">
               {formatWeight(detail.inputs?.weight?.value_kg ?? 0)}
             </div>
-            <div className="mt-0.5 text-[12px] text-muted">
-              {detail.inputs?.weight?.source ?? "—"}
-            </div>
           </div>
 
-          <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
+          <div
+            className="rounded-[8px] border border-seam bg-ground px-3 py-2.5 sm:col-span-2"
+            title={[
+              gasInstrument?.model
+                ? `Instrument: ${gasInstrument.model}${gasInstrument.technology ? ` (${gasInstrument.technology})` : ""}`
+                : null,
+              gasModelBasis ? `Model basis: ${gasModelBasis}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined}
+          >
             <div className="smallcaps mb-1">Gas readings</div>
             {gasReadings && Object.keys(gasReadings).length > 0 ? (
               <ul className="figure m-0 list-none p-0 text-[12px] text-ink">
@@ -285,101 +281,28 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
                 {gasSource ?? "not measured"}
               </div>
             )}
-            {gasInstrument ? (
-              <div className="mt-2 border-t border-seam pt-2 text-[11.5px] leading-snug text-faint">
-                <span className="text-muted">instrument: </span>
-                {gasInstrument.model ?? "—"}
-                {gasInstrument.technology ? (
-                  <>
-                    {" · "}
-                    {gasInstrument.technology}
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-            {gasModelBasis ? (
-              <div className="mt-0.5 text-[11.5px] leading-snug text-faint">
-                <span className="text-muted">model basis: </span>
-                {gasModelBasis}
-              </div>
-            ) : null}
           </div>
-
-          {/* photo identity: the image itself is shown under Evidence */}
-          {photo ? (
-            <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5">
-              <div className="smallcaps mb-1">Photo</div>
-              <div className="figure text-[12px] break-all text-ink">{photo.filename}</div>
-              <div className="figure mt-0.5 text-[11px] break-all text-muted">
-                {photo.sha256 ?? ""}
-              </div>
-            </div>
-          ) : null}
         </div>
       </section>
 
-      {/* ---- verdict ---- */}
-      <section className="flex flex-wrap items-center gap-3">
-        <Badge
-          variant={
-            decision === "escalate_human"
-              ? "escalate"
-              : decision === "refuse_insufficient_input"
-                ? "refuse"
-                : decision === "accept" || decision === "reject"
-                  ? decision
-                  : "default"
-          }
-          className="text-[12px]"
-        >
-          {detail.verdict?.decision?.replace(/_/g, " ") ?? "unknown"}
-        </Badge>
-        <span className="text-[12.5px] text-muted">
-          decided {relativeTime(detail.verdict?.decided_at_utc ?? "")}
-        </span>
-        {detail.verdict?.classification ? (
-          <span className="figure text-[12px] text-muted">
-            {detail.verdict.classification}
-          </span>
-        ) : null}
-      </section>
-
-      {/* ---- evidence + next steps (v1 records degrade to placeholders) ---- */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section>
-          <h3 className="smallcaps mb-2">Evidence</h3>
-          <PhotoEvidence
-            src={photoSrc(photo)}
-            alt={`Load photo for ${detail.record_id}`}
-            boxes={vlm?.boxes ?? []}
-            localisation={vlm?.localisation}
-            model={vlm?.model}
-            sourceNote={scriptedNote(vlm?.model, uncertainty)}
-          />
-        </section>
-        <NextSteps
-          steps={steps}
-          emptyText="Not recorded: this record predates SOP-cited next steps."
-        />
-      </div>
-
-      {/* ---- AI provenance: which model produced what, how fast ---- */}
+      {/* ---- evidence, reasoning, next steps — one reading column ---- */}
       <section>
-        <h3 className="smallcaps mb-2">AI provenance</h3>
-        <dl className="figure m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
-          <dt className="text-muted">Vision</dt>
-          <dd className="m-0 break-words text-ink">{modelProvenance(vlm, uncertainty)}</dd>
-          <dt className="text-muted">Waybill</dt>
-          <dd className="m-0 break-words text-ink">{modelProvenance(llm, uncertainty)}</dd>
-        </dl>
+        <h3 className="smallcaps mb-2">Evidence</h3>
+        <PhotoEvidence
+          src={photoSrc(photo)}
+          alt={`Load photo for ${detail.record_id}`}
+          boxes={vlm?.boxes ?? []}
+          localisation={vlm?.localisation}
+          model={vlm?.model}
+          sourceNote={scriptedNote(vlm?.model, uncertainty)}
+        />
       </section>
 
-      {/* ---- reasoning ---- */}
-      {reasoning || reasons.length > 0 || uncertainty ? (
+      {reasoningText || reasons.length > 0 || failureNote ? (
         <section>
           <h3 className="smallcaps mb-2">Reasoning</h3>
           <div className="rounded-[8px] border border-seam bg-ground px-3.5 py-3 text-[13.5px] leading-relaxed text-muted">
-            {reasoning ? <p className="m-0">{reasoning}</p> : null}
+            {reasoningText ? <p className="m-0">{reasoningText}</p> : null}
             {reasons.length > 0 ? (
               <ul className="mt-2 mb-0 list-disc space-y-1 pl-5">
                 {reasons.map((reason) => (
@@ -387,14 +310,19 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
                 ))}
               </ul>
             ) : null}
-            {uncertainty ? (
+            {failureNote ? (
               <p className="mt-2 mb-0 text-[12px] text-verdict-amber">
-                {uncertainty}
+                {failureNote}
               </p>
             ) : null}
           </div>
         </section>
       ) : null}
+
+      <NextSteps
+        steps={steps}
+        emptyText="Not recorded: this record predates SOP-cited next steps."
+      />
 
       {detail.record_id ? (
         <PythiaPanel
@@ -407,14 +335,17 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       {/* ---- actions ---- */}
       <div className="flex flex-wrap gap-2.5">
         <Button variant="default" size="sm" onClick={() => downloadJSON(detail)}>
-          Download JSON
+          Download {detail.record_id}.json
         </Button>
-        <span className="self-center text-[12px] text-muted">
-          Tamper-evident audit record: saved as {detail.record_id}.json
-        </span>
       </div>
     </div>
   );
+}
+
+/** 8 + 8 chars around an ellipsis; the full digest stays in the JSON download. */
+function shortHash(sha: string): string {
+  const clean = sha.replace(/^sha256:/, "");
+  return clean.length > 19 ? `${clean.slice(0, 8)}…${clean.slice(-8)}` : clean;
 }
 
 /** Blob-download the audit record exactly as the API returned it. */

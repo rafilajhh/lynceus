@@ -23,6 +23,30 @@ export function formatRupiahCompact(idr: number): string {
   return formatRupiah(idr);
 }
 
+/** Backend conversion rate (backend/src/lynceus/impact.py: USD_IDR_RATE). */
+export const USD_IDR_RATE = 16_000;
+
+/** "US$2,793,664": en-US grouping, no decimals. Sign preserved for negatives. */
+export function formatUsd(idr: number): string {
+  if (!Number.isFinite(idr) || idr === 0) return "US$0";
+  const sign = idr < 0 ? "−" : "";
+  return `${sign}US$${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(Math.abs(idr) / USD_IDR_RATE)}`;
+}
+
+/** "US$2.8M" / "US$34.4K": compact headline figure; full value stays in the title. */
+export function formatUsdCompact(idr: number): string {
+  if (!Number.isFinite(idr) || idr === 0) return "US$0";
+  const sign = idr < 0 ? "−" : "";
+  const usd = Math.abs(idr) / USD_IDR_RATE;
+  const oneDecimal = (n: number) =>
+    new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(n);
+  if (usd >= 1_000_000) return `${sign}US$${oneDecimal(usd / 1_000_000)}M`;
+  if (usd >= 10_000) return `${sign}US$${oneDecimal(usd / 1_000)}K`;
+  return `${sign}US$${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(usd)}`;
+}
+
 /** "5.200 kg" / "5,2 t": weighbridge register. */
 export function formatWeight(kg: number): string {
   if (!Number.isFinite(kg) || kg <= 0) return "—";
