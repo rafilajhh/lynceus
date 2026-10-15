@@ -193,7 +193,8 @@ def test_vlm_llm_keep_default_max_tokens(monkeypatch):
 
     monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
     VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
-    assert seen == [512]
+    # vlm() votes over 3 reads; all keep the default 512 max_tokens.
+    assert seen == [512, 512, 512]
 
 
 # ---------------------------------------------------------------------------

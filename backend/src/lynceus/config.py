@@ -87,6 +87,7 @@ class Settings:
     explain_url: str
     explain_model: str
     localisation_mode: str
+    vlm_votes: int
     vllm_api_key: str
     allow_stub_fallback: bool
     storage_dir: str
@@ -145,6 +146,7 @@ def get_settings() -> Settings:
         explain_url=os.environ.get(EXPLAIN_URL_ENV) or assist_url,
         explain_model=os.environ.get(EXPLAIN_MODEL_ENV) or assist_model,
         localisation_mode=localisation_mode,
+        vlm_votes=int(os.environ.get("VLM_VOTES", "3")),
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
         vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),
         allow_stub_fallback=os.environ.get(

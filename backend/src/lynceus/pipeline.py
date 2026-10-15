@@ -28,7 +28,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 import httpx
 
@@ -145,6 +145,11 @@ _VLM_PROMPT = (
     '"light_contaminants" (list of strings among plastic_film/glass/textile/'
     "organic_residue/wet_mix), and "
     '"confidence" (number 0..1, your confidence in the analysis). '
+    "Always report metal, rock, concrete, tire or e-waste in hard_contaminants "
+    "whenever any piece is visible, however small or partially buried. "
+    "Report organic_residue or wet_mix in light_contaminants, and a moisture "
+    "fraction above 0.3, whenever the load looks damp, dark, or has food/organic "
+    "residue. "
     "Be conservative: report contamination only when visible."
     # Same wording as the validated probe (scripts/probe_token_factory.py).
     ' Also include the key "locations" (list of objects {"label": one of the '
@@ -213,6 +218,53 @@ def _clamp01(value: Any, default: float = 0.0) -> float:
     if number != number or number in (float("inf"), float("-inf")):
         return default
     return max(0.0, min(1.0, number))
+
+
+def _vote_majority(reads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge N VLM reads by majority on hard_contaminants, median on numbers.
+
+    hard_contaminants: a contaminant is kept when it appears in > half the reads.
+    light_contaminants, boxes: taken from the read that has the majority's
+    hard_contaminants (the most informative read).
+    confidence/moisture: median across reads.
+    """
+    if not reads:
+        return {}
+    if len(reads) == 1:
+        return reads[0]
+
+    # Majority vote on hard_contaminants (the safety-critical field).
+    hard_votes: Dict[str, int] = {}
+    for r in reads:
+        for c in r.get("hard_contaminants", []) or []:
+            hard_votes[c] = hard_votes.get(c, 0) + 1
+    majority = len(reads) // 2 + 1
+    agreed_hard = sorted([c for c, n in hard_votes.items() if n >= majority])
+
+    # Pick the read that best matches the majority hard set (prefer one that
+    # actually contains them) as the base for light/boxes.
+    def score(r: Dict[str, Any]) -> int:
+        h = set(r.get("hard_contaminants", []) or [])
+        return len(h & set(agreed_hard))
+
+    base = max(reads, key=score)
+
+    def median(vals: List[float]) -> float:
+        s = sorted(vals)
+        n = len(s)
+        return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+    moistures = [_clamp01(r.get("moisture")) for r in reads]
+    confidences = [_clamp01(r.get("confidence")) for r in reads]
+
+    return {
+        "contamination": base.get("contamination", "unknown"),
+        "moisture": median(moistures),
+        "hard_contaminants": agreed_hard,
+        "light_contaminants": base.get("light_contaminants", []),
+        "confidence": median(confidences),
+        "locations": base.get("locations", []),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +420,8 @@ class VLLMClient:
                     "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": 0.1,
+                    # Fixed seed so identical re-runs give the same verdict.
+                    "seed": 0,
                 },
                 headers=self._auth_headers(),
                 timeout=remaining_s,
@@ -454,8 +508,16 @@ class VLLMClient:
             }
         ]
         started = time.perf_counter()
-        parsed = self._chat_json(
-            self._settings.vllm_vlm_url, self._settings.vlm_model, messages
+        # Token Factory reads are bimodal: identical photos sometimes return
+        # "none detected". Vote over N reads so one blind read can't clear a load.
+        votes = self._settings.vlm_votes
+        parsed = _vote_majority(
+            [
+                self._chat_json(
+                    self._settings.vllm_vlm_url, self._settings.vlm_model, messages
+                )
+                for _ in range(votes)
+            ]
         )
         latency_ms = (time.perf_counter() - started) * 1000.0
         mode = self._settings.localisation_mode
