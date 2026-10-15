@@ -441,7 +441,6 @@ export function WorkspaceClient() {
         data={data}
         decision={decision}
         preventedLossIdr={impact?.prevented_loss_idr ?? 0}
-        preventedLossUsd={impact?.prevented_loss_usd ?? 0}
         impactRunKey={impactRunKey}
         bannerLit={bannerLit}
         onAllResolved={onAllResolved}
