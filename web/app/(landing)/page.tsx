@@ -62,7 +62,7 @@ const STEPS = [
   {
     no: "02",
     title: "Analyze",
-    text: "A vision-language model on AMD GPUs reads the load for contaminants and moisture, a language model cross-checks the waybill claim, and a physics digital twin simulates the gate gas readings while the weighbridge weight is checked against the waybill.",
+    text: "A vision-language model on AMD Token Factory reads the load for contaminants and moisture, a language model cross-checks the waybill claim, and a physics digital twin simulates the gate gas readings while the weighbridge weight is checked against the waybill.",
     gate: "gate · VLM + twin resolved",
   },
   {

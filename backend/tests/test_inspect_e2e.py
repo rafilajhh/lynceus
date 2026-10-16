@@ -2,7 +2,7 @@
 
 The full inspection pipeline (VLM + LLM + decision engine + audit record) is
 exercised through ``pipeline.StubAIClients`` so these tests never touch the
-network and never depend on a live vLLM deployment on the MI300X.
+network and never depend on any live AI server.
 
 Verified contract (backend/src/lynceus/api.py ``InspectRequest``, pipeline.py,
 decision.py, audit.py; demo stories per docs/PLAN.md §5.1 and web/app.js):

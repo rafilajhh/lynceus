@@ -28,8 +28,9 @@ import { useElapsedSeconds } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
 /** How the operator asked for this inspection to run. Only "live" (the
-    Run live on AMD action) may say a live model is working; whether one
-    actually ran is stated afterwards by the photo-evidence source note. */
+    Run live on AMD Token Factory action) may say a live model is working;
+    whether one actually ran is stated afterwards by the photo-evidence
+    source note. */
 export type RunMode = "scripted" | "live" | "other";
 
 /** Why the inspection request failed (see InspectError in lib/inspect-api). */
@@ -42,7 +43,7 @@ export interface ResultError {
 const EVALUATING_COPY: Record<RunMode, string> = {
   scripted: "Running the scripted sample through the decision engine.",
   live:
-    `Live run requested on AMD: a full inspection takes ${LIVE_LATENCY_COPY} ` +
+    `Live run requested on AMD Token Factory: a full inspection takes ${LIVE_LATENCY_COPY} ` +
     "(measured on the Validation page). The photo evidence states what actually ran.",
   other: "Running the inspection…",
 };

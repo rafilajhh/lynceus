@@ -26,7 +26,7 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 ## Operating Context
 
 - Trucks stop at the weighbridge 15–30 s; operator uploads/submits photo + surat jalan + weight; verdict ticket must be readable in seconds (traffic-light + reasons).
-- Demo runs live at a public URL; AI served via vLLM on AMD Instinct MI300X (dev bridge: OpenAI-compatible endpoint; env-var switch, zero code change).
+- Demo runs live at a public URL; AI served via AMD Token Factory (AMD's shared OpenAI-compatible endpoint catalogue on AMD GPUs; env-var switch to any OpenAI-compatible server, zero code change).
 - Demo cases grounded in real Indonesian data: arm-roll trucks ~5.2 t/trip, MSW moisture 40–60%, PUPR surat jalan format, RealWaste photos (CC BY 4.0).
 - English UI for international judges.
 
