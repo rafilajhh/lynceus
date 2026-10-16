@@ -207,7 +207,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       {/* ---- gates grid ---- */}
       {detail.gates ? (
         <section aria-label="Gates">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {Object.entries(detail.gates).map(([name, gate]) => {
               const measured =
                 gate.value !== null
