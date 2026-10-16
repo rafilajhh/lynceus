@@ -4,7 +4,8 @@
  * IntakeForm: the weighbridge register: truck_id, supplier, waybill
  * photo, weight, stream select, moisture, age. Fields use the
  * foundation's .input token. The load photo upload lives beside the
- * hero image in the parent (WorkspaceClient).
+ * hero image in the parent (WorkspaceClient). The declared waybill
+ * text is synthesized by the parent from stream + weight.
  */
 
 import type { FormEvent } from "react";
@@ -15,7 +16,6 @@ import { cn } from "@/lib/utils";
 export interface IntakeValues {
   truck_id: string;
   supplier: string;
-  manifest_text: string;
   weight_kg: string;
   stream: string;
   moisture_pct: string;
@@ -142,9 +142,8 @@ export function IntakeForm({
           </div>
         </div>
 
-        {/* Waybill: an optional photo plus the declared text. The text is
-            what the LLM cross-checks against the photo, so without it the
-            gate honestly refuses (insufficient input). */}
+        {/* Waybill: an optional photo. The declared waybill text the LLM
+            cross-checks is synthesized by the parent from stream + weight. */}
         <div className="flex items-center gap-3">
           <span className="smallcaps shrink-0">Waybill</span>
           {uploadRow(
@@ -153,21 +152,6 @@ export function IntakeForm({
             waybillPhoto,
             onWaybillPhoto,
           )}
-        </div>
-        <div>
-          <label htmlFor="manifest_text" className="smallcaps mb-1 block">
-            Waybill text <span className="text-muted normal-case">(declared)</span>
-          </label>
-          <textarea
-            id="manifest_text"
-            rows={2}
-            className={cn(field, "resize-none")}
-            value={values.manifest_text}
-            onChange={(e) => onChange({ manifest_text: e.target.value })}
-            placeholder="What the waybill declares, e.g. 'Dry shredded RDF, no metal, declared 5200 kg, moisture 18%'"
-            disabled={loading}
-            autoComplete="off"
-          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">

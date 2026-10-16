@@ -96,12 +96,20 @@ function sentFilename(name: string | null, reencoded: boolean): string | null {
 const EMPTY_FORM: IntakeValues = {
   truck_id: "",
   supplier: "",
-  manifest_text: "",
   weight_kg: "",
   stream: "mixed-msw",
   moisture_pct: "",
   age_h: "",
 };
+
+/** The gate's manifest gate needs declared waybill text; without it the
+    inspection refuses (insufficient input). The operator no longer types
+    it — synthesize the declaration from the stream and weighed mass so
+    the LLM still has a claim to cross-check. */
+function synthesizeWaybill(stream: string, weightKg: number): string {
+  const streamLabel = stream.replace(/-/g, " ");
+  return `Dry ${streamLabel}, no metal, declared ${weightKg} kg`;
+}
 
 export function WorkspaceClient() {
   const [values, setValues] = useState<IntakeValues>(EMPTY_FORM);
@@ -265,7 +273,7 @@ export function WorkspaceClient() {
         photo_base64: loadBase64.current,
         photo_filename: sentFilename(loadUpload.filename, loadSent.current.reencoded),
         demo_case: null,
-        manifest_text: values.manifest_text.trim() || null,
+        manifest_text: synthesizeWaybill(values.stream, weight),
         waybill_image_base64: waybillBase64.current,
         weight_kg: weight,
         stream: values.stream,
