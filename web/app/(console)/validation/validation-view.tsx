@@ -160,8 +160,13 @@ export function ValidationView() {
 
 /** Headline: the verdict on the gate, in numbers and in words. */
 function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
-  const r = summary.reject;
+  // Use current-rules replay when available; it reflects the shipped rules.
+  const replay = summary.replay;
+  const r = replay ? replay.reject : summary.reject;
   const caught = `${r.tp} of ${r.tp + r.fn}`;
+  const precisionNote = replay
+    ? `${r.tp} of ${r.tp + r.fp} rejects were metal (current rules)`
+    : `${r.tp} of ${r.tp + r.fp} rejects were metal`;
   const parts = [
     {
       key: "recall",
@@ -173,7 +178,7 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
       key: "precision",
       value: ratio(r.precision),
       label: "precision",
-      sub: `${r.tp} of ${r.tp + r.fp} rejects were metal`,
+      sub: precisionNote,
     },
     { key: "f1", value: ratio(r.f1), label: "F1", sub: null as string | null },
   ];
