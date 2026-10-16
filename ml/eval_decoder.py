@@ -9,7 +9,7 @@ Defaults: the backend's own settings (DETECTOR_MODEL_PATH, DETECTOR_HARD_CONF,
 DETECTOR_LIGHT_CONF). Needs only the backend venv (onnxruntime, numpy, Pillow) and the
 TACO test split from fetch_taco.py. --ultralytics also checks, per benchmark image, that the
 decoder's detector verdict matches the Ultralytics detections.
-Writes ml/results/decoder_<model>.json.
+Writes ml/results/decoder_<model>.json, with one row per TACO test image.
 """
 
 from __future__ import annotations
@@ -61,8 +61,10 @@ def main() -> None:
         label = taco / "labels" / "test" / f"{img.stem}.txt"
         ids = {int(l.split()[0]) for l in label.read_text().splitlines() if l.strip()} if label.is_file() else set()
         boxes = detector.detect(img.read_bytes(), s, min_conf=0.05)["boxes"]
-        rows.append({"metal": 0 in ids, "light": bool(ids & {1, 2}),
-                     "top_metal": _top(boxes, METAL, "confidence"), "top_light": _top(boxes, LIGHT, "confidence")})
+        rows.append({"image": img.name, "metal": 0 in ids, "light": bool(ids & {1, 2}),
+                     # Unrounded: a rounded score could cross a threshold.
+                     "top_metal": _top(boxes, METAL, "confidence"),
+                     "top_light": _top(boxes, LIGHT, "confidence")})
     if not rows:
         raise SystemExit(f"no TACO test images under {taco} (run ml/fetch_taco.py --splits test)")
 
@@ -82,6 +84,9 @@ def main() -> None:
                       "false_metal": count(other, "top_metal", hard),
                       "light_recall": count([r for r in rows if r["light"]], "top_light", light),
                       "false_escalate_clean": count(clean, "top_light", light)},
+        # Per image (top confidence per group, floor 0.05): paired tests and any
+        # threshold can be scored from these rows (ml/taco_robustness.py).
+        "taco_test_rows": rows,
     }
     if a.ultralytics:
         ultra = {d["image"]: d["boxes"] for d in json.loads(Path(a.ultralytics).read_text(encoding="utf-8"))}
@@ -92,7 +97,7 @@ def main() -> None:
         out["benchmark_verdict_vs_ultralytics"] = f"{same}/{len(ultra)}"
     dest = ML / "results" / f"decoder_{Path(s.detector_model_path).stem}.json"
     dest.write_text(json.dumps(out, indent=1), encoding="utf-8")
-    print(json.dumps(out, indent=1))
+    print(json.dumps({k: v for k, v in out.items() if k != "taco_test_rows"}, indent=1))
 
 
 if __name__ == "__main__":

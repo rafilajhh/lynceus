@@ -12,5 +12,1057 @@
   "light_recall": "3/11",
   "false_escalate_clean": "8/112"
  },
+ "taco_test_rows": [
+  {
+   "image": "taco_0009.jpg",
+   "metal": true,
+   "light": true,
+   "top_metal": 0.6024,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0019.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.9003,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0029.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0039.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0049.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0059.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0069.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.2919,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0079.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0089.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.6782,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0099.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.2906,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0109.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.3139,
+   "top_light": 0.1822
+  },
+  {
+   "image": "taco_0119.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0518
+  },
+  {
+   "image": "taco_0129.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0139.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.2388
+  },
+  {
+   "image": "taco_0149.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0159.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1681,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0169.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0179.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.2506,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0189.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0199.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0209.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0219.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0229.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0239.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0249.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.1144,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0259.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0269.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0279.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0289.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1002,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0299.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0594,
+   "top_light": 0.052
+  },
+  {
+   "image": "taco_0309.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0319.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.6683,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0329.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0339.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0349.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0359.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0369.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0379.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0389.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.5965,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0399.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0409.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0419.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0429.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0439.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0449.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.3776,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0459.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0793,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0469.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0479.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0489.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0499.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0509.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.9347,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0519.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0529.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0539.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.88,
+   "top_light": 0.1006
+  },
+  {
+   "image": "taco_0549.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0559.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0569.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0579.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0627,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0589.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0599.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0613,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0609.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0656,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0619.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0655,
+   "top_light": 0.1101
+  },
+  {
+   "image": "taco_0629.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0732,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0639.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0649.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0659.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0669.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.9239,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0679.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.9255,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0689.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0699.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0709.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.5485,
+   "top_light": 0.155
+  },
+  {
+   "image": "taco_0719.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.8229,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0729.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0739.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.429,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0749.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0759.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1078,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0769.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0779.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0829
+  },
+  {
+   "image": "taco_0789.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.3029,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0799.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0809.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.9239,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0819.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0829.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0839.jpg",
+   "metal": true,
+   "light": true,
+   "top_metal": 0.8869,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0849.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0859.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0869.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0879.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0889.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0899.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0909.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0912,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0919.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0929.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0939.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0949.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0959.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1041,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0969.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0979.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0585,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0989.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_0999.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1009.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1019.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1029.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.9245,
+   "top_light": 0.1756
+  },
+  {
+   "image": "taco_1039.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1049.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1059.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1069.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1079.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0763,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1089.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1099.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.2995,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1109.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1147,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1119.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1129.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1139.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0897,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1149.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.178,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1159.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0909,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1169.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.7288,
+   "top_light": 0.1349
+  },
+  {
+   "image": "taco_1179.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1189.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1199.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1209.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1219.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1229.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0755,
+   "top_light": 0.0584
+  },
+  {
+   "image": "taco_1239.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.2611,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1249.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.2962,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1259.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1269.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.149
+  },
+  {
+   "image": "taco_1279.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.1841
+  },
+  {
+   "image": "taco_1289.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0603,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1299.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1309.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.5874,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1319.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1329.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0738,
+   "top_light": 0.0866
+  },
+  {
+   "image": "taco_1339.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1349.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1359.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0556,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1369.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1306,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1379.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0939,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1389.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1399.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1409.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.1366,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1419.jpg",
+   "metal": true,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1429.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0843
+  },
+  {
+   "image": "taco_1439.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1449.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1459.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0657
+  },
+  {
+   "image": "taco_1469.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1479.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.2237,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1489.jpg",
+   "metal": false,
+   "light": false,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  },
+  {
+   "image": "taco_1499.jpg",
+   "metal": false,
+   "light": true,
+   "top_metal": 0.0,
+   "top_light": 0.0
+  }
+ ],
  "benchmark_verdict_vs_ultralytics": "80/80"
 }
