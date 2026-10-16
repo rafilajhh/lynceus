@@ -283,7 +283,7 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
         </p>
       </div>
 
-      <details className="group border-t border-seam px-4 py-3">
+      <details className="group border-t border-seam px-4 py-3" open={false}>
         <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
           Assumptions and sources
         </summary>
