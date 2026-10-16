@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -710,6 +711,61 @@ def test_detector_runs_are_bounded(monkeypatch):
         for _ in held:
             detector._RUN_SLOTS.release()
     assert detector.detect(_png((64, 48)), min_conf=0.99)["boxes"] == []
+
+
+def test_png_has_a_lower_pixel_cap_than_jpeg(monkeypatch):
+    # A PNG decodes at full size (no DCT scaling), so it gets its own cap.
+    monkeypatch.setattr(detector, "MAX_PNG_PIXELS", 100)
+    with pytest.raises(detector.DetectorImageError, match="PNG 20x20 is over 100 pixels"):
+        detector._decode(_png((20, 20)))
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (90, 90, 90)).save(buf, format="JPEG")
+    assert detector._decode(buf.getvalue()).size == (20, 20)
+
+
+def test_only_jpeg_and_png_are_decoded():
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (90, 90, 90)).save(buf, format="GIF")
+    with pytest.raises(Exception):
+        detector._decode(buf.getvalue())
+    assert pipeline.safe_detect(buf.getvalue(), get_settings()) is None
+
+
+def test_phone_mpo_photo_is_decoded_at_a_reduced_scale(monkeypatch):
+    monkeypatch.setattr(detector, "_DRAFT_SIZE", (300, 300))
+    buf = io.BytesIO()
+    # Two frames, as a phone writes it (one frame opens as plain JPEG).
+    frame = Image.new("RGB", (1300, 1000), (90, 90, 90))
+    frame.save(buf, format="MPO", save_all=True, append_images=[frame.copy()])
+    assert Image.open(io.BytesIO(buf.getvalue())).format == "MPO"
+    assert detector._decode(buf.getvalue()).size == (650, 500)
+
+
+def test_a_busy_detector_refuses_a_no_wait_run_at_once():
+    held = [detector._RUN_SLOTS.acquire(timeout=1) for _ in range(detector.MAX_CONCURRENT_RUNS)]
+    try:
+        assert all(held)
+        started = time.perf_counter()
+        with pytest.raises(RuntimeError, match="busy"):
+            detector.detect(_png((64, 48)), slot_wait_s=0.0)
+        assert time.perf_counter() - started < 1.0
+    finally:
+        for _ in held:
+            detector._RUN_SLOTS.release()
+
+
+def test_scripted_demo_photo_never_waits_for_a_detector_slot(monkeypatch):
+    seen = []
+
+    def _detect(raw, settings, slot_wait_s=detector._SLOT_WAIT_S):
+        seen.append(slot_wait_s)
+        return _det()
+
+    monkeypatch.setattr(detector, "detect", _detect)
+    pipeline.run_inspection({"photo_base64": _PHOTO, "demo_case": "red"}, _Live(),
+                            precomputed_gas=None)
+    pipeline.run_inspection({"photo_base64": _PHOTO}, _Live(), precomputed_gas=None)
+    assert seen == [0.0, detector._SLOT_WAIT_S]
 
 
 def test_detector_threads_setting_and_session(monkeypatch):

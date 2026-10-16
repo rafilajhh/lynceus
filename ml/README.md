@@ -184,7 +184,7 @@ Every script imports `_env.py`. It pins pip, torch, HF, Ultralytics and temp cac
 
 ```
 python -m venv ml/.venv
-ml/.venv/Scripts/python ml/setup_env.py            # torch 2.6 cu124 + ultralytics 8.4.x, onnx, onnxruntime
+ml/.venv/Scripts/python ml/setup_env.py            # torch 2.6 cu124 + ultralytics 8.4.177, onnx, onnxruntime
 python -I ml/fetch_realwaste.py                     # ~690 MB zip -> ml/data/zip/realwaste.zip (read in place)
 ml/.venv/Scripts/python ml/eval_zeroshot.py --model yoloe-26s-seg.pt     # task 1 (~1 min on RTX 3050)
 ml/.venv/Scripts/python ml/build_dataset.py --model yoloe-26s-seg.pt     # pseudo-labels (~3 min)

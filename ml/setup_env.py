@@ -25,7 +25,7 @@ def pip(*args: str) -> None:
 def main() -> None:
     pip("install", "--upgrade", "pip")
     pip("install", "torch", "torchvision", "--index-url", TORCH_INDEX)
-    pip("install", "ultralytics", "onnx", "onnxslim", "onnxruntime", "pillow", "numpy")
+    pip("install", "ultralytics==8.4.177", "onnx", "onnxslim", "onnxruntime", "pillow", "numpy")
     import torch  # noqa: PLC0415
 
     print("torch", torch.__version__, "cuda", torch.cuda.is_available(), flush=True)

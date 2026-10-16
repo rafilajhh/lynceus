@@ -228,7 +228,7 @@ Full server guide (HTTPS, updates, backups, judging-day checklist):
 | `LYNCEUS_WEB_DIR` | `<repo>/web/out` (`/app/web/out` in the image) | Static web export to serve |
 | `LYNCEUS_BENCHMARK_DIR` | `<repo>/backend/benchmark` (`/app/backend/benchmark` in the image) | Benchmark manifest and results for `/benchmark/latest` |
 | `PORT` | `8020` | Listening port of `python -m lynceus.main` |
-| `VLM_VOTES` | `3` | Vision reads per photo, merged by majority vote (1..4, run in parallel) |
+| `VLM_VOTES` | `3` | Vision reads per photo, merged by majority vote (1..3, run in parallel) |
 | `VLM_FALLBACK_MODELS` / `VLM_BENCHMARKED_MODELS` | *(empty)* / `MiniCPM-V-4.7-35B-A3B` | Vision fallback chain; only benchmarked models may accept or reject |
 | `DETECTOR_MODEL_PATH` | the bundled `backend/models/lynceus-yolo26s-realwaste-taco.onnx` | Detector weights; empty = detector off |
 | `DETECTOR_HARD_CONF` / `DETECTOR_LIGHT_CONF` | `0.35` / `0.05` | Detector thresholds for metal / glass+organic, picked on a val split (`backend/models/README.md`) |

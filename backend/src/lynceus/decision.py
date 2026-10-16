@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lynceus import detector as cv_detector
 from lynceus.audit import Decision, GateState, Route
+from lynceus.config import DEFAULT_DETECTOR_HARD_CONF, DEFAULT_DETECTOR_LIGHT_CONF
 
 __all__ = [
     "HARD_CONTAMINANTS",
@@ -88,9 +89,9 @@ MOISTURE_CONFLICT_MARGIN = 0.15
 #: the load is far wetter and older than declared.
 GAS_CH4_ANAEROBIC_THRESHOLD_PPM = 100.0
 #: Default detector thresholds (``config.Settings`` overrides them per call).
-#: Picked on the val split, never on the test images (see config).
-DETECTOR_HARD_CONFIDENCE = 0.35
-DETECTOR_LIGHT_CONFIDENCE = 0.05
+#: Picked on the val split, never on the test images (one source: config).
+DETECTOR_HARD_CONFIDENCE = DEFAULT_DETECTOR_HARD_CONF
+DETECTOR_LIGHT_CONFIDENCE = DEFAULT_DETECTOR_LIGHT_CONF
 #: How reasons name the detector.
 DETECTOR_NAME = "Detector (YOLO26s)"
 #: Vision models with a benchmark run behind them (``config.Settings``

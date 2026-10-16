@@ -3,7 +3,7 @@
   "source_run": "2026-10-13",
   "framing": "What-if re-score: the recorded live VLM outputs of the 2026-10-13 AMD Token Factory run, fused with the CPU detector (YOLO26s fine-tuned on RealWaste + TACO) through the current decision rules. No new model calls.",
   "scope": "component validation on public RealWaste images — not field data from a plant",
-  "disclosure": "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the same sessions as these 80 held-out images (one item per frame on the same floor; the held-out images were excluded from training) plus TACO litter photos. The default thresholds were picked on a separate val split (RealWaste val + TACO val) by a rule fixed before any test read, but the sweep below is read on this test set. It shows the fusion rules work as designed on these images, not that the detector works on a truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were changed after the live run, using that run's data.",
+  "disclosure": "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the same sessions as these 80 held-out images (one item per frame on the same floor; the held-out images were excluded from training) plus TACO litter photos. The default thresholds were picked on a separate val split (RealWaste val + TACO val; not trained on, but used for checkpoint selection) by a rule committed before this model was trained, and the sweep below is read on this test set. It shows the fusion rules work as designed on these images, not that the detector works on a truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were changed after the live run, using that run's data.",
   "llm_note": "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence of 0.95. That confidence only fills the ocr_confidence gate value, which has no threshold and never moves the verdict. The VLM prompt was not changed for this re-score; latency is not re-measured (no model was called).",
   "rescored_on": "2026-10-16",
   "manifest_n": 80,
@@ -15,7 +15,7 @@
     "detections_source": "lynceus.detector (onnxruntime-cpu) run over benchmark/images, conf >= 0.05",
     "hard_conf_default": 0.35,
     "light_conf": 0.05,
-    "thresholds_note": "Defaults picked on the val split (RealWaste val + TACO val) by a rule fixed before any test read (ml/eval_val.py); the sweep is read on this test set."
+    "thresholds_note": "Defaults picked on the val split (RealWaste val + TACO val) by a rule committed before this model was trained (ml/eval_val.py); the sweep is read on this test set."
   },
   "table": {
     "vlm_only": {

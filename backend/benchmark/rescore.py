@@ -366,8 +366,9 @@ HYBRID_DISCLOSURE = (
     "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the "
     "same sessions as these 80 held-out images (one item per frame on the same floor; the "
     "held-out images were excluded from training) plus TACO litter photos. The default "
-    "thresholds were picked on a separate val split (RealWaste val + TACO val) by a rule "
-    "fixed before any test read, but the sweep below is read on this test set. It shows "
+    "thresholds were picked on a separate val split (RealWaste val + TACO val; not "
+    "trained on, but used for checkpoint selection) by a rule committed before this "
+    "model was trained, and the sweep below is read on this test set. It shows "
     "the fusion rules work as designed on these images, not that the detector works on a "
     "truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision "
     "rules were changed after the live run, using that run's data."
@@ -560,7 +561,8 @@ def hybrid_rescore(
     vlm_only = run_variant({DETECTOR_MODEL_PATH_ENV: ""})
     sweep: Dict[str, Dict[str, Any]] = {}
     hybrid: Dict[str, list] = {}
-    for hard in _SWEEP_HARD_CONF:
+    # The shipped default is always swept: the hybrid rows are read from it.
+    for hard in sorted({*_SWEEP_HARD_CONF, hard_default}):
         for light_on in (True, False):
             key = "light_escalation_on" if light_on else "light_escalation_off"
             log(f"variant hard_conf={hard} {key}")
@@ -610,8 +612,9 @@ def hybrid_rescore(
             "hard_conf_default": hard_default,
             "light_conf": light_default,
             "thresholds_note": (
-                "Defaults picked on the val split (RealWaste val + TACO val) by a rule fixed "
-                "before any test read (ml/eval_val.py); the sweep is read on this test set."
+                "Defaults picked on the val split (RealWaste val + TACO val) by a rule "
+                "committed before this model was trained (ml/eval_val.py); the sweep is "
+                "read on this test set."
             ),
         },
         "table": {
@@ -695,7 +698,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         detections_source = f"{shown} (Ultralytics predict, conf >= 0.05)"
         detector_runtime = "ultralytics-predict"
         # The default file is the bundled model's; any other is named by its file.
-        detector_model = None if args.detections == DEFAULT_DETECTIONS else args.detections.stem
+        detector_model = (
+            None if args.detections.resolve() == DEFAULT_DETECTIONS.resolve()
+            else args.detections.stem
+        )
     hybrid_rescore(source, detections, detections_source=detections_source,
                    detector_runtime=detector_runtime, detector_model=detector_model,
                    out=args.out)

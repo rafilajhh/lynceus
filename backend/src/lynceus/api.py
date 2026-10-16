@@ -417,7 +417,12 @@ def _run_inspection_with_audit(
         # truck is held for a human on its findings instead of a 503.  It
         # runs before the record is begun, so a photo it cannot read still
         # leaves no record shell behind.
-        early = pipeline.safe_detect(photo_bytes, settings) if photo_bytes else None
+        # A demo photo never queues behind gate photos for a detector slot.
+        early = (
+            pipeline.safe_detect(
+                photo_bytes, settings, wait_for_slot=not payload.get("demo_case"))
+            if photo_bytes else None
+        )
         if early is None:
             raise
         ai_clients = pipeline.UnavailableAIClients(str(exc))

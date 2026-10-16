@@ -381,7 +381,7 @@ def test_vlm_llm_keep_default_max_tokens(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("raw", "votes"), [(None, 3), ("1", 1), ("4", 4), ("0", 1), ("9", 4), ("three", 3)]
+    ("raw", "votes"), [(None, 3), ("1", 1), ("3", 3), ("4", 3), ("0", 1), ("9", 3), ("three", 3)]
 )
 def test_vlm_votes_env_is_clamped(monkeypatch, raw, votes):
     if raw is None:
@@ -424,6 +424,99 @@ def test_vlm_one_failed_vote_fails_the_model_and_falls_back(monkeypatch):
     assert result["model"] == "vlm-b"
     assert result["fallback_from"][0].startswith("vlm-a: HTTPStatusError")
     assert calls.count("vlm-a") == 3 and calls.count("vlm-b") == 3
+
+
+def test_vlm_failed_vote_fails_the_model_without_waiting_for_the_others(monkeypatch):
+    monkeypatch.delenv("VLM_FALLBACK_MODELS", raising=False)
+    release = threading.Event()
+    lock = threading.Lock()
+    calls: list[int] = []
+
+    def _fake(self, base_url, model, messages, max_tokens=512):
+        with lock:
+            calls.append(1)
+            first = len(calls) == 1
+        if first:
+            raise httpx.HTTPStatusError("503", request=None, response=None)
+        release.wait(5)  # a slow read: the chain must not wait for it
+        return _VLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
+    started = time.perf_counter()
+    try:
+        with pytest.raises(httpx.HTTPStatusError):
+            VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+        assert time.perf_counter() - started < 2.0
+    finally:
+        release.set()
+
+
+def _status_error(status):
+    request = httpx.Request("POST", "http://x/v1/chat/completions")
+    return httpx.HTTPStatusError(
+        f"{status}", request=request, response=httpx.Response(status, request=request)
+    )
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_refused_key_ends_the_vision_chain(monkeypatch, status):
+    # Every model shares the key: a fallback would be refused the same way.
+    monkeypatch.setenv("VLM_VOTES", "1")
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    calls = []
+
+    def _fake(self, base_url, model, messages, max_tokens=512):
+        calls.append(model)
+        raise _status_error(status)
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
+    with pytest.raises(httpx.HTTPStatusError):
+        VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert calls == ["vlm-a"]
+
+
+def test_spent_rate_limit_ends_the_vision_chain(monkeypatch):
+    monkeypatch.setenv("VLM_VOTES", "1")
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    calls = []
+
+    def _fake(self, base_url, model, messages, max_tokens=512):
+        calls.append(model)
+        raise _RateLimitedError(0)
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
+    with pytest.raises(pipeline.RateLimitSpentError, match="rate-limited"):
+        VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert calls == ["vlm-a"] * 3
+
+
+def test_model_specific_failure_classification():
+    assert pipeline._model_specific_failure(_status_error(503))
+    assert pipeline._model_specific_failure(_status_error(400))
+    assert pipeline._model_specific_failure(
+        httpx.HTTPStatusError("503", request=None, response=None)
+    )
+    assert pipeline._model_specific_failure(ValueError("not JSON"))
+    assert not pipeline._model_specific_failure(_status_error(401))
+    assert not pipeline._model_specific_failure(pipeline.RateLimitSpentError("429"))
+    assert not pipeline._model_specific_failure(httpx.ReadTimeout("slow"))
+
+
+def test_vote_counts_each_read_once_and_ignores_malformed_entries():
+    # One read naming metal twice is still one vote: no majority.
+    merged = pipeline._vote_majority(
+        [{"hard_contaminants": ["metal", "metal"]}, {"hard_contaminants": []},
+         {"hard_contaminants": []}]
+    )
+    assert merged["hard_contaminants"] == []
+    # A non-string (unhashable) entry is ignored instead of crashing the vote.
+    merged = pipeline._vote_majority(
+        [{"hard_contaminants": [["metal"], "metal"]}, {"hard_contaminants": ["metal"]},
+         {"hard_contaminants": [{"x": 1}]}]
+    )
+    assert merged["hard_contaminants"] == ["metal"]
 
 
 # ---------------------------------------------------------------------------
