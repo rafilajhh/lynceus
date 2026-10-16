@@ -135,9 +135,9 @@ def main() -> None:
     shipped = {k: (d["thresholds"]["hard"], d["thresholds"]["light"]) for k, d in decoders.items()}
     # (name, decoder key, hard, light); the first is the new model.
     comparators = (
-        ("new@{:g}/{:g}".format(*shipped["new"]), "new", *shipped["new"]),
-        ("previous@{:g}/{:g} (shipped)".format(*shipped["old"]), "old", *shipped["old"]),
-        ("previous@{:g}/{:g} (its val pick)".format(*PREVIOUS_VAL_PICK), "old", *PREVIOUS_VAL_PICK),
+        ("new@{:.2f}/{:.2f}".format(*shipped["new"]), "new", *shipped["new"]),
+        ("previous@{:.2f}/{:.2f} (shipped)".format(*shipped["old"]), "old", *shipped["old"]),
+        ("previous@{:.2f}/{:.2f} (its val pick)".format(*PREVIOUS_VAL_PICK), "old", *PREVIOUS_VAL_PICK),
     )
 
     leak = json.loads(Path(a.leakage).read_text(encoding="utf-8"))["taco_test"]
