@@ -1,19 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { fetchSession } from "@/lib/auth-api";
 import { SideNavbar } from "@/components/shell/side-navbar";
 import { TopBar } from "@/components/shell/top-bar";
 
 /**
- * Console route group layout: side navbar + top bar (status only, no wordmark/nav) + content.
- * Applies to /app, /inspections. Landing page (/) uses (landing)/layout.tsx.
- * No footer here: the operate surface keeps the stage free of repeated
- * disclaimers (the landing page carries the provenance/honesty notes).
+ * Console route group layout: session guard + side navbar + top bar
+ * (status only) + content. Applies to /app, /inspections, /shift,
+ * /validation. When the backend runs with admin credentials, an
+ * unauthenticated visitor is sent to /login; in demo mode (no
+ * credentials configured) the guard passes through.
  */
 export default function ConsoleLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchSession(controller.signal)
+      .then((s) => {
+        if (s.authenticated) {
+          setAllowed(true);
+        } else {
+          router.replace("/login");
+        }
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        router.replace("/login");
+      });
+    return () => controller.abort();
+  }, [router]);
+
+  if (allowed !== true) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center" role="status">
+        <span
+          aria-hidden="true"
+          className="h-6 w-6 animate-spin rounded-full border-2 border-seam border-t-amber"
+        />
+        <span className="sr-only">Checking your session</span>
+      </div>
+    );
+  }
 
   return (
     <>

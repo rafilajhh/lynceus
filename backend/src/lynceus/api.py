@@ -22,15 +22,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Iterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from lynceus import __version__
 from lynceus import actions
 from lynceus import assist
 from lynceus import audit
+from lynceus import auth
 from lynceus import decision
 from lynceus import detector
 from lynceus import engine_adapter
@@ -751,6 +752,37 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Session auth (demo-open when LYNCEUS_ADMIN_* are unset; see auth.py).
+    auth.register_auth_routes(app)
+
+    def _guard_console_page(request: Request) -> RedirectResponse | None:
+        """303 → /login.html when auth is on and the session is missing.
+
+        The HTML pages are browser navigations, so a redirect beats a 401;
+        the JSON API below answers 401 instead (``auth.require_auth``).
+        """
+        if auth.get_auth_settings().enabled and auth.current_user(request) is None:
+            return RedirectResponse("/login.html", status_code=303)
+        return None
+
+    def _user_is_blocked(request: Request) -> bool:
+        """True when auth is on and the request carries no valid session."""
+        return auth.get_auth_settings().enabled and auth.current_user(request) is None
+
+    @app.get("/login.html", include_in_schema=False)
+    def serve_login_page() -> FileResponse:
+        """Public sign-in page (the one page the console guard never gates)."""
+        page = _web_file("login.html")
+        if not page.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "login_page_not_found",
+                    "message": "web/out/login.html is missing — build the web export.",
+                },
+            )
+        return FileResponse(page, media_type="text/html")
+
     @app.get("/health")
     def health() -> dict[str, Any]:
         settings = get_settings()
@@ -764,15 +796,17 @@ def create_app() -> FastAPI:
             "vllm_vlm_url": settings.vllm_vlm_url,
         }
 
-    @app.get("/app", include_in_schema=False)
-    def serve_app_page() -> FileResponse:
+    @app.get("/app", include_in_schema=False, response_model=None)
+    def serve_app_page(request: Request) -> FileResponse | RedirectResponse:
         """Demo-day hard-reload fix: ``/app`` must serve the workspace page.
 
         ``StaticFiles(html=True)`` only maps ``/app`` → ``app/index.html``,
         but the static export is a flat ``app.html`` — a refresh or a
         direct URL previously hit the API 404 instead.  This explicit
-        route serves the file.
+        route serves the file.  Auth on + no session → 303 to /login.html.
         """
+        if (redirect := _guard_console_page(request)) is not None:
+            return redirect
         page = _web_file("app.html")
         if not page.is_file():
             raise HTTPException(
@@ -785,7 +819,9 @@ def create_app() -> FastAPI:
         return FileResponse(page, media_type="text/html")
 
     @app.post("/assess")
-    def assess(request: AssessRequest) -> dict[str, Any]:
+    def assess(
+        request: AssessRequest, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
         try:
             return engine_adapter.run_assessment(
                 waste_stream=request.waste_stream,
@@ -820,7 +856,9 @@ def create_app() -> FastAPI:
             ) from exc
 
     @app.post("/inspect")
-    def inspect(request: InspectRequest) -> dict[str, Any]:
+    def inspect(
+        request: InspectRequest, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
         settings = get_settings()
         # Ruling 40: cap concurrent live pipelines (before any record exists).
         live = not request.demo_case
@@ -874,7 +912,7 @@ def create_app() -> FastAPI:
                 _LIVE_SLOTS.release()
 
     @app.get("/inspections", response_model=None)
-    def list_inspections(request: Request) -> dict[str, Any] | FileResponse:
+    def list_inspections(request: Request) -> dict[str, Any] | FileResponse | RedirectResponse:
         """Ledger view: one summary row per inspection, newest first.
 
         ``list_inspections`` (audit) scans the filesystem and skips corrupt
@@ -885,14 +923,22 @@ def create_app() -> FastAPI:
         Direct browser navigation (``Accept: text/html`` without an explicit
         JSON preference) gets the static-export ledger page; the JSON API —
         used by the frontend ``fetch`` (explicit ``application/json`` or the
-        ``*/*`` default) — is unchanged.
+        ``*/*`` default) — is unchanged.  Auth on + no session: browsers are
+        redirected to /login.html, API callers get 401 JSON.
         """
         if _wants_html(request):
+            if (redirect := _guard_console_page(request)) is not None:
+                return redirect
             page = _web_file("inspections.html")
             if page.is_file():
                 return FileResponse(page, media_type="text/html")
             # No export to serve — fall through to the JSON API so a
             # browser never gets a 404 where the API still works.
+        if _user_is_blocked(request):
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "authentication_required", "message": "Sign in first."},
+            )
         settings = get_settings()
         rows: list[dict[str, Any]] = []
         for entry in audit.list_inspections(settings.storage_dir):
@@ -941,7 +987,9 @@ def create_app() -> FastAPI:
         return {"inspections": rows}
 
     @app.post("/assist")
-    def post_assist(request: AssistRequest) -> dict[str, Any]:
+    def post_assist(
+        request: AssistRequest, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
         """Pythia: a cited answer from plant documents and, optionally, a record.
 
         Bad ``record_id`` is 422, an unknown one 404 (same rules as
@@ -953,10 +1001,12 @@ def create_app() -> FastAPI:
         client = pipeline.resolve_assist_client(get_settings())
         return assist.answer(request.question, record, client)
 
-    @app.get("/shift", include_in_schema=False)
-    def serve_shift_page() -> FileResponse:
+    @app.get("/shift", include_in_schema=False, response_model=None)
+    def serve_shift_page(request: Request) -> FileResponse | RedirectResponse:
         """The static export is a flat ``shift.html``; serve it on ``/shift``
         (same hard-reload fix as ``/app``)."""
+        if (redirect := _guard_console_page(request)) is not None:
+            return redirect
         page = _web_file("shift.html")
         if not page.is_file():
             raise HTTPException(
@@ -968,9 +1018,11 @@ def create_app() -> FastAPI:
             )
         return FileResponse(page, media_type="text/html")
 
-    @app.get("/validation", include_in_schema=False)
-    def serve_validation_page() -> FileResponse:
+    @app.get("/validation", include_in_schema=False, response_model=None)
+    def serve_validation_page(request: Request) -> FileResponse | RedirectResponse:
         """Flat ``validation.html`` on ``/validation`` (same fix as ``/shift``)."""
+        if (redirect := _guard_console_page(request)) is not None:
+            return redirect
         page = _web_file("validation.html")
         if not page.is_file():
             raise HTTPException(
@@ -1008,7 +1060,9 @@ def create_app() -> FastAPI:
                 yield summary
 
     @app.get("/benchmark/latest")
-    def benchmark_latest() -> dict[str, Any]:
+    def benchmark_latest(
+        _user: str | None = Depends(auth.require_auth),
+    ) -> dict[str, Any]:
         """Newest live ``*.summary.json``, plus framing and its replay.
 
         ``replay`` is the newest re-score of *this* run (its ``source_run``
@@ -1030,7 +1084,9 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/benchmark/replay")
-    def benchmark_replay() -> dict[str, Any]:
+    def benchmark_replay(
+        _user: str | None = Depends(auth.require_auth),
+    ) -> dict[str, Any]:
         """Newest offline replay re-score (recorded model outputs, current rules)."""
         for summary in _benchmark_summaries(replay=True):
             return summary
@@ -1043,7 +1099,9 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/benchmark/manifest.csv", include_in_schema=False)
-    def benchmark_manifest() -> FileResponse:
+    def benchmark_manifest(
+        _user: str | None = Depends(auth.require_auth),
+    ) -> FileResponse:
         """The benchmark's image list with expected verdicts."""
         path = _BENCHMARK_DIR / "manifest.csv"
         if not path.is_file():
@@ -1054,7 +1112,11 @@ def create_app() -> FastAPI:
         return FileResponse(path, media_type="text/csv")
 
     @app.get("/shift-report")
-    def shift_report(since: str | None = None, until: str | None = None) -> dict[str, Any]:
+    def shift_report(
+        since: str | None = None,
+        until: str | None = None,
+        _user: str | None = Depends(auth.require_auth),
+    ) -> dict[str, Any]:
         """Shift aggregation over completed records started in ``[since, until)``.
 
         Both bounds are optional ISO 8601 UTC ``Z`` timestamps (422 otherwise).
@@ -1106,7 +1168,9 @@ def create_app() -> FastAPI:
         return report
 
     @app.get("/inspections/{record_id}")
-    def get_inspection(record_id: str) -> dict[str, Any]:
+    def get_inspection(
+        record_id: str, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
         """Full audit record for one inspection (strict decode).
 
         The record_id is validated against the audit's own closed pattern

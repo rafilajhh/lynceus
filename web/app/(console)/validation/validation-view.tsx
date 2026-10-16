@@ -198,7 +198,9 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
         ))}
       </dl>
       <p className="m-0 mt-3 text-[14px] font-medium text-ink">
-        Out of every {r.tp + r.fn} loads carrying metal, the gate rejected {r.tp}.
+        {replay
+          ? `Under current rules, the gate rejects ${r.tp} of ${r.tp + r.fn} metal loads and passes ${r.tp} of ${r.tp + r.fp} clean loads.`
+          : `Out of every ${r.tp + r.fn} loads carrying metal, the gate rejected ${r.tp}.`}
       </p>
       <p className="figure m-0 mt-2 text-[12px] text-faint">
         n = {summary.n} · one run · 95% interval {wilson(r.tp, r.tp + r.fn)}

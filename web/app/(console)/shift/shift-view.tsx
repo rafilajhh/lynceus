@@ -181,28 +181,6 @@ function hours(minutes: number): string {
 }
 
 /** One parameter value in its unit: share → %, money → display currency. */
-function paramValue(unit: string, value: number, money: Money): string {
-  switch (unit) {
-    case "share":
-      return `${formatCount(value * 100)}%`;
-    case "IDR":
-      return money(value);
-    case "IDR/t":
-      return `${money(value, { full: true })}/t`;
-    case "IDR/min":
-      return `${money(value, { full: true })}/min`;
-    default:
-      return `${formatCount(value)} ${unit}`;
-  }
-}
-
-function sourceHost(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
 
 /**
  * Expected value per 1,000 trucks, with vs without Lynceus (impact.value_model).
@@ -282,58 +260,6 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
           range {money(lowNet)} – {money(highNet)}
         </p>
       </div>
-
-      <details className="group border-t border-seam px-4 py-3" open={false}>
-        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
-          Assumptions and sources
-        </summary>
-        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-          The shift&apos;s worst-case exposure books {money(model.worst_case_per_incident_idr)} for
-          every rejected hard contaminant, as if each would certainly have destroyed a shredder
-          and stopped the kiln for an hour. This model weights that damage by its probability
-          and compares a manual check of every truck (without) with Lynceus screening every
-          truck and sending only flagged ones to that check (with). Range: low sets every
-          adjustable value to the end least favourable to Lynceus, high to the most favourable.
-          {model.note ? ` ${model.note}` : ""}
-        </p>
-        <ul className="m-0 mt-3 flex list-none flex-col gap-2.5 p-0">
-          {model.parameters.map((param) => (
-            <li key={param.key} className="text-[12.5px] leading-relaxed">
-              <span className="text-ink">{param.label}</span>{" "}
-              <span className="figure text-ink">
-                {paramValue(param.unit, param.base, money)}
-              </span>
-              {param.low !== param.base || param.high !== param.base ? (
-                <span className="figure text-muted">
-                  {" "}
-                  (low {paramValue(param.unit, param.low, money)}, high{" "}
-                  {paramValue(param.unit, param.high, money)})
-                </span>
-              ) : null}
-              {param.assumption ? (
-                <Badge variant="escalate" className="ml-2 align-middle">
-                  Assumption
-                </Badge>
-              ) : null}
-              <span className="block text-muted">
-                {param.rationale}
-                {param.sources.map((url) => (
-                  <span key={url}>
-                    {" "}
-                    <a href={url} className="text-amber underline underline-offset-2">
-                      {sourceHost(url)}
-                    </a>
-                  </span>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="m-0 mt-3 text-[12px] text-muted">
-          Benchmark rates from {model.benchmark_file}. US$ figures convert at
-          the backend&apos;s fixed rate (US$1 = Rp {formatCount(USD_IDR_RATE, 0)}).
-        </p>
-      </details>
     </Panel>
   );
 }

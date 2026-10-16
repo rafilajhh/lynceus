@@ -1,16 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { fetchSession, logout } from "@/lib/auth-api";
 import { LogoMark } from "@/components/ui/logo-mark";
+import {
+  IconAuditTrail,
+  IconCollapse,
+  IconInspection,
+  IconShift,
+  IconValidation,
+} from "@/components/ui/nav-icons";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/app", label: "Inspection", icon: "▶" },
-  { href: "/inspections", label: "Audit Trail", icon: "≡" },
-  { href: "/shift", label: "Shift", icon: "◷" },
-  { href: "/validation", label: "Validation", icon: "✓" },
+  { href: "/app", label: "Inspection", Icon: IconInspection },
+  { href: "/inspections", label: "Audit Trail", Icon: IconAuditTrail },
+  { href: "/shift", label: "Shift", Icon: IconShift },
+  { href: "/validation", label: "Validation", Icon: IconValidation },
 ] as const;
 
 /**
@@ -20,12 +28,29 @@ const NAV_ITEMS = [
  */
 export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed: boolean) => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [authOn, setAuthOn] = useState(false);
+
+  // The sign-out control only exists when the backend actually enforces
+  // auth; in demo mode (no admin credentials) it would be a dead button.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchSession(controller.signal)
+      .then((s) => setAuthOn(s.user != null))
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   const toggle = () => {
     const next = !collapsed;
     setCollapsed(next);
     onCollapseChange?.(next);
+  };
+
+  const signOut = async () => {
+    await logout();
+    router.replace("/login");
   };
 
   return (
@@ -69,23 +94,32 @@ export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed
                     : "text-muted hover:bg-seam hover:text-ink"
                 )}
                 aria-current={isActive ? "page" : undefined}
+                title={collapsed ? item.label : undefined}
               >
-                {/* Icon glyphs: functional markers for route identification, not decorative */}
-                <span className="text-[16px] w-5 text-center" aria-hidden="true">{item.icon}</span>
+                <item.Icon size={18} />
                 {!collapsed && <span>{item.label}</span>}
               </Link>
             );
           })}
         </div>
 
-        {/* Collapse toggle */}
+        {/* Sign out (only when auth is enforced) + collapse toggle */}
+        {authOn ? (
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="flex h-11 items-center justify-center gap-2 border-t border-seam text-[12px] font-semibold tracking-[0.6px] text-muted uppercase transition-colors duration-100 hover:bg-seam hover:text-ink"
+          >
+            Sign out
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="flex h-12 items-center justify-center border-t border-seam text-muted hover:bg-seam hover:text-ink transition-colors duration-100"
         >
-          <span aria-hidden="true">{collapsed ? "▸" : "◂"}</span>
+          <IconCollapse collapsed={collapsed} size={18} />
         </button>
       </nav>
 
@@ -106,7 +140,7 @@ export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed
               )}
               aria-current={isActive ? "page" : undefined}
             >
-              <span className="text-[18px]" aria-hidden="true">{item.icon}</span>
+              <item.Icon size={20} />
               <span>{item.label}</span>
             </Link>
           );
