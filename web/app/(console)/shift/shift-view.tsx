@@ -499,8 +499,12 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
             <div className="mt-2">
               <RiskBar row={row} wide />
             </div>
-            {row.flagged && row.explanation ? (
-              <Explanation row={row} className="mt-3 border-t border-seam pt-3" />
+            {row.flagged ? (
+              <div className="mt-2">
+                <Badge variant="escalate" className="text-[11px]">
+                  Review before next delivery
+                </Badge>
+              </div>
             ) : null}
           </li>
         ))}
@@ -512,29 +516,20 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
 
 function SupplierTableRows({ row }: { row: SupplierRow }) {
   return (
-    <>
-      <TableRow className={cn("hover:bg-transparent", row.flagged && row.explanation && "border-b-0")}>
-        <TableCell className="whitespace-nowrap font-semibold text-ink">
-          <SupplierLink name={row.supplier} />
-        </TableCell>
-        <TableCell className="figure text-right text-[12.5px] text-ink">{row.trucks}</TableCell>
-        <TableCell className="figure text-right text-[12.5px] text-ink">{row.reject}</TableCell>
-        <TableCell className="figure text-right text-[12.5px] text-ink">{row.escalate}</TableCell>
-        <TableCell>
-          <RiskBar row={row} />
-        </TableCell>
-        <TableCell className="whitespace-nowrap">
-          <StatusMark row={row} />
-        </TableCell>
-      </TableRow>
-      {row.flagged && row.explanation ? (
-        <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={6} className="pt-0 pb-4">
-            <Explanation row={row} className="max-w-[78ch]" />
-          </TableCell>
-        </TableRow>
-      ) : null}
-    </>
+    <TableRow className="hover:bg-transparent">
+      <TableCell className="whitespace-nowrap font-semibold text-ink">
+        <SupplierLink name={row.supplier} />
+      </TableCell>
+      <TableCell className="figure text-right text-[12.5px] text-ink">{row.trucks}</TableCell>
+      <TableCell className="figure text-right text-[12.5px] text-ink">{row.reject}</TableCell>
+      <TableCell className="figure text-right text-[12.5px] text-ink">{row.escalate}</TableCell>
+      <TableCell>
+        <RiskBar row={row} />
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <StatusMark row={row} />
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -574,18 +569,10 @@ function StatusMark({ row }: { row: SupplierRow }) {
 }
 
 /** The actionable sentence for a flagged supplier — kept quiet and short. */
-function Explanation({
-  row,
-  className,
-}: {
-  row: SupplierRow;
-  className?: string;
-}) {
+function Explanation({ row }: { row: SupplierRow }) {
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <p className="m-0 max-w-[78ch] text-[12.5px] leading-snug text-muted">
-        {row.explanation}
-      </p>
-    </div>
+    <p className="m-0 text-[12.5px] leading-snug text-muted">
+      {row.explanation}
+    </p>
   );
 }
