@@ -64,7 +64,14 @@ def test_settings_default_to_the_bundled_model(monkeypatch):
     assert config.BUNDLED_DETECTOR_MODEL.is_file()
     assert s.detector_model_path == str(config.BUNDLED_DETECTOR_MODEL)
     assert (s.detector_hard_conf, s.detector_light_conf, s.detector_escalate_light) == (
-        0.25, 0.25, True)
+        0.35, 0.05, True)
+
+
+def test_decision_and_config_share_the_detector_defaults():
+    s = config.Settings("v", "l", "vm", "lm", "a", "am", "e", "em", "box", "", True,
+                        "./runs", 1, "0")
+    assert (decision.DETECTOR_HARD_CONFIDENCE, decision.DETECTOR_LIGHT_CONFIDENCE) == (
+        s.detector_hard_conf, s.detector_light_conf)
 
 
 def test_settings_empty_path_disables_and_bad_thresholds_keep_defaults(monkeypatch):
@@ -74,7 +81,7 @@ def test_settings_empty_path_disables_and_bad_thresholds_keep_defaults(monkeypat
     monkeypatch.setenv("DETECTOR_ESCALATE_LIGHT", "0")
     s = get_settings()
     assert s.detector_model_path == ""
-    assert s.detector_hard_conf == 0.25 and s.detector_light_conf == 0.25
+    assert s.detector_hard_conf == 0.35 and s.detector_light_conf == 0.05
     assert s.detector_escalate_light is False
     assert detector.enabled(s) is False
     assert detector.detect(b"\xff\xd8\xff", s) is None
@@ -84,7 +91,7 @@ def test_settings_keep_older_positional_construction():
     """New fields sit at the end with defaults: older Settings(...) calls work."""
     s = config.Settings("v", "l", "vm", "lm", "a", "am", "e", "em", "box", "", True,
                         "./runs", 1, "0")
-    assert s.detector_model_path == "" and s.detector_hard_conf == 0.25
+    assert s.detector_model_path == "" and s.detector_hard_conf == 0.35
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +101,7 @@ def test_settings_keep_older_positional_construction():
 
 def test_detect_finds_metal_on_a_metal_image():
     result = detector.detect((IMAGES / "metal_1.jpg").read_bytes())
-    assert result["model"] == "yolo26s-realwaste"
+    assert result["model"] == "yolo26s-realwaste-taco"
     assert result["runtime"] == "onnxruntime-cpu"
     assert result["latency_ms"] > 0
     assert result["hard_contaminants"] == ["metal"]
@@ -107,8 +114,8 @@ def test_detect_finds_metal_on_a_metal_image():
 
 
 def test_feedstock_classes_never_flag():
-    result = detector.detect((IMAGES / "cardboard_1.jpg").read_bytes())
-    assert {b["label"] for b in result["boxes"]} == {"paper"}
+    result = detector.detect((IMAGES / "paper_51.jpg").read_bytes())
+    assert {b["label"] for b in result["boxes"]} == {"paper", "plastic"}
     assert result["hard_contaminants"] == [] and result["light_contaminants"] == []
 
 
@@ -152,7 +159,7 @@ def test_unconfirmed_detector_metal_escalates_never_rejects():
         "hold for a manual check."
     ]
     gate = gates["detector_second_opinion"]
-    assert gate["state"] == G.FAILED and gate["value"] == 0.93 and gate["threshold"] == 0.25
+    assert gate["state"] == G.FAILED and gate["value"] == 0.93 and gate["threshold"] == 0.35
 
 
 def test_detector_metal_below_vlm_trust_still_holds_the_truck():
@@ -249,7 +256,7 @@ def test_run_inspection_runs_the_detector_on_the_photo_bytes(monkeypatch):
     out = pipeline.run_inspection({"photo_base64": "data:image/jpeg;base64," + _PHOTO},
                                   _Live(), precomputed_gas=None)
     assert seen == [(IMAGES / "metal_1.jpg").read_bytes()]
-    assert out["detector"]["model"] == "yolo26s-realwaste"
+    assert out["detector"]["model"] == detector.MODEL_NAME
     assert out["provenance"] == "live"
 
 
@@ -720,9 +727,9 @@ def test_result_names_the_exact_weights_and_thresholds():
     result = detector.detect((IMAGES / "metal_1.jpg").read_bytes())
     digest = hashlib.sha256(config.BUNDLED_DETECTOR_MODEL.read_bytes()).hexdigest()
     assert result["model_sha256"] == "sha256:" + digest
-    assert result["thresholds"] == {"hard": 0.25, "light": 0.25, "escalate_light": True}
+    assert result["thresholds"] == {"hard": 0.35, "light": 0.05, "escalate_light": True}
     parsed = audit.DetectorOutput.model_validate(result)
-    assert parsed.thresholds.hard == 0.25 and parsed.model_sha256 == result["model_sha256"]
+    assert parsed.thresholds.hard == 0.35 and parsed.model_sha256 == result["model_sha256"]
 
 
 def test_model_name_comes_from_the_file_name():

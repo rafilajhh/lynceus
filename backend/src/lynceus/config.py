@@ -100,12 +100,14 @@ _DEFAULT_AUDIT_FORMAT_VERSION = 1
 #: site-packages install cannot see it; the container sets
 #: ``DETECTOR_MODEL_PATH`` instead.
 BUNDLED_DETECTOR_MODEL = (
-    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26s-realwaste.onnx"
+    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26s-realwaste-taco.onnx"
 )
-#: Read off the 80-image RealWaste test set itself (no calibration split):
-#: 0.10-0.25 gave 18/20 metal and 0/60 false metal flags there.
-_DEFAULT_DETECTOR_HARD_CONF = 0.25
-_DEFAULT_DETECTOR_LIGHT_CONF = 0.25
+#: Picked on the val split (RealWaste val + TACO val, never trained on) by a
+#: rule fixed before any test read (ml/eval_val.py): the lowest threshold whose
+#: false-metal rate is <= 2% (RealWaste) and <= 5% (TACO); light likewise with
+#: false escalations on clean images <= 5% / 10%.  ml/results/val_yolo26s_e26l.json.
+_DEFAULT_DETECTOR_HARD_CONF = 0.35
+_DEFAULT_DETECTOR_LIGHT_CONF = 0.05
 _DEFAULT_DETECTOR_THREADS = 2
 _DEFAULT_DETECTOR_PROVIDERS: Tuple[str, ...] = ("CPUExecutionProvider",)
 #: VLM reads per inspection, merged by majority vote (pipeline._vote_majority).

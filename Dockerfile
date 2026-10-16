@@ -48,7 +48,7 @@ RUN chmod +x /usr/local/bin/lynceus-entrypoint
 # CPUExecutionProvider); GPU providers need a different onnxruntime build.
 ENV LYNCEUS_WEB_DIR=/app/web/out \
     LYNCEUS_BENCHMARK_DIR=/app/backend/benchmark \
-    DETECTOR_MODEL_PATH=/app/backend/models/lynceus-yolo26s-realwaste.onnx \
+    DETECTOR_MODEL_PATH=/app/backend/models/lynceus-yolo26s-realwaste-taco.onnx \
     LYNCEUS_STORAGE_DIR=/data/runs \
     PORT=8020
 

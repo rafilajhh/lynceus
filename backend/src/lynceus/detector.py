@@ -56,7 +56,7 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
-MODEL_NAME = "yolo26s-realwaste"
+MODEL_NAME = "yolo26s-realwaste-taco"
 #: The runtime of the CPU provider (the only provider).
 RUNTIME = "onnxruntime-cpu"
 CPU_PROVIDER = "CPUExecutionProvider"
@@ -86,7 +86,7 @@ class DetectorImageError(ValueError):
 
 def model_name(path: str) -> str:
     """The reported model name: the ONNX file stem without the ``lynceus-``
-    prefix (``yolo26s-realwaste`` for the bundled file)."""
+    prefix (``yolo26s-realwaste-taco`` for the bundled file)."""
     stem = Path(path).stem
     return stem.removeprefix("lynceus-") or stem
 

@@ -31,6 +31,7 @@ endpoint catalogue, running on AMD GPUs), reached with one team API key:
 |---|---|---|
 | Vision: contaminants, wet/dry, hazard boxes | `MiniCPM-V-4.7-35B-A3B` | the only vision model whose boxes overlapped the metal on the test photo in 3/3 runs (`DeepSeek-V4.1-Flash` image requests timed out in 3/3 runs at the 90 s per-read timeout; `DeepSeek-V4-Flash-Vision-Exp` returned no boxes, 0/3) |
 | Waybill cross-check and Pythia | `DeepSeek-V4-Flash` | passed the assistant citation contract 3/3 (`Gemma-4-31B-IT` failed it 0/3) |
+| Detector second opinion: metal, glass, organic boxes | YOLO26s fine-tuned on RealWaste + TACO, bundled ONNX (`backend/models/`) | runs on the gate PC's CPU (ONNX Runtime), so it keeps working when the shared endpoint is down. Out of domain (TACO litter scenes) it finds 12/29 metal photos where the first model found 2/29 (`backend/models/README.md`) |
 
 It is not a self-hosted GPU stack: the demo calls the Token Factory API and
 needs no GPU of its own.
@@ -43,6 +44,7 @@ photo + waybill text + weight + gas   (inputs frozen + SHA-256 digested)
         ▼
 VLM  (MiniCPM-V, Token Factory)  ──► contaminants, wet/dry, confidence, hazard boxes
 LLM  (DeepSeek-V4-Flash)         ──► waybill fields, claim-vs-observation cross-check
+YOLO26s detector (ONNX, CPU)     ──► metal / glass / organic boxes (can only hold a truck)
 gas  (digital twin, or a sensor gateway when LYNCEUS_GAS_SENSOR_URL is set)
         │
         ▼
@@ -67,7 +69,9 @@ Verdict ACCEPT / ESCALATE / REJECT + gates + audit record (atomic, tamper-eviden
 - Shift report with a scripted sample shift (24 trucks, seeded offline, labelled "Sample shift — scripted data") and repeat-supplier flags.
 - Ledger of stored inspections (`/inspections`).
 - `/validation` page: the benchmark below, with its framing.
-- Honest provenance: live results are labelled "Live AMD" (the verdict also shows model and latency on one quiet line); a stub answer after a live failure is labelled as a scripted fallback. With `LYNCEUS_ALLOW_STUB_FALLBACK=0` a live-AI failure returns HTTP 503 instead of an offline stub.
+- Detector second opinion: a bundled YOLO26s detector reads the same photo. A metal box the vision model did not confirm holds the truck for a human (escalate); so does an unconfirmed glass/organic box while `DETECTOR_ESCALATE_LIGHT=1`. It never accepts or rejects on its own. Its dashed boxes, model, runtime (e.g. `onnxruntime-directml`) and latency are shown; the audit record also stores the weights' SHA-256 and the thresholds used.
+- The vision model votes over `VLM_VOTES` reads (default 3, run in parallel) and can fall back to other benchmarked vision models (`VLM_FALLBACK_MODELS`) inside one time budget; a fallback outside `VLM_BENCHMARKED_MODELS` can never accept or reject.
+- Honest provenance: live results are labelled "Live AMD" (the verdict also shows model and latency on one quiet line); a stub answer after a live failure is labelled as a scripted fallback. With `LYNCEUS_ALLOW_STUB_FALLBACK=0` and the vision model down, a readable photo gets a detector-only verdict that always holds the truck for a human (`detector_only_degraded`); without the detector it returns HTTP 503 instead of an offline stub.
 
 ### Limits stated up front
 
@@ -224,6 +228,11 @@ Full server guide (HTTPS, updates, backups, judging-day checklist):
 | `LYNCEUS_WEB_DIR` | `<repo>/web/out` (`/app/web/out` in the image) | Static web export to serve |
 | `LYNCEUS_BENCHMARK_DIR` | `<repo>/backend/benchmark` (`/app/backend/benchmark` in the image) | Benchmark manifest and results for `/benchmark/latest` |
 | `PORT` | `8020` | Listening port of `python -m lynceus.main` |
+| `VLM_VOTES` | `3` | Vision reads per photo, merged by majority vote (1..4, run in parallel) |
+| `VLM_FALLBACK_MODELS` / `VLM_BENCHMARKED_MODELS` | *(empty)* / `MiniCPM-V-4.7-35B-A3B` | Vision fallback chain; only benchmarked models may accept or reject |
+| `DETECTOR_MODEL_PATH` | the bundled `backend/models/lynceus-yolo26s-realwaste-taco.onnx` | Detector weights; empty = detector off |
+| `DETECTOR_HARD_CONF` / `DETECTOR_LIGHT_CONF` | `0.35` / `0.05` | Detector thresholds for metal / glass+organic, picked on a val split (`backend/models/README.md`) |
+| `DETECTOR_ESCALATE_LIGHT` | `1` | An unconfirmed glass/organic box holds the truck too |
 
 Token Factory settings (local dev: put them in `backend/.env`; Docker: `deploy/lynceus.env`; never commit the key; get the
 team key at `notebooks.amd.com/tokenfactory`):
@@ -267,10 +276,10 @@ The skipped test is the live smoke module; enable it with `LYNCEUS_LIVE_TESTS=1`
   `backend/benchmark/images/ATTRIBUTION.md`. The benchmark images are excluded
   from the Docker image.
 - **Third-party model weights.** The bundled CPU detector
-  (`backend/models/lynceus-yolo26s-realwaste.onnx`) is **not** covered by the
+  (`backend/models/lynceus-yolo26s-realwaste-taco.onnx`) is **not** covered by the
   MIT licence. The weights derive from Ultralytics YOLO26 (**AGPL-3.0**) and
   were fine-tuned on RealWaste (**CC BY-NC-SA 4.0** treated as binding, as
-  above). Their training and export source is in `ml/` (our offer of the
+  above) and TACO (annotations **CC BY 4.0**). Their training and export source is in `ml/` (our offer of the
   corresponding source). Commercial use requires retraining on your own data
   and an Ultralytics Enterprise licence, or a permissively licensed detector
   (`DETECTOR_MODEL_PATH` points at it; empty turns the detector off). Details:

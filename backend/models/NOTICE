@@ -1,5 +1,5 @@
-Third-party model weights: lynceus-yolo26s-realwaste.onnx
-=========================================================
+Third-party model weights: lynceus-yolo26s-realwaste-taco.onnx
+==============================================================
 
 The ONNX weights in this directory are NOT covered by the MIT licence of the
 Lynceus repository (LICENSE). They are distributed under the terms below.
@@ -21,10 +21,16 @@ Lynceus repository (LICENSE). They are distributed under the terms below.
    the dataset and, conservatively, for these weights.
    See backend/benchmark/images/ATTRIBUTION.md.
 
+3. TACO training data (annotations CC BY 4.0)
+   Also fine-tuned on the TACO train/val splits: "TACO: Trash Annotations in
+   Context" by P. F. Proença and P. Simões, github.com/pedropro/TACO. The
+   annotations are CC BY 4.0; the photos are hosted on Flickr under their
+   uploaders' licences. No TACO image is stored in this repository.
+
 Corresponding source
    The complete training and export source for these weights is in ml/ of this
-   repository (ml/README.md: fetch_realwaste.py, build_dataset.py, train.py,
-   export_onnx.py). This is our offer of the corresponding source under
+   repository (ml/README.md: fetch_realwaste.py, fetch_taco.py,
+   build_dataset.py, train.py, colab_train.sh, export_onnx.py). This is our offer of the corresponding source under
    AGPL-3.0 section 13 to anyone who interacts with a service running them.
 
 Commercial use

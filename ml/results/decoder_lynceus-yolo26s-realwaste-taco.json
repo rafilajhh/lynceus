@@ -1,0 +1,16 @@
+{
+ "onnx": "lynceus-yolo26s-realwaste-taco.onnx",
+ "model_sha256": "sha256:c84f795aca8fb2126600efa69b9c62f8c3e8d22c2ff8262446d2c45620bf5405",
+ "thresholds": {
+  "hard": 0.35,
+  "light": 0.05
+ },
+ "taco_test": {
+  "images": 150,
+  "metal_recall": "12/29",
+  "false_metal": "6/121",
+  "light_recall": "3/11",
+  "false_escalate_clean": "8/112"
+ },
+ "benchmark_verdict_vs_ultralytics": "80/80"
+}

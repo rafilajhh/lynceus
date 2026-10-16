@@ -617,7 +617,7 @@ def _run_inspection_with_audit(
             " A mandatory input was missing, so the inspection was refused."
             if verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT
             else " The truck is held for a human on the CPU detector (YOLO26s,"
-            " trained on RealWaste photos, not gate imagery) alone."
+            " trained on RealWaste and TACO photos, not gate imagery) alone."
         )
     elif ai.get("fallback_reason"):
         uncertainty += f" Live AI failed ({ai['fallback_reason']}); stub used."

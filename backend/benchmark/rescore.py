@@ -356,20 +356,21 @@ def build_summary(
 # ---------------------------------------------------------------------------
 
 #: Per-image detections of the fine-tuned detector (written by ml/eval_finetuned.py).
-DEFAULT_DETECTIONS = BACKEND_DIR.parent / "ml" / "results" / "finetuned_yolo26s_realwaste_nmsfree.json"
+DEFAULT_DETECTIONS = BACKEND_DIR.parent / "ml" / "results" / "finetuned_yolo26s_e26l_nmsfree.json"
 HYBRID_FRAMING = (
     "What-if re-score: the recorded live VLM outputs of the {source_run} AMD Token Factory "
-    "run, fused with the CPU detector (YOLO26s fine-tuned on RealWaste) through the "
+    "run, fused with the CPU detector (YOLO26s fine-tuned on RealWaste + TACO) through the "
     "current decision rules. No new model calls."
 )
 HYBRID_DISCLOSURE = (
     "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the "
     "same sessions as these 80 held-out images (one item per frame on the same floor; the "
-    "held-out images were excluded from training), and every detector threshold here was "
-    "read off this same test set: there is no calibration split. It shows the fusion "
-    "rules work as designed on these images, not that the detector works on a truck bed "
-    "of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were "
-    "changed after the live run, using that run's data."
+    "held-out images were excluded from training) plus TACO litter photos. The default "
+    "thresholds were picked on a separate val split (RealWaste val + TACO val) by a rule "
+    "fixed before any test read, but the sweep below is read on this test set. It shows "
+    "the fusion rules work as designed on these images, not that the detector works on a "
+    "truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision "
+    "rules were changed after the live run, using that run's data."
 )
 DEGRADED_NOTE = (
     "Detector-only degraded mode (vision model unavailable, stub fallback off) holds "
@@ -378,9 +379,17 @@ DEGRADED_NOTE = (
     "those findings as if they were a verdict (metal -> reject, glass/organic -> escalate, "
     "else accept), which Lynceus never does."
 )
-#: Swept ``detector_hard_conf`` values (light threshold fixed at the default).
-_SWEEP_HARD_CONF = (0.05, 0.1, 0.25, 0.5)
-_DEFAULT_CONF = 0.25
+#: Swept ``detector_hard_conf`` values (light threshold fixed at the default);
+#: includes the default (``decision.DETECTOR_HARD_CONFIDENCE``).
+_SWEEP_HARD_CONF = (0.05, 0.1, 0.25, 0.35, 0.5)
+
+
+def _default_thresholds() -> tuple[float, float]:
+    """The shipped ``(hard, light)`` detector defaults (lazy: ``src`` joins
+    ``sys.path`` only in :func:`main`)."""
+    from lynceus.decision import DETECTOR_HARD_CONFIDENCE, DETECTOR_LIGHT_CONFIDENCE
+
+    return DETECTOR_HARD_CONFIDENCE, DETECTOR_LIGHT_CONFIDENCE
 
 
 def load_detections(path: Path) -> Dict[str, Dict[str, Any]]:
@@ -459,7 +468,10 @@ def _variant_metrics(rows: list[Dict[str, Any]], baseline: Optional[list[Dict[st
 
 
 def _detector_findings(
-    detections: Dict[str, Dict[str, Any]], recorded_rows: list[Dict[str, Any]], conf: float
+    detections: Dict[str, Dict[str, Any]],
+    recorded_rows: list[Dict[str, Any]],
+    hard_conf: float,
+    light_conf: float,
 ) -> Dict[str, Any]:
     """What detector-only mode would list per expected label, plus the
     advisory reading of those findings as a verdict."""
@@ -468,7 +480,7 @@ def _detector_findings(
     by_expected: Dict[str, Dict[str, int]] = {}
     advisory_correct = 0
     for row in recorded_rows:
-        hard, light = detector.flagged(detections.get(row["image"]), conf, conf)
+        hard, light = detector.flagged(detections.get(row["image"]), hard_conf, light_conf)
         cell = by_expected.setdefault(row["expected"], {"n": 0, "metal": 0, "light": 0, "nothing": 0})
         cell["n"] += 1
         cell["metal"] += bool(hard)
@@ -477,7 +489,7 @@ def _detector_findings(
         advisory = "reject" if hard else "escalate" if light else "accept"
         advisory_correct += advisory == row["expected"]
     return {
-        "threshold": conf,
+        "thresholds": {"hard": hard_conf, "light": light_conf},
         "by_expected": by_expected,
         "advisory_gate": f"{advisory_correct}/{len(recorded_rows)}",
         "advisory_gate_accuracy": advisory_correct / len(recorded_rows) if recorded_rows else None,
@@ -490,6 +502,7 @@ def hybrid_rescore(
     *,
     detections_source: str,
     detector_runtime: str = "onnxruntime-cpu",
+    detector_model: Optional[str] = None,
     out: Optional[Path] = None,
     images_dir: Path = bench.IMAGES_DIR,
     manifest: Path = bench.MANIFEST,
@@ -503,8 +516,9 @@ def hybrid_rescore(
     vision model made unavailable).  Writes ``out`` (default
     ``<today>.hybrid-rescore.summary.json`` next to the source).
     """
-    from lynceus import pipeline
+    from lynceus import detector, pipeline
 
+    hard_default, light_default = _default_thresholds()
     today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     recorded_rows = bench.load_rows(source)
     if not recorded_rows:
@@ -538,7 +552,7 @@ def hybrid_rescore(
     def detector_env(hard: float, light_on: bool) -> Dict[str, str]:
         return {
             DETECTOR_HARD_CONF_ENV: str(hard),
-            DETECTOR_LIGHT_CONF_ENV: str(_DEFAULT_CONF),
+            DETECTOR_LIGHT_CONF_ENV: str(light_default),
             DETECTOR_ESCALATE_LIGHT_ENV: "1" if light_on else "0",
         }
 
@@ -552,10 +566,10 @@ def hybrid_rescore(
             log(f"variant hard_conf={hard} {key}")
             rows = run_variant(detector_env(hard, light_on))
             sweep.setdefault(str(hard), {})[key] = _variant_metrics(rows, vlm_only)
-            if hard == _DEFAULT_CONF:
+            if hard == hard_default:
                 hybrid[key] = rows
     log("variant detector_only_degraded")
-    degraded_rows = run_variant(detector_env(_DEFAULT_CONF, True), degraded=True)
+    degraded_rows = run_variant(detector_env(hard_default, True), degraded=True)
 
     def headline(rows: list[Dict[str, Any]]) -> Dict[str, Any]:
         m = _variant_metrics(rows)
@@ -572,7 +586,7 @@ def hybrid_rescore(
     degraded_metrics = _variant_metrics(degraded_rows)
     degraded_metrics["note"] = DEGRADED_NOTE
     degraded_metrics["detector_findings"] = _detector_findings(
-        detections, recorded_rows, _DEFAULT_CONF
+        detections, recorded_rows, hard_default, light_default
     )
     source_run = source.stem
     summary = {
@@ -586,16 +600,19 @@ def hybrid_rescore(
         "manifest_n": len(bench.read_manifest(manifest)),
         "vlm_model": next((r["vlm_model"] for r in recorded_rows if r.get("vlm_model")), None),
         "detector": {
-            "model": "yolo26s-realwaste",
+            "model": detector_model or detector.MODEL_NAME,
             # What produced the boxes: lynceus.detector, or the ml/ results.
             "runtime": detector_runtime,
             "model_sha256": next(
                 (d["model_sha256"] for d in detections.values() if d.get("model_sha256")), None
             ),
             "detections_source": detections_source,
-            "hard_conf_default": _DEFAULT_CONF,
-            "light_conf": _DEFAULT_CONF,
-            "thresholds_note": "Read off this 80-image test set itself; no calibration split.",
+            "hard_conf_default": hard_default,
+            "light_conf": light_default,
+            "thresholds_note": (
+                "Defaults picked on the val split (RealWaste val + TACO val) by a rule fixed "
+                "before any test read (ml/eval_val.py); the sweep is read on this test set."
+            ),
         },
         "table": {
             "vlm_only": headline(vlm_only),
@@ -662,6 +679,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         detections_source = (
             f"lynceus.detector ({detector_runtime}) run over benchmark/images, conf >= 0.05"
         )
+        from lynceus import detector
+        from lynceus.config import get_settings
+
+        detector_model = detector.model_name(get_settings().detector_model_path)
     else:
         if not args.detections.is_file():
             print(f"ABORT: detections file not found ({args.detections})", file=sys.stderr)
@@ -673,8 +694,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             shown = args.detections.name
         detections_source = f"{shown} (Ultralytics predict, conf >= 0.05)"
         detector_runtime = "ultralytics-predict"
+        # The default file is the bundled model's; any other is named by its file.
+        detector_model = None if args.detections == DEFAULT_DETECTIONS else args.detections.stem
     hybrid_rescore(source, detections, detections_source=detections_source,
-                   detector_runtime=detector_runtime, out=args.out)
+                   detector_runtime=detector_runtime, detector_model=detector_model,
+                   out=args.out)
     return 0
 
 

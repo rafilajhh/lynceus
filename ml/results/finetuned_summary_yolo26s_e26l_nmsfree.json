@@ -1,0 +1,324 @@
+{
+ "weights": "ml\\runs\\yolo26s_e26l\\weights\\best.pt",
+ "gpu_latency_ms_p50": 71.5,
+ "top1_confusion": {
+  "Metal": {
+   "metal": 18,
+   "paper": 1,
+   "glass": 1
+  },
+  "Glass": {
+   "glass": 7
+  },
+  "Food Organics": {
+   "organic": 7
+  },
+  "Vegetation": {
+   "organic": 6
+  },
+  "Paper": {
+   "paper": 10
+  },
+  "Cardboard": {
+   "paper": 10
+  },
+  "Plastic": {
+   "plastic": 10
+  },
+  "Textile Trash": {
+   "textile": 8,
+   "paper": 2
+  }
+ },
+ "sweep": {
+  "0.05": {
+   "metal_recall": "18/20",
+   "metal_recall_pct": 90.0,
+   "false_flags": "3/60",
+   "false_flag_rate_pct": 5.0,
+   "metal_precision_pct": 85.7,
+   "flags_by_category": {
+    "Metal": "18/20",
+    "Glass": "2/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "1/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "1/20",
+    "Glass": "7/7",
+    "Food Organics": "7/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "2/10",
+    "Plastic": "0/10",
+    "Textile Trash": "1/10"
+   },
+   "gate_correct": "72/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 36,
+    "accept->escalate": 3,
+    "accept->reject": 1,
+    "escalate->escalate": 18,
+    "escalate->reject": 2,
+    "reject->accept": 1,
+    "reject->escalate": 1,
+    "reject->reject": 18
+   }
+  },
+  "0.1": {
+   "metal_recall": "18/20",
+   "metal_recall_pct": 90.0,
+   "false_flags": "3/60",
+   "false_flag_rate_pct": 5.0,
+   "metal_precision_pct": 85.7,
+   "flags_by_category": {
+    "Metal": "18/20",
+    "Glass": "2/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "1/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "7/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "1/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "74/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 38,
+    "accept->escalate": 1,
+    "accept->reject": 1,
+    "escalate->escalate": 18,
+    "escalate->reject": 2,
+    "reject->accept": 2,
+    "reject->reject": 18
+   }
+  },
+  "0.15": {
+   "metal_recall": "18/20",
+   "metal_recall_pct": 90.0,
+   "false_flags": "2/60",
+   "false_flag_rate_pct": 3.3,
+   "metal_precision_pct": 90.0,
+   "flags_by_category": {
+    "Metal": "18/20",
+    "Glass": "1/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "1/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "7/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "1/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "75/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 38,
+    "accept->escalate": 1,
+    "accept->reject": 1,
+    "escalate->escalate": 19,
+    "escalate->reject": 1,
+    "reject->accept": 2,
+    "reject->reject": 18
+   }
+  },
+  "0.2": {
+   "metal_recall": "18/20",
+   "metal_recall_pct": 90.0,
+   "false_flags": "1/60",
+   "false_flag_rate_pct": 1.7,
+   "metal_precision_pct": 94.7,
+   "flags_by_category": {
+    "Metal": "18/20",
+    "Glass": "1/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "7/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "1/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "76/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 39,
+    "accept->escalate": 1,
+    "escalate->escalate": 19,
+    "escalate->reject": 1,
+    "reject->accept": 2,
+    "reject->reject": 18
+   }
+  },
+  "0.25": {
+   "metal_recall": "18/20",
+   "metal_recall_pct": 90.0,
+   "false_flags": "0/60",
+   "false_flag_rate_pct": 0.0,
+   "metal_precision_pct": 100.0,
+   "flags_by_category": {
+    "Metal": "18/20",
+    "Glass": "0/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "7/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "1/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "77/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 39,
+    "accept->escalate": 1,
+    "escalate->escalate": 20,
+    "reject->accept": 2,
+    "reject->reject": 18
+   }
+  },
+  "0.3": {
+   "metal_recall": "18/20",
+   "metal_recall_pct": 90.0,
+   "false_flags": "0/60",
+   "false_flag_rate_pct": 0.0,
+   "metal_precision_pct": 100.0,
+   "flags_by_category": {
+    "Metal": "18/20",
+    "Glass": "0/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "7/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "1/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "77/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 39,
+    "accept->escalate": 1,
+    "escalate->escalate": 20,
+    "reject->accept": 2,
+    "reject->reject": 18
+   }
+  },
+  "0.4": {
+   "metal_recall": "17/20",
+   "metal_recall_pct": 85.0,
+   "false_flags": "0/60",
+   "false_flag_rate_pct": 0.0,
+   "metal_precision_pct": 100.0,
+   "flags_by_category": {
+    "Metal": "17/20",
+    "Glass": "0/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "6/7",
+    "Vegetation": "6/6",
+    "Paper": "0/10",
+    "Cardboard": "1/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "75/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 39,
+    "accept->escalate": 1,
+    "escalate->accept": 1,
+    "escalate->escalate": 19,
+    "reject->accept": 3,
+    "reject->reject": 17
+   }
+  },
+  "0.5": {
+   "metal_recall": "17/20",
+   "metal_recall_pct": 85.0,
+   "false_flags": "0/60",
+   "false_flag_rate_pct": 0.0,
+   "metal_precision_pct": 100.0,
+   "flags_by_category": {
+    "Metal": "17/20",
+    "Glass": "0/7",
+    "Food Organics": "0/7",
+    "Vegetation": "0/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "escalate_flags_by_category": {
+    "Metal": "0/20",
+    "Glass": "7/7",
+    "Food Organics": "6/7",
+    "Vegetation": "5/6",
+    "Paper": "0/10",
+    "Cardboard": "0/10",
+    "Plastic": "0/10",
+    "Textile Trash": "0/10"
+   },
+   "gate_correct": "75/80",
+   "gate_expected_vs_predicted": {
+    "accept->accept": 40,
+    "escalate->accept": 2,
+    "escalate->escalate": 18,
+    "reject->accept": 3,
+    "reject->reject": 17
+   }
+  }
+ }
+}

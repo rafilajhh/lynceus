@@ -1,0 +1,1682 @@
+[
+ {
+  "image": "metal_1.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9101,
+    "box": [
+     0.3861,
+     0.1274,
+     0.7807,
+     0.5847
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_1.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.9677,
+    "box": [
+     0.3899,
+     0.0783,
+     0.6252,
+     0.9294
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_1.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.8605,
+    "box": [
+     0.0,
+     0.0,
+     1.0,
+     0.9884
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_1.jpg",
+  "category": "Vegetation",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.9625,
+    "box": [
+     0.0,
+     0.0335,
+     1.0,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_1.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.7836,
+    "box": [
+     0.3197,
+     0.0843,
+     0.7747,
+     0.7066
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1836,
+    "box": [
+     0.0247,
+     0.0132,
+     0.9251,
+     0.9832
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_1.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.7452,
+    "box": [
+     0.0625,
+     0.1824,
+     0.9478,
+     0.8025
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0773,
+    "box": [
+     0.0172,
+     0.0,
+     0.9864,
+     0.9597
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.0678,
+    "box": [
+     0.0625,
+     0.1824,
+     0.9478,
+     0.8025
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_1.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.8826,
+    "box": [
+     0.1919,
+     0.077,
+     0.7924,
+     0.9295
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.8817,
+    "box": [
+     0.1918,
+     0.0821,
+     0.7938,
+     0.9306
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_1.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.9548,
+    "box": [
+     0.0422,
+     0.1784,
+     0.9649,
+     0.6555
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_40.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.7758,
+    "box": [
+     0.3446,
+     0.0348,
+     0.5595,
+     0.9075
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.1199,
+    "box": [
+     0.3446,
+     0.0348,
+     0.5595,
+     0.9075
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_61.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.7444,
+    "box": [
+     0.2818,
+     0.323,
+     0.7106,
+     0.7226
+    ]
+   },
+   {
+    "label": "metal",
+    "conf": 0.2462,
+    "box": [
+     0.2818,
+     0.323,
+     0.7106,
+     0.7226
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_59.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.9626,
+    "box": [
+     0.3314,
+     0.3911,
+     0.6473,
+     0.6847
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_73.jpg",
+  "category": "Vegetation",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.4602,
+    "box": [
+     0.0111,
+     0.0,
+     0.9969,
+     0.955
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.1784,
+    "box": [
+     0.1086,
+     0.166,
+     0.8253,
+     0.8471
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_51.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.8217,
+    "box": [
+     0.0926,
+     0.0656,
+     0.942,
+     0.9294
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.0685,
+    "box": [
+     0.0926,
+     0.0656,
+     0.942,
+     0.9294
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_47.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9707,
+    "box": [
+     0.0719,
+     0.0345,
+     0.9009,
+     0.9065
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_93.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.9426,
+    "box": [
+     0.4253,
+     0.3323,
+     0.7097,
+     0.6169
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_32.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.7213,
+    "box": [
+     0.0449,
+     0.0,
+     1.0,
+     0.9931
+    ]
+   },
+   {
+    "label": "textile",
+    "conf": 0.0741,
+    "box": [
+     0.0449,
+     0.0,
+     1.0,
+     0.9931
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_79.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.8227,
+    "box": [
+     0.1283,
+     0.2035,
+     0.8991,
+     0.791
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_121.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.6897,
+    "box": [
+     0.2689,
+     0.2461,
+     0.7543,
+     0.691
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0764,
+    "box": [
+     0.2689,
+     0.2461,
+     0.7543,
+     0.691
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_117.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.944,
+    "box": [
+     0.2627,
+     0.2582,
+     0.7881,
+     0.7896
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_145.jpg",
+  "category": "Vegetation",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.9329,
+    "box": [
+     0.0102,
+     0.0155,
+     1.0,
+     0.9682
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_101.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9301,
+    "box": [
+     0.1007,
+     0.1077,
+     0.8984,
+     0.8187
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_93.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9463,
+    "box": [
+     0.2111,
+     0.1309,
+     0.8476,
+     0.9182
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_185.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.786,
+    "box": [
+     0.2297,
+     0.0287,
+     0.8062,
+     0.9256
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_63.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.7094,
+    "box": [
+     0.2087,
+     0.2733,
+     0.7064,
+     0.6833
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_118.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9776,
+    "box": [
+     0.3193,
+     0.132,
+     0.6807,
+     0.8456
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_181.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.9028,
+    "box": [
+     0.2815,
+     0.1678,
+     0.6736,
+     0.8336
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_175.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.3562,
+    "box": [
+     0.0,
+     0.0,
+     0.9972,
+     0.976
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.0675,
+    "box": [
+     0.1479,
+     0.2502,
+     0.7968,
+     0.6686
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_217.jpg",
+  "category": "Vegetation",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.862,
+    "box": [
+     0.05,
+     0.2744,
+     0.9585,
+     0.8133
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_151.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9493,
+    "box": [
+     0.086,
+     0.039,
+     0.9213,
+     0.9493
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_139.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.948,
+    "box": [
+     0.1929,
+     0.2034,
+     0.7746,
+     0.8024
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_277.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.7137,
+    "box": [
+     0.1397,
+     0.3151,
+     0.8764,
+     0.6366
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_94.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.7127,
+    "box": [
+     0.1087,
+     0.0759,
+     0.8383,
+     0.951
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_157.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9127,
+    "box": [
+     0.2242,
+     0.1467,
+     0.7949,
+     0.7693
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_241.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.8215,
+    "box": [
+     0.1123,
+     0.065,
+     0.9363,
+     0.6095
+    ]
+   },
+   {
+    "label": "glass",
+    "conf": 0.0722,
+    "box": [
+     0.7682,
+     0.7126,
+     0.8451,
+     0.7857
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_233.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.936,
+    "box": [
+     0.376,
+     0.3809,
+     0.6042,
+     0.7024
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_289.jpg",
+  "category": "Vegetation",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.9562,
+    "box": [
+     0.0172,
+     0.0158,
+     0.9674,
+     0.7736
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_201.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9506,
+    "box": [
+     0.2729,
+     0.1602,
+     0.7707,
+     0.7095
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_185.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.8482,
+    "box": [
+     0.2673,
+     0.229,
+     0.75,
+     0.7686
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.1056,
+    "box": [
+     0.2673,
+     0.229,
+     0.75,
+     0.7686
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_369.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.1805,
+    "box": [
+     0.0643,
+     0.2939,
+     0.8949,
+     0.7759
+    ]
+   },
+   {
+    "label": "metal",
+    "conf": 0.1656,
+    "box": [
+     0.0643,
+     0.2939,
+     0.8949,
+     0.7759
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_125.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.8089,
+    "box": [
+     0.3024,
+     0.0509,
+     0.6181,
+     0.8245
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_196.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.3918,
+    "box": [
+     0.005,
+     0.0016,
+     0.9965,
+     1.0
+    ]
+   },
+   {
+    "label": "metal",
+    "conf": 0.1537,
+    "box": [
+     0.1406,
+     0.1107,
+     0.7506,
+     0.6937
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_301.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.9298,
+    "box": [
+     0.3673,
+     0.0823,
+     0.6499,
+     0.6549
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_291.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.599,
+    "box": [
+     0.0704,
+     0.0846,
+     0.9807,
+     0.8129
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.4102,
+    "box": [
+     0.0731,
+     0.0856,
+     0.9676,
+     0.8207
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_361.jpg",
+  "category": "Vegetation",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.6893,
+    "box": [
+     0.3244,
+     0.124,
+     0.7534,
+     0.976
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.2138,
+    "box": [
+     0.0029,
+     0.0,
+     1.0,
+     0.9801
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.1789,
+    "box": [
+     0.0159,
+     0.0,
+     0.9921,
+     0.9896
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_251.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.8653,
+    "box": [
+     0.0996,
+     0.2724,
+     0.9591,
+     0.725
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_231.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9446,
+    "box": [
+     0.2834,
+     0.2026,
+     0.7643,
+     0.8884
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_461.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.9473,
+    "box": [
+     0.3086,
+     0.179,
+     0.651,
+     0.7649
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_156.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.8433,
+    "box": [
+     0.2648,
+     0.2613,
+     0.8575,
+     0.6084
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_235.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.7601,
+    "box": [
+     0.2298,
+     0.0708,
+     0.7833,
+     0.7185
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_361.jpg",
+  "category": "Glass",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.5861,
+    "box": [
+     0.3227,
+     0.3349,
+     0.6922,
+     0.7191
+    ]
+   },
+   {
+    "label": "metal",
+    "conf": 0.1356,
+    "box": [
+     0.3227,
+     0.3349,
+     0.6922,
+     0.7191
+    ]
+   },
+   {
+    "label": "glass",
+    "conf": 0.069,
+    "box": [
+     0.0038,
+     0.0,
+     0.9953,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_349.jpg",
+  "category": "Food Organics",
+  "expected": "escalate",
+  "boxes": [
+   {
+    "label": "organic",
+    "conf": 0.6778,
+    "box": [
+     0.1604,
+     0.2046,
+     0.7678,
+     0.7441
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.0968,
+    "box": [
+     0.0082,
+     0.0001,
+     0.9948,
+     0.9382
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_301.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.764,
+    "box": [
+     0.1784,
+     0.1746,
+     0.911,
+     0.7358
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_277.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.5765,
+    "box": [
+     0.1729,
+     0.2212,
+     0.7411,
+     0.758
+    ]
+   },
+   {
+    "label": "glass",
+    "conf": 0.4201,
+    "box": [
+     0.1729,
+     0.2212,
+     0.7411,
+     0.758
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_553.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.947,
+    "box": [
+     0.4649,
+     0.1437,
+     0.7358,
+     0.8691
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_187.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.9433,
+    "box": [
+     0.0595,
+     0.1213,
+     0.929,
+     0.6849
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_274.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9575,
+    "box": [
+     0.237,
+     0.133,
+     0.5735,
+     0.7449
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_351.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9454,
+    "box": [
+     0.2228,
+     0.1455,
+     0.7904,
+     0.784
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_323.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.7257,
+    "box": [
+     0.1072,
+     0.195,
+     0.9757,
+     0.8299
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.073,
+    "box": [
+     0.0573,
+     0.0,
+     0.9884,
+     0.8502
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_645.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.6124,
+    "box": [
+     0.2176,
+     0.2871,
+     0.6857,
+     0.7533
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.3579,
+    "box": [
+     0.0,
+     0.0,
+     0.9987,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_218.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.95,
+    "box": [
+     0.0165,
+     0.0019,
+     1.0,
+     0.857
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_313.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.2079,
+    "box": [
+     0.2657,
+     0.2176,
+     0.7888,
+     0.7863
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.1683,
+    "box": [
+     0.2657,
+     0.2176,
+     0.7888,
+     0.7863
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.076,
+    "box": [
+     0.0165,
+     0.0016,
+     0.9708,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_401.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9765,
+    "box": [
+     0.039,
+     0.0196,
+     0.9358,
+     0.9187
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_369.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9277,
+    "box": [
+     0.3054,
+     0.0417,
+     0.7109,
+     0.9461
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_737.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.5504,
+    "box": [
+     0.2821,
+     0.2149,
+     0.754,
+     0.8492
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.3723,
+    "box": [
+     0.0104,
+     0.0,
+     0.9606,
+     0.9803
+    ]
+   },
+   {
+    "label": "plastic",
+    "conf": 0.0883,
+    "box": [
+     0.0123,
+     0.0029,
+     0.9686,
+     0.9453
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_249.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "textile",
+    "conf": 0.8914,
+    "box": [
+     0.2913,
+     0.186,
+     0.7862,
+     0.6614
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_352.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9496,
+    "box": [
+     0.2798,
+     0.1709,
+     0.7267,
+     0.7998
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_451.jpg",
+  "category": "Paper",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.741,
+    "box": [
+     0.1871,
+     0.2651,
+     0.7769,
+     0.6826
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1818,
+    "box": [
+     0.0095,
+     0.0,
+     0.9929,
+     0.9907
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.117,
+    "box": [
+     0.0083,
+     0.0006,
+     1.0,
+     0.9087
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_415.jpg",
+  "category": "Cardboard",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.9446,
+    "box": [
+     0.0086,
+     0.0032,
+     0.9552,
+     0.9205
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_829.jpg",
+  "category": "Plastic",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "plastic",
+    "conf": 0.7745,
+    "box": [
+     0.4437,
+     0.2354,
+     0.5993,
+     0.6036
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_280.jpg",
+  "category": "Textile Trash",
+  "expected": "accept",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.1528,
+    "box": [
+     0.098,
+     0.0692,
+     0.8798,
+     0.9074
+    ]
+   },
+   {
+    "label": "textile",
+    "conf": 0.1486,
+    "box": [
+     0.098,
+     0.0692,
+     0.8798,
+     0.9074
+    ]
+   },
+   {
+    "label": "organic",
+    "conf": 0.0579,
+    "box": [
+     0.098,
+     0.0692,
+     0.8798,
+     0.9074
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_391.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9207,
+    "box": [
+     0.2547,
+     0.215,
+     0.7845,
+     0.701
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_430.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9554,
+    "box": [
+     0.1542,
+     0.2005,
+     0.7444,
+     0.7243
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_469.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9731,
+    "box": [
+     0.0729,
+     0.0265,
+     0.9369,
+     0.8441
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_508.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9624,
+    "box": [
+     0.2128,
+     0.2745,
+     0.7906,
+     0.8585
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_547.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.8584,
+    "box": [
+     0.2367,
+     0.3489,
+     0.7327,
+     0.5968
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_586.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9727,
+    "box": [
+     0.3205,
+     0.3197,
+     0.6054,
+     0.6043
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_625.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.896,
+    "box": [
+     0.1694,
+     0.1854,
+     0.8937,
+     0.8309
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_664.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "glass",
+    "conf": 0.0808,
+    "box": [
+     0.0976,
+     0.207,
+     0.8326,
+     0.799
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_703.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.9622,
+    "box": [
+     0.4337,
+     0.1513,
+     0.857,
+     0.6311
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_742.jpg",
+  "category": "Metal",
+  "expected": "reject",
+  "boxes": [
+   {
+    "label": "metal",
+    "conf": 0.738,
+    "box": [
+     0.3326,
+     0.0651,
+     0.7986,
+     0.6798
+    ]
+   }
+  ]
+ }
+]
