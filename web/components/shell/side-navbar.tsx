@@ -108,9 +108,26 @@ export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed
           <button
             type="button"
             onClick={() => void signOut()}
-            className="flex h-11 items-center justify-center gap-2 border-t border-seam text-[12px] font-semibold tracking-[0.6px] text-muted uppercase transition-colors duration-100 hover:bg-seam hover:text-ink"
+            aria-label="Sign out"
+            title="Sign out"
+            className="flex h-11 items-center justify-center gap-2 border-t border-seam text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
           >
-            Sign out
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            {!collapsed && <span className="text-[12px] font-semibold tracking-[0.6px] uppercase">Sign out</span>}
           </button>
         ) : null}
         <button
