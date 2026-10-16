@@ -83,11 +83,9 @@ DETECTOR_LIGHT_CONF_ENV = "DETECTOR_LIGHT_CONF"
 DETECTOR_ESCALATE_LIGHT_ENV = "DETECTOR_ESCALATE_LIGHT"
 #: onnxruntime intra-op threads per detector run (positive integer).
 DETECTOR_THREADS_ENV = "DETECTOR_THREADS"
-#: onnxruntime execution providers for the detector, comma-separated, in
-#: preference order (e.g. ``DmlExecutionProvider`` on Windows + AMD Radeon).
+#: onnxruntime execution providers for the detector, comma-separated. The
+#: detector runs on the CPU: the only valid provider is CPUExecutionProvider.
 DETECTOR_PROVIDERS_ENV = "DETECTOR_PROVIDERS"
-#: GPU index for DirectML / ROCm / MIGraphX (non-negative integer).
-DETECTOR_DEVICE_ID_ENV = "DETECTOR_DEVICE_ID"
 
 _DEFAULT_VLLM_VLM_URL = "http://localhost:8000/v1"
 _DEFAULT_VLLM_LLM_URL = "http://localhost:8001/v1"
@@ -110,7 +108,6 @@ _DEFAULT_DETECTOR_HARD_CONF = 0.25
 _DEFAULT_DETECTOR_LIGHT_CONF = 0.25
 _DEFAULT_DETECTOR_THREADS = 2
 _DEFAULT_DETECTOR_PROVIDERS: Tuple[str, ...] = ("CPUExecutionProvider",)
-_DEFAULT_DETECTOR_DEVICE_ID = 0
 #: VLM reads per inspection, merged by majority vote (pipeline._vote_majority).
 _DEFAULT_VLM_VOTES = 3
 #: The reads run concurrently and share pipeline._OUTBOUND_SLOTS (4) with the LLM call.
@@ -144,7 +141,6 @@ class Settings:
     vlm_benchmarked_models: Tuple[str, ...] = _DEFAULT_VLM_BENCHMARKED_MODELS
     detector_threads: int = _DEFAULT_DETECTOR_THREADS
     detector_providers: Tuple[str, ...] = _DEFAULT_DETECTOR_PROVIDERS
-    detector_device_id: int = _DEFAULT_DETECTOR_DEVICE_ID
     vlm_votes: int = _DEFAULT_VLM_VOTES
 
 def provider_for_url(url: str) -> str:
@@ -196,17 +192,8 @@ def _env_threads() -> int:
 
 
 def _env_providers() -> Tuple[str, ...]:
-    """``DETECTOR_PROVIDERS`` in preference order; unset or empty = CPU only."""
+    """``DETECTOR_PROVIDERS``; unset, empty or anything else = CPU only."""
     return _env_models(DETECTOR_PROVIDERS_ENV) or _DEFAULT_DETECTOR_PROVIDERS
-
-
-def _env_device_id() -> int:
-    """``DETECTOR_DEVICE_ID`` as an int >= 0; malformed values keep the default."""
-    try:
-        value = int(os.environ.get(DETECTOR_DEVICE_ID_ENV, _DEFAULT_DETECTOR_DEVICE_ID))
-    except ValueError:
-        return _DEFAULT_DETECTOR_DEVICE_ID
-    return value if value >= 0 else _DEFAULT_DETECTOR_DEVICE_ID
 
 
 def _detector_model_path() -> str:
@@ -283,5 +270,4 @@ def get_settings() -> Settings:
         not in ("0", "false", "no"),
         detector_threads=_env_threads(),
         detector_providers=_env_providers(),
-        detector_device_id=_env_device_id(),
     )

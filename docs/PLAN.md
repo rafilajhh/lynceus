@@ -2,7 +2,7 @@
 
 > Dokumen rencana hackathon AMD Act 3. Semua angka kunci berasal dari file riset di `docs/`:
 > `research/demo-assets.md` (business value & aset demo), `research/engine-map.md` (pemetaan engine),
-> `research/amd-gpu-stack.md` (stack AI di AMD GPU), `research/audit-provenance.md` (audit & provenance).
+> `research/audit-provenance.md` (audit & provenance).
 
 ---
 
@@ -91,7 +91,7 @@ Detail skema audit record: `docs/research/audit-provenance.md` §(b).
 
 ### 4.1 Transparansi
 
-**Engine keputusan** adalah bagian dari Lynceus, dikembangkan sebagai library di backend (`backend/src/lynceus_engine/`). Bersama layer VLM/LLM di AMD GPU, fusion layer, decision engine verdict truk, dan web app operator, semuanya dibangun untuk hackathon ini.
+**Engine keputusan** adalah bagian dari Lynceus, dikembangkan sebagai library di backend (`backend/src/lynceus_engine/`). Bersama layer VLM/LLM di AMD Token Factory, fusion layer, decision engine verdict truk, dan web app operator, semuanya dibangun untuk hackathon ini.
 
 ### 4.2 Tabel nasib module (dari `research/engine-map.md`)
 
@@ -117,20 +117,20 @@ Detail skema audit record: `docs/research/audit-provenance.md` §(b).
 
 ---
 
-## 5. Stack Teknologi (dari `research/amd-gpu-stack.md`)
+## 5. Stack Teknologi
 
 | Komponen | Pilihan | Justifikasi |
 |---|---|---|
 | Backend | **FastAPI** (Python) | Serialize `asdict` engine Lynceus; endpoint `POST /assess`; OpenAI-compatible client ke AMD Token Factory |
 | Frontend | **Next.js/React** (alternatif sederhana: Vite+React SPA, atau FastAPI + Jinja/HTMX bila waktu sempit) | Dashboard operator: upload, tiket verdict, audit view |
-| Serving AI | **AMD Token Factory** | Endpoint bersama OpenAI-compatible pada GPU AMD, bukan self-hosted MI300X |
+| Serving AI | **AMD Token Factory** | Endpoint bersama OpenAI-compatible dari AMD |
 | VLM | **MiniCPM-V-4.7-35B-A3B** | Analisis foto muatan melalui AMD Token Factory |
 | LLM | **DeepSeek-V4-Flash** | Analisis teks surat jalan ketikan operator dan crosscheck |
-| Benchmark acuan | Ukur request end-to-end pada AMD Token Factory | Angka benchmark Qwen self-hosted tidak mewakili deployment ini |
-| Quantization (bila perlu) | Dikelola penyedia endpoint | Tidak ada konfigurasi quantization self-hosted pada demo |
-| Kredit | Akses AMD Token Factory dengan kunci tim | Kredit VM ADC bukan prasyarat demo |
+| Benchmark acuan | Ukur request end-to-end pada AMD Token Factory | Angka benchmark dari endpoint lain tidak mewakili deployment ini |
+| Quantization (bila perlu) | Dikelola penyedia endpoint | Bukan konfigurasi pada demo |
+| Kredit | Tidak diperlukan | Token Factory gratis dengan kunci tim; tidak ada VM/kredit cloud yang jadi prasyarat demo |
 
-Konfigurasi deploy: arahkan endpoint OpenAI-compatible VLM dan LLM ke AMD Token Factory, pilih `MiniCPM-V-4.7-35B-A3B` (VLM) dan `DeepSeek-V4-Flash` (LLM), lalu pasang kunci tim melalui environment variable. Tidak perlu menjalankan vLLM atau menyediakan VM MI300X.
+Konfigurasi deploy: arahkan endpoint OpenAI-compatible VLM dan LLM ke AMD Token Factory, pilih `MiniCPM-V-4.7-35B-A3B` (VLM) dan `DeepSeek-V4-Flash` (LLM), lalu pasang kunci tim melalui environment variable. Tidak ada GPU atau VM yang perlu disediakan.
 
 ---
 
@@ -156,9 +156,9 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 ## 7. Rencana 6 Hari
 
 ### Day 1 — Setup
-- **Deliverable**: repo GitHub (struktur monorepo: `backend/`, `web/`, `docs/`); akses AMD Token Factory dan kunci tim disiapkan; akun lablab.ai, ADP, Discord tim disiapkan; skeleton web (Next.js/Vite) dengan halaman upload + hasil stub; README initial.
+- **Deliverable**: repo GitHub (struktur monorepo: `backend/`, `web/`, `docs/`); akses AMD Token Factory dan kunci tim disiapkan; akun lablab.ai, Discord tim disiapkan; skeleton web (Next.js/Vite) dengan halaman upload + hasil stub; README initial.
 - **Acceptance**: smoke test endpoint AMD Token Factory berhasil; skeleton web jalan di localhost; semua anggota tim punya akses repo + Token Factory + Discord.
-- **Risiko**: approval kredit ADP butuh 2–3 hari kerja → **Mitigasi**: ajukan Day 1 pagi; gunakan kredit 25 jam ADC sebagai jembatan; kartu kredit valid disiapkan sejak awal.
+- **Risiko**: kunci tim Token Factory belum aktif → **Mitigasi**: ambil kunci di notebooks.amd.com/tokenfactory sejak Day 1 pagi.
 
 ### Day 2 — Integrasi Engine Keputusan
 - **Deliverable**: Engine keputusan jadi bagian backend; endpoint `POST /assess` (input truk → `assess_batch` → JSON); unit test pada contoh terverifikasi (mixed-msw, 12 t, moisture 0,45, age 72 h → composting 0,51).
@@ -183,7 +183,7 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 ### Day 6 — Buffer, Polish, Submit
 - **Deliverable**: buffer untuk bug & risiko; polish UI/UX (copywriting verdict, tampilan audit); README run-able penuh (setup → deploy → demo); submit submission **lebih awal** dari deadline.
 - **Acceptance**: submission terkirim minimal beberapa jam sebelum deadline; README di-clone fresh orang lain bisa menjalankan; semua checklist metrik sukses (§9) terpenuhi.
-- **Risiko**: ADC down / kredit habis menjelang submit → **Mitigasi**: video cadangan + snapshot hasil 3 varian; submit awal; destroy VM hanya setelah submission aman.
+- **Risiko**: endpoint Token Factory terganggu menjelang submit → **Mitigasi**: video cadangan + snapshot hasil 3 varian; submit awal.
 
 ---
 
@@ -191,13 +191,13 @@ Basis foto: Roboflow Universe `waste_datasets` 2.872 gambar CC BY 4.0 (https://u
 
 | # | Risiko | Dampak | Mitigasi |
 |---|---|---|---|
-| 1 | ADC down / instance gagal saat demo | Demo live gagal total | Fallback endpoint cadangan + **video demo cadangan** yang direkam Day 5; hasil 3 varian di-snapshot |
+| 1 | Endpoint Token Factory down saat demo | Demo live gagal total | **Video demo cadangan** yang direkam Day 5; hasil 3 varian di-snapshot |
 | 2 | VLM salah deteksi kontaminan | Muatan buruk lolos / muatan baik ditolak | **Desain verdict aman: MERAH boleh over-reject** + jalur inspeksi manual; confidence & gates tampil eksplisit di tiket; verdict berlabel `screening_estimate` bukan `validated` |
 | 3 | Caveat mesh-independence / screening disalahpahami juri | Kredibilitas ilmiah dipertanyakan | Redaksi caveat CFD diganti versi web-friendly: "hasil screening, bukan pengganti uji lab (ISO 21640/EN 15359)" |
 | 4 | Dataset foto tidak realistis (stock/Roboflow) | Demo tidak meyakinkan | Tambah foto lapangan tim di TPS/TPA; anotasi kelas "truk sampah" dari basis Kaggle vehicle-detection |
-| 5 | Waktu/kredit ADC habis (25 jam/$50 ADC; $100 ADP 30 hari; VM ditagih walau mati) | Instance mati sebelum demo | Klaim ADP Day 1; hemat GPU-jam (matikan inferensi saat dev, destroy VM setelah selesai); budget pemakaian per hari |
+| 5 | Rate limit kunci tim Token Factory (dibagi antar anggota) | Demo live terganggu | Honor `Retry-After` pada HTTP 429; jeda antar request; video cadangan |
 | 6 | Output VLM/LLM bukan JSON valid | Pipeline gagal mid-demo | Prompt ketat + Pydantic schema + retry/repair parse; fallback jawaban `insufficient` yang jujur, bukan nebak |
-| 7 | Approval ADP tertunda (2–3 hari kerja) | Tidak ada GPU di awal minggu | Ajukan pagi Day 1; jembatan kredit ADC 25 jam; kartu kredit valid sejak pendaftaran |
+| 7 | Kunci tim Token Factory belum tersedia di awal minggu | Tidak ada akses AI live di awal | Ambil kunci pagi Day 1; kembangkan dengan stub lokal (`LYNCEUS_ALLOW_STUB_FALLBACK=1`) sampai kunci aktif |
 | 8 | Integrasi engine–AI–UI terlambat (big-bang Day 4) | Fitur inti tidak teruji | Kontrak skema JSON (Pydantic) ditetapkan Day 2; integrasi bertahap dengan stub sejak Day 1 |
 
 ---

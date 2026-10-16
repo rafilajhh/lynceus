@@ -13,7 +13,7 @@ human).
 | Export | fp32, opset 18, input 1×3×640×640, `nms=False`: NMS-free end-to-end output `(1, 300, 6)` = x0, y0, x1, y1, conf, cls in letterboxed pixels |
 | Classes (ONNX metadata) | metal, glass, organic, paper, plastic, textile |
 | Gate mapping | metal → hard contaminant `metal`; glass → `glass`, organic → `organic_residue` (light); paper, plastic, textile are RDF feedstock and never flag a load |
-| Runtime | onnxruntime + numpy + Pillow; no torch, no Ultralytics at run time. CPUExecutionProvider by default; `DETECTOR_PROVIDERS=DmlExecutionProvider` runs it on an AMD Radeon (DirectML), see below |
+| Runtime | onnxruntime + numpy + Pillow; no torch, no Ultralytics at run time. CPU-only (`CPUExecutionProvider`) |
 
 ## Licences
 
@@ -51,22 +51,6 @@ On those 80 images, with the image-level rule "metal if any metal box has conf �
 The two misses at 0.25: `metal_313.jpg` (a paper-wrapped composite drinks canister, predicted
 paper 0.76) and `metal_664.jpg` (a white-painted metal bucket, predicted glass 0.19).
 CPU latency, ONNX: p50 ≈ 154 ms (6 intra-op threads, laptop under background load).
-
-### On an AMD Radeon GPU (DirectML)
-
-The same file through the production decoder (`lynceus.detector._Model`: letterbox,
-inference, box decode) on the 80 benchmark images, onnxruntime-directml 1.24.4, Ryzen 5 8645HS
-laptop (`ml/results/bench_dml_lynceus-yolo26s-realwaste.json`):
-
-| Provider | Device | p50 | p90 | mean |
-|---|---|---|---|---|
-| DmlExecutionProvider | AMD Radeon 760M iGPU (device_id 0) | 27.9 ms | 31.4 ms | 28.5 ms |
-| CPUExecutionProvider | Ryzen 5 8645HS, 2 intra-op threads | 262.7 ms | 292.0 ms | 265.7 ms |
-
-The two agree: 80/80 images with the same top label, max top-confidence difference 0.0.
-Reproduce (Windows, a venv with `onnxruntime-directml`, numpy and Pillow):
-
-    python ml/bench_dml.py --onnx backend/models/lynceus-yolo26s-realwaste.onnx
 
 **Read these numbers as optimistic.** The thresholds were read off this same 80-image test set
 (there is no calibration split), and training and test photos come from the same RealWaste
@@ -112,16 +96,8 @@ and copy `ml/weights/yolo26s_realwaste.onnx` here under this name.
 * `DETECTOR_THREADS` (default 2): onnxruntime intra-op threads per run; at most two runs at
   once. Photos over 40 MP are refused before decoding, JPEGs are decoded at a reduced scale
   (no smaller than 1280 px a side), and a Pillow decompression-bomb warning is an error.
-* `DETECTOR_PROVIDERS` (default `CPUExecutionProvider`): onnxruntime execution providers,
-  comma-separated, in preference order. Providers this onnxruntime build lacks are skipped with
-  a warning, the CPU is always the last resort, and a GPU session that fails to load falls
-  back to the CPU (the detector is never turned off for it). Windows + AMD Radeon: install
-  `onnxruntime-directml` instead of `onnxruntime` and set `DmlExecutionProvider`. Linux + AMD
-  Instinct/Radeon with ROCm: an onnxruntime build with `MIGraphXExecutionProvider` /
-  `ROCMExecutionProvider`. The container image stays on CPU onnxruntime.
-* `DETECTOR_DEVICE_ID` (default 0): the GPU index passed to DirectML / ROCm / MIGraphX
-  (on the test laptop 0 is the Radeon 760M, 1 an NVIDIA dGPU).
-* The result's `runtime` names the provider actually used: `onnxruntime-cpu`,
-  `onnxruntime-directml`, `onnxruntime-rocm` or `onnxruntime-migraphx`; startup logs it.
+* The detector runs on the CPU (`CPUExecutionProvider`); the container image ships CPU
+  onnxruntime. The result's `runtime` names the provider actually used
+  (`onnxruntime-cpu`); startup logs it.
 * Every detector result (and the audit record) carries the file's `model_sha256` and the
   `thresholds` it was judged with; the reported `model` is the file name without `lynceus-`.

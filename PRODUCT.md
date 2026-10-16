@@ -48,7 +48,7 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 ## Evidence on Hand
 
 - `docs/research/realcase-indonesia.md` — sourced figures (SIPSN, ITATS, SBI Cilacap, RDI reports) for demo data and impact numbers.
-- `docs/research/amd-gpu-stack.md` — AMD stack, benchmarks, deploy steps.
+- `docs/research/token-factory-probe.md` — measured Token Factory model comparison and selection.
 - `web/demo/` — 9 real RealWaste photos + ATTRIBUTION.md (CC BY 4.0).
 - `docs/PLAN.md`, `docs/HACKATHON-CHECKLIST.md` — plan, judging criteria mapping, submission checklist.
 - Absences that must not be fabricated: no real customer logos, no real deployment, no measured accuracy on production data (label demo numbers as sourced estimates).

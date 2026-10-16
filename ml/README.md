@@ -9,7 +9,7 @@ git-ignored (`ml/.venv/`, `ml/.cache/`, `ml/data/`, `ml/runs/`, `ml/weights/`).
 photos. Each photo shows one item on the same concrete floor. A truck bed at a cement-plant gate is
 a different domain.
 
-## Update 2026-10-16: val calibration, out-of-domain check, AMD Radeon
+## Update 2026-10-16: val calibration, out-of-domain check
 
 **Thresholds on a val split, not the test set.** `eval_val.py` scores the production model
 (`yolo26s_realwaste`) at image level on the 416-image val split. These images were never trained
@@ -39,19 +39,6 @@ does not hold for cluttered scenes. That is caveat 1 below, now measured.
 - models: YOLO26s, m and l, with the production model as the baseline;
 - selection on val only (`select_model.py`), then one read each of the RealWaste benchmark and the
   TACO test split.
-
-**Runs on AMD Radeon.** `bench_dml.py` runs the production decoder (`lynceus.detector._Model`) on
-the Radeon 760M iGPU of the Ryzen 5 8645HS. It uses ONNX Runtime DirectML 1.24.4 (device 0, the
-Radeon) on the 80 benchmark images. Result file: `results/bench_dml_lynceus-yolo26s-realwaste.json`.
-
-| Provider | p50 | p90 |
-|---|---|---|
-| DirectML, Radeon 760M | **27.9 ms** | 31.4 ms |
-| CPU, 2 threads | 262.7 ms | 292.0 ms |
-
-Both providers gave the same top label on all 80 images, with a maximum confidence difference of
-0.0. In the backend, `DETECTOR_PROVIDERS=DmlExecutionProvider` selects this path (see
-`backend/models/README.md`).
 
 ## Results (80 held-out benchmark images: 20 Metal, 20 escalate, 40 accept)
 
@@ -206,7 +193,6 @@ about 4.8 GB of GPU memory. The 1 h time cap stopped it at 28 epochs, about 2.1 
 | `fetch_taco.py` | TACO download and mapping to the 6 classes; id-based train/val/test split |
 | `eval_val.py`, `select_model.py` | Image-level val scoring per source, val-only thresholds and model selection |
 | `colab_train.sh`, `COLAB_TRAINING.md`, `colab_finetune.ipynb` | One-command Colab GPU run and its rules |
-| `bench_dml.py` | Production decoder on DirectML (AMD Radeon) vs CPU; needs `onnxruntime-directml` |
 | `results/zeroshot_yoloe.json` | Per-image YOLOE-26s detections (contaminant prompts, conf >= 0.05, normalised xyxy) |
 | `results/zeroshot_yoloe_distractors.json`, `results/zeroshot_yoloe_26m-seg*.json` | Other prompt sets and the m model |
 | `results/finetuned_yolo26s_realwaste[_nmsfree].json` | Per-image fine-tuned detections |

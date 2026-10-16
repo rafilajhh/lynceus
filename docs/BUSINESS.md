@@ -144,7 +144,7 @@ How we set the prices:
 - **Now (hackathon):** the working gate flow, rule engine, audit ledger, SOP next steps, cited assistant and shift report.
 - **Next 3 months:** operator interviews in Indonesia; the first labelled truck-bed photo set from a consenting gate; pilot at one gate.
 - **3 to 9 months:** links to weighbridge software; supplier scorecards; ticket links to the lab's lot results (for CSS-Combustibile and EN ISO 21640 lots).
-- **9 to 18 months:** an Italian pilot at a plant that uses CSS-Combustibile; Italian SOP and user interface; self-hosted inference option on AMD Instinct for plants that do not allow cloud.
+- **9 to 18 months:** an Italian pilot at a plant that uses CSS-Combustibile; Italian SOP and user interface; an on-premise deployment option for plants that do not allow cloud.
 
 ## Sources
 

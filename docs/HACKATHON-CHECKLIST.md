@@ -93,7 +93,7 @@
 
 | Tanggal | Fokus | Deliverable hari itu | Status | PJ |
 |---|---|---|---|---|
-| 12 Okt (Sen) | Administratif + ADP credit request | Enroll lablab.ai, daftar ADP, Discord, skeleton repo | [ ] | ___ |
+| 12 Okt (Sen) | Administratif | Enroll lablab.ai, daftar ADP, Discord, skeleton repo | [ ] | ___ |
 | 13 Okt (Sel) | Tim + akses AMD Token Factory | Tim terbentuk di platform, endpoint MiniCPM-V-4.7-35B-A3B (VLM) + DeepSeek-V4-Flash (LLM) diuji dengan kunci tim | [ ] | ___ |
 | 14 Okt (Rab) | Pipeline inti | Endpoint inspeksi end-to-end (foto → verdict → audit record) | [ ] | ___ |
 | 15 Okt (Kam) | Web + demo data | UI demo siap, dataset demo + manifes contoh terpasang | [ ] | ___ |
@@ -127,6 +127,5 @@ Urutan verifikasi — kerjakan berurutan, **jangan klik Submit sebelum semua ✅
 ## Referensi internal
 
 - `docs/research/demo-assets.md` — angka business value + sumber, standar RDF, pitch andalan
-- `docs/research/amd-gpu-stack.md` — riset opsi self-host vLLM/ROCm/MI300X (BUKAN yang dipakai demo; demo memakai AMD Token Factory)
 - `docs/research/audit-provenance.md` — pola audit trail & provenance engine
 - `docs/research/engine-map.md` — peta komponen engine

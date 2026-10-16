@@ -8,9 +8,8 @@ of its own (see :func:`lynceus.decision.decide`).
 Runtime: onnxruntime + numpy + Pillow, no torch / Ultralytics.  The decoder
 is a port of ``ml/onnx_infer.py`` for the NMS-free end-to-end export (output
 ``(1, K, 6)``: x0, y0, x1, y1, conf, cls in letterboxed pixels).  The
-execution provider is ``DETECTOR_PROVIDERS`` (default CPU; e.g. DirectML on
-an AMD Radeon); a GPU provider that is missing or fails to load falls back to
-the CPU, and ``runtime`` in every result names the provider actually used.
+execution provider is the CPU (:data:`CPU_PROVIDER`), and ``runtime`` in every
+result names the provider actually used.
 
 Classes (from the ONNX metadata): metal, glass, organic, paper, plastic,
 textile.  ``metal`` maps to the hard contaminant ``metal``; ``glass`` and
@@ -58,20 +57,11 @@ __all__ = [
 _log = logging.getLogger(__name__)
 
 MODEL_NAME = "yolo26s-realwaste"
-#: The runtime of the CPU provider (the default, and the fallback).
+#: The runtime of the CPU provider (the only provider).
 RUNTIME = "onnxruntime-cpu"
 CPU_PROVIDER = "CPUExecutionProvider"
 #: onnxruntime provider → reported runtime; others: ``onnxruntime-<name>``.
-_RUNTIME_NAMES = {
-    CPU_PROVIDER: RUNTIME,
-    "DmlExecutionProvider": "onnxruntime-directml",
-    "ROCMExecutionProvider": "onnxruntime-rocm",
-    "MIGraphXExecutionProvider": "onnxruntime-migraphx",
-}
-#: GPU providers that take a ``device_id`` provider option.
-_DEVICE_ID_PROVIDERS = frozenset(
-    {"DmlExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"}
-)
+_RUNTIME_NAMES = {CPU_PROVIDER: RUNTIME}
 #: Detector class → gate contaminant name (decision.HARD_CONTAMINANTS).
 HARD_LABELS = {"metal": "metal"}
 #: Detector class → gate contaminant name (decision.LIGHT_CONTAMINANTS).
@@ -103,7 +93,7 @@ def model_name(path: str) -> str:
 
 def runtime_name(provider: str) -> str:
     """The reported runtime for an onnxruntime provider name
-    (``DmlExecutionProvider`` → ``onnxruntime-directml``)."""
+    (``CPUExecutionProvider`` → ``onnxruntime-cpu``)."""
     if provider in _RUNTIME_NAMES:
         return _RUNTIME_NAMES[provider]
     return "onnxruntime-" + provider.removesuffix("ExecutionProvider").lower()
@@ -120,9 +110,8 @@ def _file_sha256(path: str) -> str:
 class _Model:
     """One loaded ONNX session plus what the decoder needs from its metadata.
 
-    ``providers`` are tried in order among those this onnxruntime build has,
-    always ending with the CPU; ``provider`` / ``runtime`` name the one the
-    session actually uses.
+    ``provider`` / ``runtime`` name the execution provider the session uses
+    (the CPU; ``providers`` is kept for the Settings signature).
     """
 
     def __init__(
@@ -130,35 +119,16 @@ class _Model:
         path: str,
         threads: int = 2,
         providers: Sequence[str] = (CPU_PROVIDER,),
-        device_id: int = 0,
     ) -> None:
         import onnxruntime as ort  # noqa: PLC0415 — optional dependency, loaded lazily
 
         # Hashed once at load: every result names the exact weights it came from.
         self.sha256 = _file_sha256(path)
         self.name = model_name(path)
-        available = set(ort.get_available_providers())
-        wanted = [p for p in dict.fromkeys(providers) if p != CPU_PROVIDER]
-        missing = [p for p in wanted if p not in available]
-        if missing:
-            _log.warning("detector: provider(s) %s not in this onnxruntime build (has %s)",
-                         ", ".join(missing), ", ".join(sorted(available)))
-        gpu = [p for p in wanted if p in available]
-        self.session = None
-        if gpu:
-            try:
-                self.session = _session(ort, path, threads, gpu + [CPU_PROVIDER], device_id)
-            except Exception as exc:  # noqa: BLE001 — the CPU still runs the detector
-                _log.warning("detector: %s session failed (%s: %s); using %s",
-                             ", ".join(gpu), type(exc).__name__, exc, CPU_PROVIDER)
-        if self.session is None:
-            self.session = _session(ort, path, threads, [CPU_PROVIDER], device_id)
+        self.session = _session(ort, path, threads)
         self.provider = self.session.get_providers()[0]
         self.runtime = runtime_name(self.provider)
-        # A GPU (DirectML) session is not safe for concurrent Run calls.
-        self.run_lock: Any = (
-            contextlib.nullcontext() if self.provider == CPU_PROVIDER else threading.Lock()
-        )
+        self.run_lock: Any = contextlib.nullcontext()
         inp = self.session.get_inputs()[0]
         self.input_name = inp.name
         self.size = int(inp.shape[2]) if isinstance(inp.shape[2], int) else 640
@@ -202,38 +172,30 @@ class _Model:
         return found
 
 
-def _session(ort: Any, path: str, threads: int, providers: List[str], device_id: int) -> Any:
-    """An InferenceSession on ``providers`` (the last one is the CPU)."""
+def _session(ort: Any, path: str, threads: int) -> Any:
+    """An InferenceSession on the CPU provider."""
     options = ort.SessionOptions()
     options.intra_op_num_threads = max(1, int(threads))
-    if providers != [CPU_PROVIDER]:
-        # DirectML requires both; harmless for the other GPU providers.
-        options.enable_mem_pattern = False
-        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-    chain = [
-        (p, {"device_id": int(device_id)}) if p in _DEVICE_ID_PROVIDERS else p for p in providers
-    ]
-    return ort.InferenceSession(path, sess_options=options, providers=chain)
+    return ort.InferenceSession(path, sess_options=options, providers=[CPU_PROVIDER])
 
 
 _LOCK = threading.Lock()
-#: (path, providers, device_id) → loaded model, or None when loading failed
+#: (path, threads, providers) → loaded model, or None when loading failed
 #: (not retried per request).
-_MODELS: Dict[Tuple[str, Tuple[str, ...], int], Optional[_Model]] = {}
+_MODELS: Dict[Tuple[str, int, Tuple[str, ...]], Optional[_Model]] = {}
 
 
 def _model(
     path: str,
     threads: int = 2,
     providers: Sequence[str] = (CPU_PROVIDER,),
-    device_id: int = 0,
 ) -> Optional[_Model]:
-    """The cached model for ``path`` on ``providers``; loads once, thread-safe."""
-    key = (path, tuple(providers), int(device_id))
+    """The cached model for ``path``; loads once, thread-safe."""
+    key = (path, int(threads), tuple(providers))
     with _LOCK:
         if key not in _MODELS:
             try:
-                _MODELS[key] = _Model(path, threads, providers, device_id)
+                _MODELS[key] = _Model(path, threads, providers)
             except Exception as exc:  # noqa: BLE001 — any load failure disables the stage
                 _log.warning("detector disabled: cannot load %s (%s: %s)",
                              path, type(exc).__name__, exc)
@@ -243,7 +205,7 @@ def _model(
 
 def _settings_model(settings: Settings) -> Optional[_Model]:
     return _model(settings.detector_model_path, settings.detector_threads,
-                  settings.detector_providers, settings.detector_device_id)
+                  settings.detector_providers)
 
 
 def _deps_available() -> bool:

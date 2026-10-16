@@ -98,5 +98,5 @@ few false metal flags on clean loads.
    - any line containing `FAILED` or `SKIPPED`;
    - the `taco_stats.json` counts.
 
-The final model choice, CPU and AMD Radeon latency, and the hybrid replay are all re-checked on the
+The final model choice, CPU latency, and the hybrid replay are all re-checked on the
 dev laptop with the production decoder (`backend/src/lynceus/detector.py`) before anything ships.

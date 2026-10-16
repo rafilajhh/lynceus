@@ -32,10 +32,8 @@ endpoint catalogue, running on AMD GPUs), reached with one team API key:
 | Vision: contaminants, wet/dry, hazard boxes | `MiniCPM-V-4.7-35B-A3B` | the only vision model whose boxes overlapped the metal on the test photo in 3/3 runs (`DeepSeek-V4.1-Flash` image requests timed out in 3/3 runs at the 90 s per-read timeout; `DeepSeek-V4-Flash-Vision-Exp` returned no boxes, 0/3) |
 | Waybill cross-check and Pythia | `DeepSeek-V4-Flash` | passed the assistant citation contract 3/3 (`Gemma-4-31B-IT` failed it 0/3) |
 
-It is **not** a self-hosted vLLM on an Instinct MI300X. Self-hosting remains a
-supported option (the endpoints are plain OpenAI-compatible URLs, see
-[Self-hosting the models](#self-hosting-the-models-optional-not-what-the-demo-runs)),
-but no result in this repository was produced that way.
+It is not a self-hosted GPU stack: the demo calls the Token Factory API and
+needs no GPU of its own.
 
 ## Architecture
 
@@ -194,7 +192,7 @@ docker run -d --name lynceus -p 8020:8020 \
 ```
 
 Use the Docker template, not `.env.example` or `backend/.env`: those are for local
-development, with localhost vLLM URLs and models, whereas the template carries the
+development, with localhost endpoint URLs and models, whereas the template carries the
 Token Factory endpoints and models and `LYNCEUS_ALLOW_STUB_FALLBACK=0`. It never sets
 `LYNCEUS_STORAGE_DIR`, `LYNCEUS_WEB_DIR` or `LYNCEUS_BENCHMARK_DIR`, so the container's
 `/data/runs` volume path stays in force (the entrypoint exits with an error if the
@@ -245,19 +243,6 @@ LYNCEUS_ALLOW_STUB_FALLBACK=0
 Submit an inspection **without** a `demo_case` and the response carries
 `provenance: "live"`. The Token Factory key is rate-limited per key and shared
 across the team; the client honours `Retry-After` on HTTP 429.
-
-### Self-hosting the models (optional, not what the demo runs)
-
-Any OpenAI-compatible server works, e.g. vLLM on an AMD Instinct GPU:
-
-```bash
-vllm serve Qwen/Qwen2.5-VL-7B-Instruct --host 0.0.0.0 --port 8000
-vllm serve Qwen/Qwen2.5-7B-Instruct    --host 0.0.0.0 --port 8001
-```
-
-Set `VLLM_VLM_URL` / `VLLM_LLM_URL` accordingly. Deployment notes (AMD Developer
-Cloud, tuning flags): `docs/research/amd-gpu-stack.md`. Those notes are research;
-the numbers above were not measured on a self-hosted stack.
 
 ## Tests
 

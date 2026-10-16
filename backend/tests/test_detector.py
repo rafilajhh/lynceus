@@ -752,195 +752,35 @@ def test_app_startup_warms_the_detector(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Execution providers (DirectML / ROCm / MIGraphX), no GPU needed
+# Execution provider: the detector is CPU-only
 # ---------------------------------------------------------------------------
 
 
-class _FakeSession:
-    """Stands in for onnxruntime.InferenceSession: records how it was built."""
-
-    built: list = []
-    fail_on: set = set()
-
-    def __init__(self, path, sess_options=None, providers=None):
-        names = [p[0] if isinstance(p, tuple) else p for p in providers]
-        if self.fail_on & set(names):
-            raise RuntimeError("no adapter")
-        self.options = sess_options
-        self.providers = providers
-        self.names = names
-        self.locked_during_run = []
-        self.run_lock = None
-        _FakeSession.built.append(self)
-
-    def get_providers(self):
-        return self.names
-
-    def get_inputs(self):
-        class _In:
-            name = "images"
-            shape = [1, 3, 640, 640]
-        return [_In()]
-
-    def get_outputs(self):
-        class _Out:
-            shape = [1, 300, 6]
-        return [_Out()]
-
-    def get_modelmeta(self):
-        class _Meta:
-            custom_metadata_map = {"names": "{0: 'metal'}"}
-        return _Meta()
-
-    def run(self, outputs, feeds):
-        import numpy as np
-
-        lock = self.run_lock
-        self.locked_during_run.append(lock.locked() if hasattr(lock, "locked") else None)
-        return [np.zeros((1, 300, 6), dtype=np.float32)]
-
-
-@pytest.fixture()
-def fake_ort(monkeypatch):
-    import onnxruntime
-
-    monkeypatch.setattr(_FakeSession, "built", [])
-    monkeypatch.setattr(_FakeSession, "fail_on", set())
-    monkeypatch.setattr(onnxruntime, "InferenceSession", _FakeSession)
-    monkeypatch.setattr(onnxruntime, "get_available_providers",
-                        lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
-    return _FakeSession
-
-
-_PATH = str(config.BUNDLED_DETECTOR_MODEL)
-
-
-def test_detector_providers_and_device_id_settings(monkeypatch):
-    for name in ("DETECTOR_PROVIDERS", "DETECTOR_DEVICE_ID"):
-        monkeypatch.delenv(name, raising=False)
+def test_detector_providers_setting(monkeypatch):
+    monkeypatch.delenv("DETECTOR_PROVIDERS", raising=False)
     s = get_settings()
-    assert s.detector_providers == ("CPUExecutionProvider",) and s.detector_device_id == 0
-    monkeypatch.setenv("DETECTOR_PROVIDERS", " DmlExecutionProvider, CPUExecutionProvider ,,")
-    monkeypatch.setenv("DETECTOR_DEVICE_ID", "1")
-    s = get_settings()
-    assert s.detector_providers == ("DmlExecutionProvider", "CPUExecutionProvider")
-    assert s.detector_device_id == 1
-    for bad in ("-1", "gpu", "1.5"):
-        monkeypatch.setenv("DETECTOR_DEVICE_ID", bad)
-        assert get_settings().detector_device_id == 0
+    assert s.detector_providers == ("CPUExecutionProvider",)
+    monkeypatch.setenv("DETECTOR_PROVIDERS", "CPUExecutionProvider")
+    assert get_settings().detector_providers == ("CPUExecutionProvider",)
     monkeypatch.setenv("DETECTOR_PROVIDERS", " , ")
     assert get_settings().detector_providers == ("CPUExecutionProvider",)
-    # Older Settings(...) calls get the CPU defaults.
+    # Older Settings(...) calls get the CPU default.
     old = config.Settings("v", "l", "vm", "lm", "a", "am", "e", "em", "box", "", True,
                           "./runs", 1, "0")
-    assert old.detector_providers == ("CPUExecutionProvider",) and old.detector_device_id == 0
+    assert old.detector_providers == ("CPUExecutionProvider",)
 
 
 def test_runtime_name_maps_providers():
     assert detector.runtime_name("CPUExecutionProvider") == "onnxruntime-cpu"
-    assert detector.runtime_name("DmlExecutionProvider") == "onnxruntime-directml"
-    assert detector.runtime_name("ROCMExecutionProvider") == "onnxruntime-rocm"
-    assert detector.runtime_name("MIGraphXExecutionProvider") == "onnxruntime-migraphx"
     assert detector.runtime_name("CUDAExecutionProvider") == "onnxruntime-cuda"
 
 
-def test_default_session_is_cpu_only_without_a_lock(fake_ort):
-    model = detector._Model(_PATH, threads=1)
-    (session,) = fake_ort.built
-    assert session.providers == ["CPUExecutionProvider"]
-    assert session.options.enable_mem_pattern is True  # untouched on the CPU
-    assert (model.provider, model.runtime) == ("CPUExecutionProvider", "onnxruntime-cpu")
-    assert not isinstance(model.run_lock, type(detector._LOCK))
-
-
-def test_gpu_provider_gets_device_id_and_directml_options(fake_ort):
-    model = detector._Model(_PATH, threads=1, device_id=1, providers=(
-        "DmlExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"))
-    (session,) = fake_ort.built
-    # ROCm is not in this build: filtered out; the CPU always ends the chain.
-    assert session.providers == [("DmlExecutionProvider", {"device_id": 1}),
-                                 "CPUExecutionProvider"]
-    import onnxruntime
-
-    assert session.options.enable_mem_pattern is False
-    assert session.options.execution_mode == onnxruntime.ExecutionMode.ORT_SEQUENTIAL
-    assert (model.provider, model.runtime) == ("DmlExecutionProvider", "onnxruntime-directml")
-
-
-def test_device_id_only_goes_to_gpu_providers(fake_ort, monkeypatch):
-    import onnxruntime
-
-    monkeypatch.setattr(onnxruntime, "get_available_providers", lambda: [
-        "MIGraphXExecutionProvider", "ROCMExecutionProvider", "CUDAExecutionProvider",
-        "CPUExecutionProvider"])
-    model = detector._Model(_PATH, device_id=2, providers=(
-        "MIGraphXExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider"))
-    assert fake_ort.built[0].providers == [
-        ("MIGraphXExecutionProvider", {"device_id": 2}), "CUDAExecutionProvider",
-        ("ROCMExecutionProvider", {"device_id": 2}), "CPUExecutionProvider"]
-    assert model.runtime == "onnxruntime-migraphx"
-
-
-def test_gpu_session_failure_falls_back_to_cpu(fake_ort, caplog):
-    fake_ort.fail_on = {"DmlExecutionProvider"}
-    model = detector._Model(_PATH, providers=("DmlExecutionProvider",))
-    (session,) = fake_ort.built  # the GPU attempt raised; only the CPU session exists
-    assert session.providers == ["CPUExecutionProvider"]
-    assert session.options.enable_mem_pattern is True
-    assert model.runtime == "onnxruntime-cpu"
-    assert caplog.text.count("session failed") == 1 and "no adapter" in caplog.text
-
-
-def test_unavailable_provider_is_skipped_with_a_warning(fake_ort, caplog):
-    model = detector._Model(_PATH, providers=("ROCMExecutionProvider",))
-    assert fake_ort.built[0].providers == ["CPUExecutionProvider"]
-    assert model.runtime == "onnxruntime-cpu"
-    assert "ROCMExecutionProvider not in this onnxruntime build" in caplog.text
-
-
-def test_gpu_runs_are_serialised_cpu_runs_are_not(fake_ort):
-    img = Image.new("RGB", (64, 48), (90, 90, 90))
-    gpu = detector._Model(_PATH, providers=("DmlExecutionProvider",))
-    gpu.session.run_lock = gpu.run_lock
-    assert gpu(img, 0.25) == []
-    assert gpu.session.locked_during_run == [True]
-    cpu = detector._Model(_PATH)
-    cpu.session.run_lock = cpu.run_lock
-    cpu(img, 0.25)
-    assert cpu.session.locked_during_run == [None]  # no lock on the CPU path
-
-
-def test_result_runtime_follows_the_provider(fake_ort, monkeypatch):
+def test_model_cache_keys_on_threads_and_providers(monkeypatch):
     monkeypatch.setattr(detector, "_MODELS", {})
-    monkeypatch.setenv("DETECTOR_PROVIDERS", "DmlExecutionProvider")
-    monkeypatch.delenv("DETECTOR_MODEL_PATH", raising=False)
-    result = detector.detect(_png((64, 48)))
-    assert result["runtime"] == "onnxruntime-directml"
-    audit.DetectorOutput.model_validate(result)
-    monkeypatch.setenv("DETECTOR_PROVIDERS", "CPUExecutionProvider")
-    assert detector.detect(_png((64, 48)))["runtime"] == "onnxruntime-cpu"
-
-
-def test_model_cache_keys_on_providers_and_device(fake_ort, monkeypatch):
-    monkeypatch.setattr(detector, "_MODELS", {})
-    cpu = detector._model(_PATH)
-    assert detector._model(_PATH) is cpu
-    dml0 = detector._model(_PATH, providers=("DmlExecutionProvider",))
-    dml1 = detector._model(_PATH, providers=("DmlExecutionProvider",), device_id=1)
-    assert len({id(cpu), id(dml0), id(dml1)}) == 3
-    assert detector._model(_PATH, providers=["DmlExecutionProvider"], device_id=1) is dml1
-    assert len(fake_ort.built) == 3
-
-
-def test_warm_logs_the_provider(fake_ort, monkeypatch, caplog):
-    import logging
-
-    caplog.set_level(logging.INFO, logger="lynceus.detector")
-    monkeypatch.setattr(detector, "_MODELS", {})
-    monkeypatch.setenv("DETECTOR_PROVIDERS", "DmlExecutionProvider")
-    monkeypatch.delenv("DETECTOR_MODEL_PATH", raising=False)
-    assert detector.warm() is True
-    assert "on DmlExecutionProvider (onnxruntime-directml)" in caplog.text
+    cpu = detector._model(str(config.BUNDLED_DETECTOR_MODEL))
+    assert detector._model(str(config.BUNDLED_DETECTOR_MODEL)) is cpu
+    other = detector._model(str(config.BUNDLED_DETECTOR_MODEL), threads=1)
+    assert other is not cpu
 
 
 def test_warm_logs_once_when_disabled(monkeypatch, caplog):
