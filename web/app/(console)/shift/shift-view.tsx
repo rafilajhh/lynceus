@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { formatRupiah, formatRupiahCompact } from "@/lib/format";
+import { formatUsd, formatUsdCompact, USD_IDR_RATE } from "@/lib/format";
 import {
   FLAG_MIN_RISK,
   FLAG_MIN_TRUCKS,
@@ -32,35 +32,12 @@ type LoadState =
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-type Currency = "IDR" | "EUR";
-/** Money in the display currency: compact by default, full for tooltips/rates. */
+/** Money in US dollars: compact by default, full for tooltips/rates. */
 type Money = (idr: number, opts?: { full?: boolean }) => string;
 
-/** EUR uses the backend's stated ECB reference rate; without it, IDR only. */
-function moneyFormatter(currency: Currency, eurIdrRate: number | null): Money {
-  return (idr, opts) => {
-    if (!Number.isFinite(idr)) return "—";
-    const sign = idr < 0 ? "−" : "";
-    const abs = Math.abs(idr);
-    if (currency === "EUR" && eurIdrRate) {
-      const eur = abs / eurIdrRate;
-      const digits = eur < 100 ? 2 : opts?.full ? 0 : 1;
-      return (
-        sign +
-        new Intl.NumberFormat("en-GB", {
-          style: "currency",
-          currency: "EUR",
-          notation: opts?.full ? "standard" : "compact",
-          // Both bounds set: a lone maximumFractionDigits below the currency's
-          // default minimum (2 for EUR) throws a RangeError on older engines.
-          minimumFractionDigits: eur < 100 ? 2 : 0,
-          maximumFractionDigits: digits,
-        }).format(eur)
-      );
-    }
-    return sign + (opts?.full ? formatRupiah(abs) : formatRupiahCompact(abs));
-  };
-}
+/** IDR figures convert at the backend's stated rate (impact.py USD_IDR_RATE). */
+const money: Money = (idr, opts) =>
+  !Number.isFinite(idr) ? "—" : opts?.full ? formatUsd(idr) : formatUsdCompact(idr);
 
 /** "1.000" / "0,6": the console's id-ID number register (as formatWeight). */
 function formatCount(n: number, digits = 1): string {
@@ -102,7 +79,6 @@ function SupplierLink({ name, className }: { name: string; className?: string })
 
 export function ShiftView() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [currency, setCurrency] = useState<Currency>("IDR");
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState({ kind: "loading" });
@@ -178,14 +154,11 @@ export function ShiftView() {
   }
 
   const model = report.value_model ?? null;
-  const money = moneyFormatter(currency, model?.eur_idr_rate ?? null);
 
   return (
     <div className="flex flex-col gap-4">
       <SampleNote report={report} />
-      {model ? (
-        <CurrencyToggle currency={currency} onChange={setCurrency} model={model} />
-      ) : null}
+      <RateNote />
       <Panel aria-labelledby="shift-headline">
         <PanelHead title="Shift report" meta={windowLabel(report)} />
         <h1 id="shift-headline" className="sr-only">
@@ -200,52 +173,16 @@ export function ShiftView() {
   );
 }
 
-/** IDR/EUR display toggle; the EUR rate and its source are stated, never implied. */
-function CurrencyToggle({
-  currency,
-  onChange,
-  model,
-}: {
-  currency: Currency;
-  onChange: (currency: Currency) => void;
-  model: ValueModel;
-}) {
+/** US$ display note: the fixed backend rate is stated, never implied. */
+function RateNote() {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[12px] text-muted">
-      {currency === "EUR" ? (
-        <span>
-          EUR at the{" "}
-          <a
-            href={model.eur_idr_source_url}
-            className="text-amber underline underline-offset-2"
-          >
-            ECB reference rate
-          </a>{" "}
-          of {model.eur_idr_rate_date}:{" "}
-          <span className="figure text-ink">€1 = Rp {formatCount(model.eur_idr_rate, 2)}</span>
-        </span>
-      ) : null}
-      <div
-        role="group"
-        aria-label="Display currency"
-        className="inline-flex rounded-[8px] border border-seam p-0.5"
-      >
-        {(["IDR", "EUR"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={currency === option}
-            onClick={() => onChange(option)}
-            className={cn(
-              "figure rounded-[6px] px-2.5 py-1 text-[12px] transition-colors duration-100",
-              currency === option ? "bg-raised text-ink" : "text-muted hover:text-ink",
-            )}
-          >
-            {option}
-          </button>
-        ))}
-      </div>
-    </div>
+    <p className="m-0 px-4 py-2 text-right text-[12px] text-muted">
+      US$ figures convert at the backend&apos;s fixed rate{" "}
+      <span className="figure text-ink">
+        US$1 = Rp {formatCount(USD_IDR_RATE, 0)}
+      </span>
+      .
+    </p>
   );
 }
 
@@ -428,11 +365,8 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
           ))}
         </ul>
         <p className="m-0 mt-3 text-[12px] text-muted">
-          Benchmark rates from {model.benchmark_file}. EUR figures use the{" "}
-          <a href={model.eur_idr_source_url} className="text-amber underline underline-offset-2">
-            ECB reference rate
-          </a>{" "}
-          of {model.eur_idr_rate_date} (€1 = Rp {formatCount(model.eur_idr_rate, 2)}).
+          Benchmark rates from {model.benchmark_file}. US$ figures convert at
+          the backend&apos;s fixed rate (US$1 = Rp {formatCount(USD_IDR_RATE, 0)}).
         </p>
       </details>
     </Panel>
@@ -513,7 +447,7 @@ function buildSummaryText(report: ShiftReport): string {
     `${accepted} accepted`,
     `${escalated} escalated`,
     `${rejected} rejected`,
-    `worst-case loss exposure avoided ${formatRupiah(report.loss_exposure_idr ?? report.prevented_loss_idr)}`,
+    `worst-case loss exposure avoided ${formatUsd(report.loss_exposure_idr ?? report.prevented_loss_idr)}`,
     open > 0 ? `${open} need resolution before handover` : "all resolved",
   ];
   return parts.join(" · ");

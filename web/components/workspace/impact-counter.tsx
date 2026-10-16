@@ -3,23 +3,22 @@
 /**
  * ImpactCounter: impact figure that counts up when a verdict
  * arrives (triggered by runKey, not viewport: the workspace is the
- * stage). "Rp 798.000.000" Indonesian grouping + small USD figure.
+ * stage). USD is the headline figure; the small line keeps the rupiah.
  * Honesty contract: the end value is the backend's real estimate;
  * animation only delays the reveal.
  */
 
 import { useCountUp } from "@/lib/use-count-up";
 import { cn } from "@/lib/utils";
+import { formatUsd, USD_IDR_RATE } from "@/lib/format";
 
 export function ImpactCounter({
   preventedLossIdr,
-  preventedLossUsd,
   runKey,
   label = "Worst-case loss exposure",
   className,
 }: {
   preventedLossIdr: number;
-  preventedLossUsd: number;
   /** Increment on each new verdict; 0 = no result yet. */
   runKey: number;
   /** What the figure is: the worst-case loss exposure for reject/escalate
@@ -28,11 +27,15 @@ export function ImpactCounter({
   label?: string;
   className?: string;
 }) {
-  const [display, animating] = useCountUp(preventedLossIdr, runKey);
+  const [display, animating] = useCountUp(preventedLossIdr / USD_IDR_RATE, runKey);
+
+  const usd = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(Math.round(display));
 
   const idr = new Intl.NumberFormat("id-ID", {
     maximumFractionDigits: 0,
-  }).format(Math.round(display));
+  }).format(preventedLossIdr);
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
@@ -44,16 +47,12 @@ export function ImpactCounter({
         aria-hidden={animating || undefined}
         className="figure text-[26px] leading-tight text-ink"
       >
-        Rp {idr}
+        US$ {usd}
       </span>
       <span aria-live="polite" className="sr-only">
-        {animating ? "" : `Rp ${idr}`}
+        {animating ? "" : `US$ ${usd}`}
       </span>
-      <span className="figure text-[12px] text-muted">
-        ≈ US$ {new Intl.NumberFormat("en-US", {
-          maximumFractionDigits: 0,
-        }).format(preventedLossUsd)}
-      </span>
+      <span className="figure text-[12px] text-muted">≈ Rp {idr}</span>
     </div>
   );
 }

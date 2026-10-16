@@ -55,6 +55,8 @@ VLM_FALLBACK_MODELS_ENV = "VLM_FALLBACK_MODELS"
 #: Comma-separated vision models with a benchmark run behind them.  A
 #: fallback model outside this list may hold a load, never accept or reject it.
 VLM_BENCHMARKED_MODELS_ENV = "VLM_BENCHMARKED_MODELS"
+#: VLM reads per inspection, merged by majority vote (1..4; malformed = 3).
+VLM_VOTES_ENV = "VLM_VOTES"
 #: Optional bearer key for the vLLM endpoints (empty = no auth header).
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
 #: Endpoint / model for the Pythia assistant role (default: the LLM's).
@@ -109,6 +111,10 @@ _DEFAULT_DETECTOR_LIGHT_CONF = 0.25
 _DEFAULT_DETECTOR_THREADS = 2
 _DEFAULT_DETECTOR_PROVIDERS: Tuple[str, ...] = ("CPUExecutionProvider",)
 _DEFAULT_DETECTOR_DEVICE_ID = 0
+#: VLM reads per inspection, merged by majority vote (pipeline._vote_majority).
+_DEFAULT_VLM_VOTES = 3
+#: The reads run concurrently and share pipeline._OUTBOUND_SLOTS (4) with the LLM call.
+_MAX_VLM_VOTES = 4
 #: The vision model of the committed live benchmark run (2026-10-13).
 _DEFAULT_VLM_BENCHMARKED_MODELS: Tuple[str, ...] = ("MiniCPM-V-4.7-35B-A3B",)
 
@@ -139,6 +145,7 @@ class Settings:
     detector_threads: int = _DEFAULT_DETECTOR_THREADS
     detector_providers: Tuple[str, ...] = _DEFAULT_DETECTOR_PROVIDERS
     detector_device_id: int = _DEFAULT_DETECTOR_DEVICE_ID
+    vlm_votes: int = _DEFAULT_VLM_VOTES
 
 def provider_for_url(url: str) -> str:
     """Name the provider behind an endpoint URL, for audit provenance.
@@ -168,6 +175,15 @@ def _env_models(name: str) -> Tuple[str, ...]:
     return tuple(
         m for m in dict.fromkeys(p.strip() for p in os.environ.get(name, "").split(",")) if m
     )
+
+
+def _env_votes() -> int:
+    """``VLM_VOTES`` clamped to 1.._MAX_VLM_VOTES; malformed values keep the default."""
+    try:
+        value = int(os.environ.get(VLM_VOTES_ENV, _DEFAULT_VLM_VOTES))
+    except ValueError:
+        return _DEFAULT_VLM_VOTES
+    return min(max(value, 1), _MAX_VLM_VOTES)
 
 
 def _env_threads() -> int:
@@ -247,6 +263,7 @@ def get_settings() -> Settings:
         explain_url=os.environ.get(EXPLAIN_URL_ENV) or assist_url,
         explain_model=os.environ.get(EXPLAIN_MODEL_ENV) or assist_model,
         localisation_mode=localisation_mode,
+        vlm_votes=_env_votes(),
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
         vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),
         allow_stub_fallback=os.environ.get(

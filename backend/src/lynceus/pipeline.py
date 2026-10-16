@@ -172,6 +172,11 @@ _VLM_PROMPT = (
     '"light_contaminants" (list of strings among plastic_film/glass/textile/'
     "organic_residue/wet_mix), and "
     '"confidence" (number 0..1, your confidence in the analysis). '
+    "Always report metal, rock, concrete, tire or e-waste in hard_contaminants "
+    "whenever any piece is visible, however small or partially buried. "
+    "Report organic_residue or wet_mix in light_contaminants, and a moisture "
+    "fraction above 0.3, whenever the load looks damp, dark, or has food/organic "
+    "residue. "
     "Be conservative: report contamination only when visible."
     # Same wording as the validated probe (scripts/probe_token_factory.py).
     ' Also include the key "locations" (list of objects {"label": one of the '
@@ -240,6 +245,53 @@ def _clamp01(value: Any, default: float = 0.0) -> float:
     if number != number or number in (float("inf"), float("-inf")):
         return default
     return max(0.0, min(1.0, number))
+
+
+def _vote_majority(reads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge N VLM reads by majority on hard_contaminants, median on numbers.
+
+    hard_contaminants: a contaminant is kept when it appears in > half the reads.
+    light_contaminants, boxes: taken from the read that has the majority's
+    hard_contaminants (the most informative read).
+    confidence/moisture: median across reads.
+    """
+    if not reads:
+        return {}
+    if len(reads) == 1:
+        return reads[0]
+
+    # Majority vote on hard_contaminants (the safety-critical field).
+    hard_votes: Dict[str, int] = {}
+    for r in reads:
+        for c in r.get("hard_contaminants", []) or []:
+            hard_votes[c] = hard_votes.get(c, 0) + 1
+    majority = len(reads) // 2 + 1
+    agreed_hard = sorted([c for c, n in hard_votes.items() if n >= majority])
+
+    # Pick the read that best matches the majority hard set (prefer one that
+    # actually contains them) as the base for light/boxes.
+    def score(r: Dict[str, Any]) -> int:
+        h = set(r.get("hard_contaminants", []) or [])
+        return len(h & set(agreed_hard))
+
+    base = max(reads, key=score)
+
+    def median(vals: List[float]) -> float:
+        s = sorted(vals)
+        n = len(s)
+        return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+    moistures = [_clamp01(r.get("moisture")) for r in reads]
+    confidences = [_clamp01(r.get("confidence")) for r in reads]
+
+    return {
+        "contamination": base.get("contamination", "unknown"),
+        "moisture": median(moistures),
+        "hard_contaminants": agreed_hard,
+        "light_contaminants": base.get("light_contaminants", []),
+        "confidence": median(confidences),
+        "locations": base.get("locations", []),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +447,8 @@ class VLLMClient:
                     "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": 0.1,
+                    # Fixed seed so identical re-runs give the same verdict.
+                    "seed": 0,
                 },
                 headers=self._auth_headers(),
                 timeout=remaining_s,
@@ -481,6 +535,28 @@ class VLLMClient:
             )
         return parsed
 
+    def _vote_reads(self, model: str, messages: list, deadline: float) -> Dict[str, Any]:
+        """``vlm_votes`` reads of one model, merged by :func:`_vote_majority`.
+
+        Token Factory reads are bimodal: identical photos sometimes return
+        "none detected", so no single read decides the verdict.  A hard
+        contaminant seen by only a minority of reads is dropped; the detector
+        second opinion still escalates what it sees.  The reads run
+        concurrently inside the chain's budget (and the shared outbound
+        slots), so N votes cost about one read of wall time; any failed read
+        fails the model, as a single read would.
+        """
+        votes = max(1, self._settings.vlm_votes)
+        url = self._settings.vllm_vlm_url
+        if votes == 1:
+            return self._remaining(deadline)._chat_json(url, model, messages)
+        with ThreadPoolExecutor(max_workers=votes, thread_name_prefix="lynceus-vote") as pool:
+            reads = [
+                pool.submit(self._remaining(deadline)._chat_json, url, model, messages)
+                for _ in range(votes)
+            ]
+            return _vote_majority([read.result() for read in reads])
+
     def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
         if not photo:
             raise ValueError("VLMClient.vlm requires a base64 photo")
@@ -511,9 +587,7 @@ class VLLMClient:
         for model in models:
             started = time.perf_counter()
             try:
-                parsed = self._remaining(deadline)._chat_json(
-                    self._settings.vllm_vlm_url, model, messages
-                )
+                parsed = self._vote_reads(model, messages, deadline)
                 break
             except Exception as exc:  # noqa: BLE001 — next model, else re-raise
                 took = f"{type(exc).__name__} after {time.perf_counter() - started:.1f} s"

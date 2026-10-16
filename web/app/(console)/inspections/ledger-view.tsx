@@ -9,7 +9,20 @@ import {
   type Decision,
   type InspectionSummary,
 } from "@/lib/api";
-import { formatRupiah, relativeTime } from "@/lib/format";
+import { formatUsd, formatUsdCompact, relativeTime, USD_IDR_RATE } from "@/lib/format";
+
+/** Row figures keep cents when the dollar amount is small (escalate moisture
+    charges run at a few dollars, and "US$2" would hide the real number). */
+function formatUsdCents(idr: number): string {
+  const usd = idr / USD_IDR_RATE;
+  if (usd > 0 && usd < 1000) {
+    return `US$${new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(usd)}`;
+  }
+  return formatUsd(idr);
+}
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -130,17 +143,13 @@ function LedgerViewInner() {
     const rejected = ready.filter(
       (item) => item.decision === "reject",
     ).length;
-    // Two different things, never summed: worst-case loss exposure avoided
-    // by rejecting or escalating, and the market value of loads let through.
+    // Worst-case loss exposure avoided by rejecting or escalating; the
+    // market value of admitted loads lives on the Shift report, not here.
     const prevented = ready.reduce(
       (total, item) => total + item.prevented_loss_idr,
       0,
     );
-    const admitted = ready.reduce(
-      (total, item) => total + item.admitted_value_idr,
-      0,
-    );
-    return { total: ready.length, rejected, prevented, admitted };
+    return { total: ready.length, rejected, prevented };
   }, [ready]);
 
   const counts = useMemo(() => {
@@ -289,21 +298,17 @@ function LedgerViewInner() {
               <span aria-hidden="true" className="text-faint">
                 ·
               </span>
-              <span className="figure whitespace-nowrap text-verdict-green">
-                {formatRupiah(summary.prevented)}{" "}
+              <span
+                className="figure whitespace-nowrap text-verdict-green"
+                title={formatUsd(summary.prevented)}
+              >
+                {formatUsdCompact(summary.prevented)}{" "}
                 <span
                   className="text-muted"
-                  title="Each reject is booked as if the contaminant would certainly have damaged the shredder and stopped the kiln for an hour. The probability-weighted value is on the Shift report."
+                  title="Each reject is booked as if the contaminant would certainly have damaged the shredder and stopped the kiln for an hour. The probability-weighted value is on the Shift report. Converted at Rp 16,000/US$."
                 >
-                  worst-case exposure avoided
+                  exposure avoided
                 </span>
-              </span>
-              <span aria-hidden="true" className="text-faint">
-                ·
-              </span>
-              <span className="figure whitespace-nowrap text-ink">
-                {formatRupiah(summary.admitted)}{" "}
-                <span className="text-muted">RDF value admitted</span>
               </span>
             </div>
 
@@ -389,8 +394,7 @@ function LedgerViewInner() {
                       When
                     </SortButton>
                   </TableHead>
-                  <TableHead className="text-right">Worst-case exposure</TableHead>
-                  <TableHead className="text-right">RDF value admitted</TableHead>
+                  <TableHead className="text-right">Impact</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -433,25 +437,31 @@ function LedgerViewInner() {
                         {relativeTime(row.decided_at_utc)}
                       </TableCell>
                       <TableCell
-                        className={`figure text-right text-[12.5px] ${
+                        className={`figure text-right text-[12.5px] whitespace-nowrap ${
                           row.prevented_loss_idr > 0
                             ? "text-verdict-green"
-                            : "text-muted"
+                            : row.admitted_value_idr > 0
+                              ? "text-ink"
+                              : "text-faint"
                         }`}
+                        title={
+                          row.prevented_loss_idr > 0
+                            ? "Worst-case exposure avoided by this verdict"
+                            : row.admitted_value_idr > 0
+                              ? "Market value of the RDF load admitted"
+                              : undefined
+                        }
                       >
-                        {formatRupiah(row.prevented_loss_idr)}
-                      </TableCell>
-                      <TableCell
-                        className={`figure text-right text-[12.5px] ${
-                          row.admitted_value_idr > 0 ? "text-ink" : "text-muted"
-                        }`}
-                      >
-                        {formatRupiah(row.admitted_value_idr)}
+                        {row.prevented_loss_idr > 0
+                          ? `+ ${formatUsdCents(row.prevented_loss_idr)}`
+                          : row.admitted_value_idr > 0
+                            ? formatUsdCents(row.admitted_value_idr)
+                            : "—"}
                       </TableCell>
                     </TableRow>
                     {selectedId === row.record_id ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={6} className="p-2 sm:p-3">
+                        <TableCell colSpan={5} className="p-2 sm:p-3">
                           <InspectionDetailPanel
                             recordId={row.record_id}
                             onClose={closeDetail}
@@ -464,7 +474,7 @@ function LedgerViewInner() {
                 {pagedRows.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell
-                      colSpan={6}
+                      colSpan={5}
                       className="py-10 text-center text-[13px] text-muted"
                     >
                       No inspections match this filter.
@@ -511,8 +521,8 @@ function LedgerViewInner() {
                       }`}
                     >
                       {row.admitted_value_idr > 0
-                        ? `${formatRupiah(row.admitted_value_idr)} RDF value admitted`
-                        : `${formatRupiah(row.prevented_loss_idr)} worst-case exposure`}
+                        ? `${formatUsdCents(row.admitted_value_idr)} admitted`
+                        : `${formatUsdCents(row.prevented_loss_idr)} avoided`}
                     </div>
                   </button>
                   {selectedId === row.record_id ? (

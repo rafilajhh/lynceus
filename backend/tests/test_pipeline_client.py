@@ -92,6 +92,8 @@ def test_vlm_fallback_models_parsed_deduped_and_exclude_primary(monkeypatch):
 
 
 def test_vlm_falls_back_to_next_model_and_reports_it(monkeypatch):
+    # Chain tests count one read per model; votes are covered on their own.
+    monkeypatch.setenv("VLM_VOTES", "1")
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
     calls = []
@@ -128,6 +130,7 @@ def _with_clock(monkeypatch) -> _Clock:
 
 
 def test_vlm_fallback_chain_shares_one_budget_and_times_each_attempt(monkeypatch):
+    monkeypatch.setenv("VLM_VOTES", "1")
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
     clock = _with_clock(monkeypatch)
@@ -149,6 +152,7 @@ def test_vlm_fallback_chain_shares_one_budget_and_times_each_attempt(monkeypatch
 
 
 def test_vlm_json_retry_only_gets_what_is_left_of_the_budget(monkeypatch):
+    monkeypatch.setenv("VLM_VOTES", "1")
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.delenv("VLM_FALLBACK_MODELS", raising=False)
     clock = _with_clock(monkeypatch)
@@ -165,6 +169,7 @@ def test_vlm_json_retry_only_gets_what_is_left_of_the_budget(monkeypatch):
 
 
 def test_vlm_unreachable_endpoint_does_not_fall_back(monkeypatch):
+    monkeypatch.setenv("VLM_VOTES", "1")
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
     calls = []
@@ -180,6 +185,7 @@ def test_vlm_unreachable_endpoint_does_not_fall_back(monkeypatch):
 
 
 def test_vlm_budget_spent_by_the_primary_ends_the_chain(monkeypatch):
+    monkeypatch.setenv("VLM_VOTES", "1")
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
     clock = _with_clock(monkeypatch)
@@ -326,6 +332,7 @@ def test_outbound_call_acquires_shared_budget_and_releases(monkeypatch, status):
 
 
 def test_429_retry_then_raises(monkeypatch):
+    monkeypatch.setenv("VLM_VOTES", "1")  # retries of one read, not of three
     calls = []
 
     def _always_limited(self, *args, **kwargs):
@@ -369,7 +376,54 @@ def test_vlm_llm_keep_default_max_tokens(monkeypatch):
 
     monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
     VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
-    assert seen == [512]
+    # vlm() votes over 3 reads; all keep the default 512 max_tokens.
+    assert seen == [512, 512, 512]
+
+
+@pytest.mark.parametrize(
+    ("raw", "votes"), [(None, 3), ("1", 1), ("4", 4), ("0", 1), ("9", 4), ("three", 3)]
+)
+def test_vlm_votes_env_is_clamped(monkeypatch, raw, votes):
+    if raw is None:
+        monkeypatch.delenv("VLM_VOTES", raising=False)
+    else:
+        monkeypatch.setenv("VLM_VOTES", raw)
+    assert get_settings().vlm_votes == votes
+
+
+def test_vlm_vote_reads_run_concurrently(monkeypatch):
+    monkeypatch.delenv("VLM_FALLBACK_MODELS", raising=False)
+    # Sequential reads would never get all three past the barrier.
+    barrier = threading.Barrier(3, timeout=5)
+
+    def _fake(self, base_url, model, messages, max_tokens=512):
+        barrier.wait()
+        return _VLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
+    result = VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert result["detected"]["contamination"] == "none detected"
+
+
+def test_vlm_one_failed_vote_fails_the_model_and_falls_back(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    lock = threading.Lock()
+    calls: list[str] = []
+
+    def _fake(self, base_url, model, messages, max_tokens=512):
+        with lock:
+            calls.append(model)
+            first_a = calls.count("vlm-a") == 1 and model == "vlm-a"
+        if first_a:
+            raise httpx.HTTPStatusError("503", request=None, response=None)
+        return _VLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
+    result = VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert result["model"] == "vlm-b"
+    assert result["fallback_from"][0].startswith("vlm-a: HTTPStatusError")
+    assert calls.count("vlm-a") == 3 and calls.count("vlm-b") == 3
 
 
 # ---------------------------------------------------------------------------

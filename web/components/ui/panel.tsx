@@ -21,19 +21,24 @@ export function PanelHead({
   title,
   meta,
   className,
+  children,
 }: {
   title: string;
   meta?: string;
   className?: string;
+  children?: React.ReactNode;
 }) {
   return (
     <div className={cn("panel-head", className)}>
       <span>{title}</span>
-      {meta ? (
-        <span className="figure text-muted" style={{ letterSpacing: 0 }}>
-          {meta}
-        </span>
-      ) : null}
+      <span className="flex items-center gap-3">
+        {meta ? (
+          <span className="figure text-muted" style={{ letterSpacing: 0 }}>
+            {meta}
+          </span>
+        ) : null}
+        {children}
+      </span>
     </div>
   );
 }

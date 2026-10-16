@@ -337,8 +337,9 @@ def test_vlm_keeps_90s_llm_gets_45s(monkeypatch):
     client.vlm(_b64(_JPEG_HEAD + b"x"))
     client.llm("waybill", {})
     # httpx gets what is left of each budget: a hair under 90 s / 45 s.
-    assert seen == pytest.approx([90.0, 45.0], abs=1.0)
-    assert seen[0] <= 90.0 and seen[1] <= 45.0
+    # The VLM call now votes over 3 reads, each on its own 90 s budget.
+    assert seen == pytest.approx([90.0, 90.0, 90.0, 45.0], abs=1.0)
+    assert all(t <= 90.0 for t in seen[:3]) and seen[3] <= 45.0
 
 
 def test_assist_call_gets_30s(monkeypatch):
@@ -370,9 +371,10 @@ def test_png_upload_is_labelled_png_for_the_vlm(monkeypatch):
     client = pipeline.VLLMClient(settings=get_settings())
     client.vlm(_b64(_PNG_HEAD + b"png"))
     client.vlm(_b64(_JPEG_HEAD + b"jpg"))
+    # Each vlm() call votes over 3 reads; PNG reads come first, then JPEG.
     urls = [p["messages"][0]["content"][1]["image_url"]["url"] for p in sent]
     assert urls[0].startswith("data:image/png;base64,")
-    assert urls[1].startswith("data:image/jpeg;base64,")
+    assert urls[3].startswith("data:image/jpeg;base64,")
 
 
 # ---------------------------------------------------------------------------

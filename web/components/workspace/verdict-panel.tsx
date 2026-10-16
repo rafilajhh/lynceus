@@ -237,7 +237,6 @@ export function VerdictPanel({
   data,
   decision,
   preventedLossIdr,
-  preventedLossUsd,
   impactRunKey,
   bannerLit,
   onAllResolved,
@@ -252,7 +251,6 @@ export function VerdictPanel({
   data: InspectResponse | null;
   decision: string | undefined;
   preventedLossIdr: number;
-  preventedLossUsd: number;
   /** Increment per verdict; 0 = idle. */
   impactRunKey: number;
   /** Verdict banner may only light after all gates resolve. */
@@ -442,7 +440,6 @@ export function VerdictPanel({
         {phase !== "idle" ? (
           <ImpactCounter
             preventedLossIdr={preventedLossIdr}
-            preventedLossUsd={preventedLossUsd}
             runKey={bannerLit ? impactRunKey : 0}
             label={tone === "accept" ? "RDF value admitted" : "Worst-case loss exposure"}
           />
