@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { LogoMark } from "@/components/ui/logo-mark";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -40,7 +41,7 @@ export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed
         {/* Brand: wordmark with amber glyph, links to landing. No hover
             treatment: it is identity, not an interactive control. */}
         <Link href="/" className="flex h-14 items-center gap-3 border-b border-seam px-4">
-          <span className="text-amber text-xl" aria-hidden="true">◉</span>
+          <LogoMark size={22} className="shrink-0" />
           {!collapsed && (
             <div className="flex flex-col">
               <span className="text-[15px] font-bold tracking-[2px] text-ink">LYNCEUS</span>

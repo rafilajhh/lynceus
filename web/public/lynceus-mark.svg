@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Lynceus logo mark</title>
+  <!-- The watchman's eye; pupil is a CV detection box in the system's
+       single amber accent. Ink #e8eaed suits the dark console. -->
+  <path fill="none" stroke="#e8eaed" stroke-width="20" stroke-linecap="round"
+        d="M36 128C68 82 100 66 128 66s60 16 92 62c-32 46-60 62-92 62s-60-16-92-62z"/>
+  <rect x="104" y="104" width="48" height="48" fill="#f5a623"/>
+</svg>

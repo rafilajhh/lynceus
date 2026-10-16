@@ -158,7 +158,6 @@ export function ShiftView() {
   return (
     <div className="flex flex-col gap-4">
       <SampleNote report={report} />
-      <RateNote />
       <Panel aria-labelledby="shift-headline">
         <PanelHead title="Shift report" meta={windowLabel(report)} />
         <h1 id="shift-headline" className="sr-only">
@@ -170,19 +169,6 @@ export function ShiftView() {
       {model ? <ValuePanel model={model} money={money} /> : null}
       <SupplierPanel report={report} />
     </div>
-  );
-}
-
-/** US$ display note: the fixed backend rate is stated, never implied. */
-function RateNote() {
-  return (
-    <p className="m-0 px-4 py-2 text-right text-[12px] text-muted">
-      US$ figures convert at the backend&apos;s fixed rate{" "}
-      <span className="figure text-ink">
-        US$1 = Rp {formatCount(USD_IDR_RATE, 0)}
-      </span>
-      .
-    </p>
   );
 }
 
@@ -287,7 +273,7 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
         </TableBody>
       </Table>
 
-      <div className="flex flex-col gap-1 border-t border-seam px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-seam px-4 py-3">
         <p className="m-0 text-[13.5px] text-ink">
           Net expected value{fee !== null ? " after subscription" : ""}{" "}
           <strong
@@ -299,22 +285,10 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
           >
             {money(net)}
           </strong>{" "}
-          per {formatCount(model.trucks, 0)} trucks.
+          per {formatCount(model.trucks, 0)} trucks
         </p>
         <p className="figure m-0 text-[12px] text-muted">
-          = {money(base.expected_loss_avoided_idr)} loss avoided − {money(base.false_reject_cost_idr)}{" "}
-          wrong rejects {base.operator_time_value_idr < 0 ? "−" : "+"}{" "}
-          {money(Math.abs(base.operator_time_value_idr))} staff time
-          {fee !== null ? (
-            <>
-              {" "}
-              = {money(base.net_value_idr)} before the fee − {money(fee)} subscription
-              {base.days_per_1000_trucks != null
-                ? ` (${formatCount(base.days_per_1000_trucks)} days at one gate)`
-                : ""}
-            </>
-          ) : null}{" "}
-          · range {money(lowNet)} to {money(highNet)}
+          range {money(lowNet)} – {money(highNet)}
         </p>
       </div>
 
@@ -379,19 +353,17 @@ function SampleNote({ report }: { report: ShiftReport }) {
   return (
     <div
       role="note"
-      className="flex items-start gap-2.5 rounded-[10px] border border-seam-strong bg-raised px-4 py-2.5 text-[13px] text-muted"
+      className="flex items-center gap-2.5 rounded-[10px] border border-seam-strong bg-raised px-4 py-2 text-[12.5px] text-muted"
     >
-      <span aria-hidden="true" className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-dot-warn" />
+      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-dot-warn" />
       {report.sample ? (
         <p className="m-0">
-          <strong className="font-semibold text-ink">Sample shift</strong> — scripted
-          demo data.
+          <strong className="font-semibold text-ink">Sample shift</strong> — scripted demo data
         </p>
       ) : (
         <p className="m-0">
-          <strong className="font-semibold text-ink">Includes scripted data</strong> —{" "}
-          <span className="figure">{report.sample_records}</span> of{" "}
-          <span className="figure">{report.trucks}</span> trucks.
+          <span className="figure text-ink">{report.sample_records}</span> of{" "}
+          <span className="figure">{report.trucks}</span> trucks are scripted
         </p>
       )}
     </div>
@@ -478,40 +450,31 @@ function HandoverLine({ report }: { report: ShiftReport }) {
   }, [report]);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-seam px-4 py-4">
-      <p className="m-0 flex min-w-0 flex-1 items-center gap-2.5 text-[13px]">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
-            open > 0 ? "bg-amber" : "bg-dot-ok",
-          )}
-        />
-        {open > 0 ? (
-          <span className="text-ink">
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-seam px-4 py-3">
+      {open > 0 ? (
+        <Link
+          href="/inspections"
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-[13px] text-ink transition-colors duration-100 hover:text-amber"
+        >
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber" />
+          <span>
             <span className="figure font-semibold">{open}</span>{" "}
-            {open === 1 ? "truck needs" : "trucks need"} resolution before
-            handover{" "}
-            <Link
-              href="/inspections"
-              className="text-amber underline underline-offset-2"
-            >
-              view in ledger
-            </Link>
+            {open === 1 ? "truck needs" : "trucks need"} resolution
           </span>
-        ) : (
-          <span className="text-muted">
-            All trucks resolved: nothing is pending for the next shift.
-          </span>
-        )}
-      </p>
+        </Link>
+      ) : (
+        <p className="m-0 flex min-w-0 flex-1 items-center gap-2.5 text-[13px] text-muted">
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-dot-ok" />
+          All trucks resolved
+        </p>
+      )}
       <Button
-        variant="default"
+        variant="ghost"
         size="sm"
         className="shrink-0"
         onClick={() => void copySummary()}
       >
-        {copied ? "Copied" : "Copy shift summary"}
+        {copied ? "Copied" : "Copy summary"}
       </Button>
     </div>
   );
@@ -525,6 +488,10 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
         title="Supplier risk"
         meta={`${report.suppliers.length} suppliers · ${flaggedCount} flagged`}
       />
+      <p className="sr-only">
+        Risk = (rejected + 0.5 × escalated) ÷ trucks. Flagged at ≥{" "}
+        {FLAG_MIN_TRUCKS} trucks and risk ≥ {FLAG_MIN_RISK.toFixed(2)}.
+      </p>
 
       {/* Desktop table */}
       <Table className="hidden md:table">
@@ -571,13 +538,6 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
         ))}
       </ul>
 
-      <p
-        title="Risk = (rejected + 0.5 × escalated) ÷ trucks. Worst-case exposure counts rejected and escalated loads only (impact model, docs/research/realcase-indonesia.md)."
-        className="m-0 border-t border-seam px-4 py-2.5 text-[12px] text-muted"
-      >
-        A supplier is flagged at ≥ {FLAG_MIN_TRUCKS} trucks and risk ≥{" "}
-        {FLAG_MIN_RISK.toFixed(2)} (tick on the bar).
-      </p>
     </Panel>
   );
 }

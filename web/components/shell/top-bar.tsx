@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoMark } from "@/components/ui/logo-mark";
 import { StatusChip } from "./status-chip";
 
 const NAV = [
@@ -22,10 +23,8 @@ export function TopBar({ showNav = true, showWordmark = true, showStatus = true 
       {showWordmark ? (
         <div className="flex shrink-0 items-baseline gap-3">
           <Link href="/" className="line-through-none">
-            <h1 className="m-0 inline text-[22px] leading-none font-bold tracking-[3px] text-ink">
-              <span className="mr-0.5 text-amber" aria-hidden="true">
-                ◉
-              </span>
+            <h1 className="m-0 inline-flex items-center gap-2 text-[22px] leading-none font-bold tracking-[3px] text-ink">
+              <LogoMark size={22} />
               LYNCEUS
             </h1>
           </Link>

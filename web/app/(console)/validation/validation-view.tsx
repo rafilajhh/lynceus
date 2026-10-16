@@ -9,7 +9,6 @@ import {
   fetchBenchmark,
   type BenchmarkSummary,
   type Confusion,
-  type ReplaySummary,
 } from "@/lib/validation-api";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -129,67 +128,32 @@ export function ValidationView() {
   }
 
   const { summary } = state;
-  const framing = summary.framing.charAt(0).toUpperCase() + summary.framing.slice(1);
   return (
     <div className="flex flex-col gap-4">
       <Panel aria-labelledby="validation-title">
-        <PanelHead title="Validation" meta={summary.date ?? undefined} />
+        <PanelHead
+          title="Validation"
+          meta={
+            summary.complete
+              ? summary.date ?? undefined
+              : `partial · ${summary.n}/${summary.manifest_n}`
+          }
+        />
         <h1 id="validation-title" className="sr-only">
           Validation benchmark
         </h1>
         <HeadlineRun summary={summary} />
-        <p className="m-0 max-w-[78ch] border-t border-seam px-4 pt-3 text-[13px] leading-relaxed text-muted">
-          {framing}. Each image was posted live through the gate&apos;s API code to the vision
-          model on AMD Token Factory, with the same neutral waybill and a consistent weight, so
-          the weight and cross-check gates pass and the photo decides. Scripted demo cases were
-          not used.
+        <p className="m-0 border-t border-seam px-4 py-2.5 text-[13px] text-muted">
+          {summary.framing}. Live on AMD Token Factory, {summary.date ?? "—"}.
         </p>
-        <Incomplete summary={summary} />
-      </Panel>
-
-      {summary.replay ? <ReplayPanel summary={summary} replay={summary.replay} /> : null}
-
-      <Panel>
-        <PanelHead title="Confusion matrix" meta="live run · rows: expected · columns: gate verdict" />
-        <p className="m-0 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
-          <strong className="font-semibold text-ink">Escalate is policy, not vision error:</strong>{" "}
-          in this live run, light contaminants (plastic film, glass, textile) were escalated by
-          rule; only metal, rock, concrete, tyre and e-waste are rejected.
-        </p>
-        <ConfusionTable confusion={summary.confusion} />
+        {summary.replay ? <ReplayTable summary={summary} replay={summary.replay} /> : null}
         <details className="group border-t border-seam px-4 py-3">
           <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
-            Why accept and escalate disagree
+            Method, data &amp; per-category detail
           </summary>
-          <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-            The headline above is the hard-contaminant gate only, with metal as the positive
-            class. Where the matrix shows accept and escalate disagreeing, part of that reflects
-            policy (textile trash and plastic expected to accept were escalated for plastic film
-            or textile, which the current rules treat as RDF feedstock), not vision error. In
-            this run, one of the three false rejects (a plastic image) came from the vision
-            model&apos;s free-text description mentioning a &quot;concrete floor&quot;, which the
-            gate then matched as a hard-contaminant word; the current rules read hard
-            contaminants from the structured list only. The Error column counts refusals and
-            failed requests; they are never counted as correct.
-          </p>
+          <MethodDetail summary={summary} />
         </details>
       </Panel>
-
-      <Panel>
-        <PanelHead title="By category" meta="verdict per RealWaste class" />
-        <CategoryTable summary={summary} />
-      </Panel>
-
-      <Panel>
-        <PanelHead title="Latency and models" />
-        <LatencyAndModels summary={summary} />
-      </Panel>
-
-      <p className="figure m-0 px-1 text-[13px] text-muted">
-        <span className="text-ink">{ratio(summary.reject.recall)}</span> recall ·{" "}
-        <span className="text-ink">{ratio(summary.reject.precision)}</span> precision ·{" "}
-        n = <span className="text-ink">{summary.n}</span> · one run · raw data linked above
-      </p>
     </div>
   );
 }
@@ -203,19 +167,18 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
       key: "recall",
       value: ratio(r.recall),
       label: "recall",
-      sub: `${caught} metal images rejected (95% interval ${wilson(r.tp, r.tp + r.fn)})`,
+      sub: `${caught} metal images rejected`,
     },
     {
       key: "precision",
       value: ratio(r.precision),
       label: "precision",
-      sub: `${r.tp} of ${r.tp + r.fp} rejects were metal (95% interval ${wilson(r.tp, r.tp + r.fp)})`,
+      sub: `${r.tp} of ${r.tp + r.fp} rejects were metal`,
     },
     { key: "f1", value: ratio(r.f1), label: "F1", sub: null as string | null },
   ];
   return (
-    <div className="px-4 pt-4 pb-4">
-      <p className="smallcaps m-0 mb-3">Metal gate</p>
+    <div className="px-4 pt-4 pb-3">
       <dl className="m-0 grid grid-cols-3 gap-x-6">
         {parts.map((part) => (
           <div key={part.key} className="flex flex-col gap-1">
@@ -233,41 +196,58 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
         Out of every {r.tp + r.fn} loads carrying metal, the gate rejected {r.tp}.
       </p>
       <p className="figure m-0 mt-2 text-[12px] text-faint">
-        n = {summary.n} images · {summary.errors} errors or refusals in the final results (an error on a
-        metal image counts as a miss) · one run, small sample: the intervals are wide
+        n = {summary.n} · one run · 95% interval {wilson(r.tp, r.tp + r.fn)}
       </p>
     </div>
   );
 }
 
-/** Failed-then-retried requests are disclosed; latency figures cover completed ones. */
-function Retries({ summary }: { summary: BenchmarkSummary }) {
-  const a = summary.attempt_stats;
-  if (!a || a.retried === 0) return null;
+/** Live vs current rules, inline in the same panel. */
+function ReplayTable({
+  summary,
+  replay,
+}: {
+  summary: BenchmarkSummary;
+  replay: import("@/lib/validation-api").ReplaySummary;
+}) {
+  const live = operatorCounts(summary.confusion);
+  const now = operatorCounts(replay.confusion);
+  const lr = summary.reject;
+  const rr = replay.reject;
+  const rows = [
+    { key: "recall", label: "Metal recall", live: ratio(lr.recall), now: ratio(rr.recall) },
+    { key: "precision", label: "Metal precision", live: ratio(lr.precision), now: ratio(rr.precision) },
+    { key: "clean", label: "Clean loads passed", live: share(live.cleanPassed, live.cleanN), now: share(now.cleanPassed, now.cleanN) },
+    { key: "review", label: "Sent to operator", live: share(live.escalated, live.graded), now: share(now.escalated, now.graded) },
+  ];
   return (
-    <p className="m-0 border-t border-seam px-4 py-3 text-[13px] text-muted">
-      <span className="figure text-ink">{a.retried}</span> of{" "}
-      <span className="figure text-ink">{a.attempts}</span> requests timed out on the shared
-      endpoint and were retried; latency covers completed requests (all-attempt p95{" "}
-      <span className="figure text-ink">{seconds(a.total_ms.p95)}</span>, longest{" "}
-      <span className="figure text-ink">{seconds(a.total_ms.max)}</span>).
-    </p>
+    <div className="border-t border-seam px-4 py-3">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-raised">
+            <TableHead className="px-2 sm:px-4" />
+            <TableHead className="px-1.5 text-right sm:px-4">Live run</TableHead>
+            <TableHead className="px-1.5 text-right sm:px-4">Current rules</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.key} className="hover:bg-transparent">
+              <TableCell className="px-2 font-semibold text-ink sm:px-4">{row.label}</TableCell>
+              <TableCell className="figure px-1.5 text-right text-[13px] text-muted sm:px-4">{row.live}</TableCell>
+              <TableCell className="figure px-1.5 text-right text-[13px] font-semibold text-ink sm:px-4">{row.now}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <p className="figure m-0 mt-2 text-[12px] text-faint">
+        Replay: recorded model outputs scored by today&apos;s rules — not a new measurement.
+      </p>
+    </div>
   );
 }
 
-function Incomplete({ summary }: { summary: BenchmarkSummary }) {
-  if (summary.complete) return null;
-  return (
-    <p role="note" className="m-0 border-t border-seam px-4 py-3 text-[13px] text-muted">
-      <strong className="font-semibold text-ink">Partial run:</strong>{" "}
-      <span className="figure">{summary.n}</span> of{" "}
-      <span className="figure">{summary.manifest_n}</span> manifest images were completed.
-    </p>
-  );
-}
-
-/** Clean loads passed, loads sent to a person and escalate-expected loads escalated,
- * counted from a confusion matrix (same definitions as backend/benchmark/metrics.py). */
+/** Clean loads passed, loads sent to a person and escalate-expected loads escalated. */
 function operatorCounts(confusion: Confusion) {
   const clean = confusion.accept;
   const esc = confusion.escalate;
@@ -290,122 +270,7 @@ function share(k: number, n: number): string {
   return n > 0 ? ratio(k / n) : "—";
 }
 
-/** The same recorded model outputs, scored by the rules the gate runs today. */
-function ReplayPanel({ summary, replay }: { summary: BenchmarkSummary; replay: ReplaySummary }) {
-  const live = operatorCounts(summary.confusion);
-  const now = operatorCounts(replay.confusion);
-  const lr = summary.reject;
-  const rr = replay.reject;
-  const rows = [
-    {
-      key: "recall",
-      label: "Metal recall",
-      live: ratio(lr.recall),
-      liveSub: `${lr.tp} of ${lr.tp + lr.fn}`,
-      now: ratio(rr.recall),
-      nowSub: `${rr.tp} of ${rr.tp + rr.fn}`,
-    },
-    {
-      key: "precision",
-      label: "Metal precision",
-      live: ratio(lr.precision),
-      liveSub: `${lr.tp} of ${lr.tp + lr.fp}`,
-      now: ratio(rr.precision),
-      nowSub: `${rr.tp} of ${rr.tp + rr.fp}`,
-    },
-    {
-      key: "clean",
-      label: "Clean loads passed",
-      live: share(live.cleanPassed, live.cleanN),
-      liveSub: `${live.cleanPassed} of ${live.cleanN}`,
-      now: share(now.cleanPassed, now.cleanN),
-      nowSub: `${now.cleanPassed} of ${now.cleanN}`,
-    },
-    {
-      key: "review",
-      label: "Sent to operator review",
-      live: share(live.escalated, live.graded),
-      liveSub: `${live.escalated} of ${live.graded}`,
-      now: share(now.escalated, now.graded),
-      nowSub: `${now.escalated} of ${now.graded}`,
-    },
-    {
-      key: "escalate-recall",
-      label: "Escalate-expected loads escalated",
-      live: share(live.escalateCaught, live.escalateN),
-      liveSub: `${live.escalateCaught} of ${live.escalateN}`,
-      now: share(now.escalateCaught, now.escalateN),
-      nowSub: `${now.escalateCaught} of ${now.escalateN}`,
-    },
-  ];
-  const changed = replay.changed ?? [];
-  return (
-    <Panel aria-labelledby="replay-title">
-      <PanelHead title="Current rules" meta="replay of this run" />
-      <p id="replay-title" className="m-0 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
-        <strong className="font-semibold text-ink">Replay:</strong> {replay.framing}
-      </p>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-raised">
-            <TableHead className="px-2 sm:px-4">Measure</TableHead>
-            <TableHead className="px-1.5 text-right sm:px-4">Live run</TableHead>
-            <TableHead className="px-1.5 text-right sm:px-4">Current rules</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.key} className="hover:bg-transparent">
-              <TableCell className="px-2 font-semibold text-ink sm:px-4">{row.label}</TableCell>
-              <TableCell className="figure px-1.5 text-right text-[13px] text-muted sm:px-4">
-                {row.live}
-                <span className="block text-[11.5px]">{row.liveSub}</span>
-              </TableCell>
-              <TableCell className="figure px-1.5 text-right text-[13px] font-semibold text-ink sm:px-4">
-                {row.now}
-                <span className="block text-[11.5px] font-normal text-muted">{row.nowSub}</span>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      <details className="group border-t border-seam px-4 py-3">
-        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
-          What changed, and why this is not a new measurement
-        </summary>
-        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-          The replay scores both rule changes made after this run, not one. First, hard
-          contaminants are read from the vision model&apos;s structured list only, not its
-          free text: that change alone removes one false reject and moves metal precision.
-          Second, plastic film and textile are RDF feedstock, not light contaminants: that
-          raises clean loads passed, and costs one escalate-expected load (a glass image whose
-          only flag was plastic film) that now passes. Glass, organic residue and wet mix still
-          go to a person.{" "}
-          {replay.disclosure ?? null}
-        </p>
-        {replay.llm_note ? (
-          <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-            {replay.llm_note}
-          </p>
-        ) : null}
-        {changed.length ? (
-          <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-            <span className="figure text-ink">{changed.length}</span> of{" "}
-            <span className="figure text-ink">{replay.n}</span> verdicts changed:{" "}
-            {changed
-              .map((c) => `${c.image} (expected ${c.expected}: ${c.recorded} → ${c.replay})`)
-              .join("; ")}
-            .
-          </p>
-        ) : null}
-        <div className="mt-3">
-          <ConfusionTable confusion={replay.confusion} />
-        </div>
-      </details>
-    </Panel>
-  );
-}
-
+/** Confusion matrix, used inside the method detail. */
 function ConfusionTable({ confusion }: { confusion: Confusion }) {
   return (
     <Table>
@@ -442,18 +307,13 @@ function ConfusionTable({ confusion }: { confusion: Confusion }) {
   );
 }
 
+/** Per-category table, used inside the method detail. */
 function CategoryTable({ summary }: { summary: BenchmarkSummary }) {
   const rows = Object.entries(summary.per_category).sort(
     ([a], [b]) =>
       LABELS.indexOf(expectedFor(a)) - LABELS.indexOf(expectedFor(b)) || a.localeCompare(b),
   );
-  if (rows.length === 0) {
-    return (
-      <p className="m-0 px-4 py-4 text-[13px] text-muted">
-        No per-category counts in this summary.
-      </p>
-    );
-  }
+  if (rows.length === 0) return null;
   return (
     <Table>
       <TableHeader>
@@ -470,12 +330,7 @@ function CategoryTable({ summary }: { summary: BenchmarkSummary }) {
       <TableBody>
         {rows.map(([category, cell]) => (
           <TableRow key={category} className="hover:bg-transparent">
-            <TableCell className="px-2 font-semibold text-ink sm:px-4">
-              {category}
-              <span className="block text-[11.5px] font-normal text-muted sm:hidden">
-                expect {COLUMN_LABEL[expectedFor(category)].toLowerCase()}
-              </span>
-            </TableCell>
+            <TableCell className="px-2 font-semibold text-ink sm:px-4">{category}</TableCell>
             <TableCell className="hidden px-2 text-[12.5px] text-muted sm:table-cell sm:px-4">
               {COLUMN_LABEL[expectedFor(category)]}
             </TableCell>
@@ -491,80 +346,62 @@ function CategoryTable({ summary }: { summary: BenchmarkSummary }) {
   );
 }
 
-function LatencyAndModels({ summary }: { summary: BenchmarkSummary }) {
-  const rows: [string, React.ReactNode][] = [
-    [
-      "Request, end to end",
-      <span key="t" className="figure text-ink">
-        p50 {seconds(summary.total_ms.p50)} · p95 {seconds(summary.total_ms.p95)}
-      </span>,
-    ],
-    [
-      "Vision model call",
-      <span key="v" className="figure text-ink">
-        p50 {seconds(summary.latency_ms.p50)} · p95 {seconds(summary.latency_ms.p95)}
-      </span>,
-    ],
-    ["Vision model", <span key="vm" className="figure text-ink">{summary.vlm_model ?? "—"}</span>],
-    ["Language model", <span key="lm" className="figure text-ink">{summary.llm_model ?? "—"}</span>],
-    [
-      "Provider",
-      <span key="p" className="text-ink">
-        {summary.provider ? providerName(summary.provider) : "—"}
-        {summary.provenance.length ? (
-          <span className="figure text-muted"> · provenance {summary.provenance.join(", ")}</span>
-        ) : null}
-      </span>,
-    ],
-    ["Run date", <span key="d" className="figure text-ink">{summary.date ?? "—"} (UTC)</span>],
-    ["Images", <span key="n" className="figure text-ink">{summary.n}</span>],
-  ];
-  if (summary.manual_check_seconds && summary.source_url) {
-    rows.splice(2, 0, [
-      "Manual check",
-      <span key="m" className="figure text-ink">
-        {summary.manual_check_seconds} s per truck (
-        <a href={summary.source_url} className="text-amber underline underline-offset-2">
-          source
-        </a>
-        )
-      </span>,
-    ]);
-  }
+/** Latency, models, method, data — all inside the detail. */
+function MethodDetail({ summary }: { summary: BenchmarkSummary }) {
   return (
-    <>
-      <dl className="m-0 grid grid-cols-1 text-[13px] sm:grid-cols-[13rem_1fr]">
-        {rows.map(([term, value]) => (
-          <div key={term} className="contents">
-            <dt className="border-b border-seam px-4 pt-2.5 text-muted sm:py-2.5">{term}</dt>
-            <dd className="m-0 border-b border-seam px-4 pb-2.5 sm:py-2.5">{value}</dd>
-          </div>
-        ))}
+    <div className="flex flex-col gap-4 pt-3">
+      <dl className="m-0 grid grid-cols-1 gap-x-6 text-[12.5px] sm:grid-cols-2">
+        <div className="flex justify-between gap-4 border-b border-seam py-2">
+          <dt className="text-muted">End to end</dt>
+          <dd className="figure m-0 text-ink">
+            p50 {seconds(summary.total_ms.p50)} · p95 {seconds(summary.total_ms.p95)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-seam py-2">
+          <dt className="text-muted">Vision model call</dt>
+          <dd className="figure m-0 text-ink">
+            p50 {seconds(summary.latency_ms.p50)} · p95 {seconds(summary.latency_ms.p95)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-seam py-2">
+          <dt className="text-muted">Vision model</dt>
+          <dd className="figure m-0 text-ink">{summary.vlm_model ?? "—"}</dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-seam py-2">
+          <dt className="text-muted">Language model</dt>
+          <dd className="figure m-0 text-ink">{summary.llm_model ?? "—"}</dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-seam py-2">
+          <dt className="text-muted">Provider</dt>
+          <dd className="m-0 text-ink">
+            {summary.provider ? providerName(summary.provider) : "—"}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-seam py-2">
+          <dt className="text-muted">Images</dt>
+          <dd className="figure m-0 text-ink">{summary.n}</dd>
+        </div>
       </dl>
-      <Retries summary={summary} />
-      <details className="group px-4 py-3">
-        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
-          Method, data &amp; licence
-        </summary>
-        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-          Latency is measured through the live endpoint and includes provider queueing; it is
-          not a hardware benchmark. No manual-inspection time is compared: no citable per-truck
-          figure was found (see docs/research/token-factory-probe.md).
-        </p>
-        <p className="m-0 mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-muted">
-          Images: RealWaste (Single, Iranmanesh, Raad),{" "}
-          <a href={DATASET_URL} className="text-amber underline underline-offset-2">
-            UCI ML Repository
-          </a>
-          . UCI lists the licence as CC BY 4.0; the README inside the dataset says CC BY-NC-SA
-          4.0, so the stricter terms are assumed. 6 of the 80 files were re-encoded to fit 200
-          KB; none were resized. The image list and expected verdicts are in the{" "}
-          <a href="/benchmark/manifest.csv" className="text-amber underline underline-offset-2">
-            manifest
-          </a>
-          .
-        </p>
-      </details>
-    </>
+      <div>
+        <p className="smallcaps m-0 mb-2">Confusion matrix</p>
+        <ConfusionTable confusion={summary.confusion} />
+      </div>
+      <div>
+        <p className="smallcaps m-0 mb-2">By category</p>
+        <CategoryTable summary={summary} />
+      </div>
+      <p className="m-0 text-[12px] leading-relaxed text-muted">
+        Images: RealWaste (Single, Iranmanesh, Raad),{" "}
+        <a href={DATASET_URL} className="text-amber underline underline-offset-2">
+          UCI ML Repository
+        </a>
+        . Licence: UCI lists CC BY 4.0; the dataset README says CC BY-NC-SA 4.0 — the stricter
+        terms are assumed.{" "}
+        <a href="/benchmark/manifest.csv" className="text-amber underline underline-offset-2">
+          Manifest
+        </a>
+        .
+      </p>
+    </div>
   );
 }
