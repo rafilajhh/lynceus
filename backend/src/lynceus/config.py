@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Tuple
 from urllib.parse import urlparse
 
 from lynceus import __version__
@@ -47,6 +48,13 @@ VLLM_LLM_URL_ENV = "VLLM_LLM_URL"
 #: Model names served by the two vLLM instances.
 VLM_MODEL_ENV = "VLM_MODEL"
 LLM_MODEL_ENV = "LLM_MODEL"
+#: Comma-separated vision models tried in order on the VLM endpoint when
+#: ``VLM_MODEL`` fails with an HTTP error status or an unparseable reply
+#: (an unreachable endpoint or a spent budget ends the chain). Empty = none.
+VLM_FALLBACK_MODELS_ENV = "VLM_FALLBACK_MODELS"
+#: Comma-separated vision models with a benchmark run behind them.  A
+#: fallback model outside this list may hold a load, never accept or reject it.
+VLM_BENCHMARKED_MODELS_ENV = "VLM_BENCHMARKED_MODELS"
 #: Optional bearer key for the vLLM endpoints (empty = no auth header).
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
 #: Endpoint / model for the Pythia assistant role (default: the LLM's).
@@ -63,6 +71,21 @@ LYNCEUS_ALLOW_STUB_FALLBACK_ENV = "LYNCEUS_ALLOW_STUB_FALLBACK"
 LYNCEUS_STORAGE_DIR_ENV = "LYNCEUS_STORAGE_DIR"
 #: Version tag stamped onto audit records.
 AUDIT_FORMAT_VERSION_ENV = "AUDIT_FORMAT_VERSION"
+#: ONNX file of the CPU detector second opinion (set but empty = detector off).
+DETECTOR_MODEL_PATH_ENV = "DETECTOR_MODEL_PATH"
+#: Detector confidence at/above which a hard (metal) box holds the truck.
+DETECTOR_HARD_CONF_ENV = "DETECTOR_HARD_CONF"
+#: Detector confidence at/above which a light (glass/organic) box counts.
+DETECTOR_LIGHT_CONF_ENV = "DETECTOR_LIGHT_CONF"
+#: When false, light detector findings the VLM did not confirm never escalate.
+DETECTOR_ESCALATE_LIGHT_ENV = "DETECTOR_ESCALATE_LIGHT"
+#: onnxruntime intra-op threads per detector run (positive integer).
+DETECTOR_THREADS_ENV = "DETECTOR_THREADS"
+#: onnxruntime execution providers for the detector, comma-separated, in
+#: preference order (e.g. ``DmlExecutionProvider`` on Windows + AMD Radeon).
+DETECTOR_PROVIDERS_ENV = "DETECTOR_PROVIDERS"
+#: GPU index for DirectML / ROCm / MIGraphX (non-negative integer).
+DETECTOR_DEVICE_ID_ENV = "DETECTOR_DEVICE_ID"
 
 _DEFAULT_VLLM_VLM_URL = "http://localhost:8000/v1"
 _DEFAULT_VLLM_LLM_URL = "http://localhost:8001/v1"
@@ -73,6 +96,21 @@ _DEFAULT_STORAGE_DIR = "./runs"
 _DEFAULT_VLLM_API_KEY = ""
 _DEFAULT_ALLOW_STUB_FALLBACK = True
 _DEFAULT_AUDIT_FORMAT_VERSION = 1
+#: The detector bundled with a source checkout (backend/models/).  A
+#: site-packages install cannot see it; the container sets
+#: ``DETECTOR_MODEL_PATH`` instead.
+BUNDLED_DETECTOR_MODEL = (
+    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26s-realwaste.onnx"
+)
+#: Read off the 80-image RealWaste test set itself (no calibration split):
+#: 0.10-0.25 gave 18/20 metal and 0/60 false metal flags there.
+_DEFAULT_DETECTOR_HARD_CONF = 0.25
+_DEFAULT_DETECTOR_LIGHT_CONF = 0.25
+_DEFAULT_DETECTOR_THREADS = 2
+_DEFAULT_DETECTOR_PROVIDERS: Tuple[str, ...] = ("CPUExecutionProvider",)
+_DEFAULT_DETECTOR_DEVICE_ID = 0
+#: The vision model of the committed live benchmark run (2026-10-13).
+_DEFAULT_VLM_BENCHMARKED_MODELS: Tuple[str, ...] = ("MiniCPM-V-4.7-35B-A3B",)
 
 @dataclass(frozen=True)
 class Settings:
@@ -92,6 +130,15 @@ class Settings:
     storage_dir: str
     audit_format_version: int
     version: str
+    vlm_fallback_models: Tuple[str, ...] = ()
+    detector_model_path: str = ""
+    detector_hard_conf: float = _DEFAULT_DETECTOR_HARD_CONF
+    detector_light_conf: float = _DEFAULT_DETECTOR_LIGHT_CONF
+    detector_escalate_light: bool = True
+    vlm_benchmarked_models: Tuple[str, ...] = _DEFAULT_VLM_BENCHMARKED_MODELS
+    detector_threads: int = _DEFAULT_DETECTOR_THREADS
+    detector_providers: Tuple[str, ...] = _DEFAULT_DETECTOR_PROVIDERS
+    detector_device_id: int = _DEFAULT_DETECTOR_DEVICE_ID
 
 def provider_for_url(url: str) -> str:
     """Name the provider behind an endpoint URL, for audit provenance.
@@ -105,6 +152,53 @@ def provider_for_url(url: str) -> str:
         if host == domain or host.endswith("." + domain):
             return "amd-token-factory"
     return "openai-compatible"
+
+
+def _env_conf(name: str, default: float) -> float:
+    """A 0..1 confidence threshold from ``name``; malformed values keep ``default``."""
+    try:
+        value = float(os.environ.get(name, default))
+    except ValueError:
+        return default
+    return value if 0.0 <= value <= 1.0 else default
+
+
+def _env_models(name: str) -> Tuple[str, ...]:
+    """Comma-separated model names from ``name``: stripped, de-duplicated, in order."""
+    return tuple(
+        m for m in dict.fromkeys(p.strip() for p in os.environ.get(name, "").split(",")) if m
+    )
+
+
+def _env_threads() -> int:
+    """``DETECTOR_THREADS`` as a positive int; malformed values keep the default."""
+    try:
+        value = int(os.environ.get(DETECTOR_THREADS_ENV, _DEFAULT_DETECTOR_THREADS))
+    except ValueError:
+        return _DEFAULT_DETECTOR_THREADS
+    return value if value >= 1 else _DEFAULT_DETECTOR_THREADS
+
+
+def _env_providers() -> Tuple[str, ...]:
+    """``DETECTOR_PROVIDERS`` in preference order; unset or empty = CPU only."""
+    return _env_models(DETECTOR_PROVIDERS_ENV) or _DEFAULT_DETECTOR_PROVIDERS
+
+
+def _env_device_id() -> int:
+    """``DETECTOR_DEVICE_ID`` as an int >= 0; malformed values keep the default."""
+    try:
+        value = int(os.environ.get(DETECTOR_DEVICE_ID_ENV, _DEFAULT_DETECTOR_DEVICE_ID))
+    except ValueError:
+        return _DEFAULT_DETECTOR_DEVICE_ID
+    return value if value >= 0 else _DEFAULT_DETECTOR_DEVICE_ID
+
+
+def _detector_model_path() -> str:
+    """``DETECTOR_MODEL_PATH`` when set (empty disables the detector), else
+    the bundled model when the file exists, else ``""`` (detector off)."""
+    if DETECTOR_MODEL_PATH_ENV in os.environ:
+        return os.environ[DETECTOR_MODEL_PATH_ENV].strip()
+    return str(BUNDLED_DETECTOR_MODEL) if BUNDLED_DETECTOR_MODEL.is_file() else ""
 
 
 def get_settings() -> Settings:
@@ -123,6 +217,7 @@ def get_settings() -> Settings:
         audit_format_version = _DEFAULT_AUDIT_FORMAT_VERSION
 
     vllm_llm_url = os.environ.get(VLLM_LLM_URL_ENV, _DEFAULT_VLLM_LLM_URL)
+    vlm_model = os.environ.get(VLM_MODEL_ENV, _DEFAULT_VLM_MODEL)
     llm_model = os.environ.get(LLM_MODEL_ENV, _DEFAULT_LLM_MODEL)
     localisation_mode = (
         os.environ.get(LOCALISATION_MODE_ENV, _DEFAULT_LOCALISATION_MODE)
@@ -138,7 +233,14 @@ def get_settings() -> Settings:
     return Settings(
         vllm_vlm_url=os.environ.get(VLLM_VLM_URL_ENV, _DEFAULT_VLLM_VLM_URL),
         vllm_llm_url=vllm_llm_url,
-        vlm_model=os.environ.get(VLM_MODEL_ENV, _DEFAULT_VLM_MODEL),
+        vlm_model=vlm_model,
+        vlm_fallback_models=tuple(
+            m for m in _env_models(VLM_FALLBACK_MODELS_ENV) if m != vlm_model
+        ),
+        # Set but empty = no model is benchmarked: no fallback answer decides.
+        vlm_benchmarked_models=_env_models(VLM_BENCHMARKED_MODELS_ENV)
+        if VLM_BENCHMARKED_MODELS_ENV in os.environ
+        else _DEFAULT_VLM_BENCHMARKED_MODELS,
         llm_model=llm_model,
         assist_url=assist_url,
         assist_model=assist_model,
@@ -155,4 +257,14 @@ def get_settings() -> Settings:
         else _DEFAULT_ALLOW_STUB_FALLBACK,
         audit_format_version=audit_format_version,
         version=__version__,
+        detector_model_path=_detector_model_path(),
+        detector_hard_conf=_env_conf(DETECTOR_HARD_CONF_ENV, _DEFAULT_DETECTOR_HARD_CONF),
+        detector_light_conf=_env_conf(DETECTOR_LIGHT_CONF_ENV, _DEFAULT_DETECTOR_LIGHT_CONF),
+        detector_escalate_light=os.environ.get(DETECTOR_ESCALATE_LIGHT_ENV, "1")
+        .strip()
+        .lower()
+        not in ("0", "false", "no"),
+        detector_threads=_env_threads(),
+        detector_providers=_env_providers(),
+        detector_device_id=_env_device_id(),
     )

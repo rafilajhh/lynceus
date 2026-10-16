@@ -1,0 +1,113 @@
+{
+  "n": 20,
+  "confusion": {
+    "reject": {
+      "reject": 3,
+      "escalate": 0,
+      "accept": 0,
+      "error": 0
+    },
+    "escalate": {
+      "reject": 0,
+      "escalate": 2,
+      "accept": 1,
+      "error": 6
+    },
+    "accept": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 8,
+      "error": 0
+    }
+  },
+  "reject": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "tp": 3,
+    "fp": 0,
+    "fn": 0
+  },
+  "latency_ms": {
+    "p50": 27338.294000001042,
+    "p95": 85695.64759999776
+  },
+  "total_ms": {
+    "p50": 29692.9,
+    "p95": 87557.5
+  },
+  "errors": 6,
+  "clean_accept_rate": 1.0,
+  "clean_escalate_rate": 0.0,
+  "clean_reject_rate": 0.0,
+  "review_rate": 0.14285714285714285,
+  "escalate_recall": 0.2222222222222222,
+  "framing": "component validation on public RealWaste images — not field data from a plant",
+  "date": "2026-10-15.gemma",
+  "manifest_n": 80,
+  "complete": false,
+  "attempt_stats": {
+    "attempts": 44,
+    "retried": 0,
+    "total_ms": {
+      "p95": 87557.5,
+      "max": 91462.1
+    }
+  },
+  "vlm_model": "Gemma-4-31B-IT",
+  "llm_model": "DeepSeek-V4-Flash",
+  "provider": "amd-token-factory",
+  "provenance": [
+    "live"
+  ],
+  "per_category": {
+    "Metal": {
+      "reject": 3,
+      "escalate": 0,
+      "accept": 0,
+      "error": 0
+    },
+    "Glass": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 0,
+      "error": 3
+    },
+    "Food Organics": {
+      "reject": 0,
+      "escalate": 1,
+      "accept": 0,
+      "error": 2
+    },
+    "Vegetation": {
+      "reject": 0,
+      "escalate": 1,
+      "accept": 1,
+      "error": 1
+    },
+    "Paper": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 2,
+      "error": 0
+    },
+    "Cardboard": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 2,
+      "error": 0
+    },
+    "Plastic": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 2,
+      "error": 0
+    },
+    "Textile Trash": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 2,
+      "error": 0
+    }
+  }
+}

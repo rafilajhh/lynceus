@@ -6,8 +6,11 @@ Posts every image in ``manifest.csv`` to ``POST /inspect`` through FastAPI's
 
 Every item uses the same fixed, neutral waybill and a consistent weight so the
 weight / cross-check gates pass and the verdict is decided by the vision gate
-alone.  There is no ``demo_case``: each row must come back with provenance
-``live`` or the run aborts without writing that row.
+alone.  There is no ``demo_case``: a row only counts with provenance ``live``; any
+other provenance (e.g. ``detector_only_degraded``) is written as an error row
+that the next run retries.  The run measures the VLM-only gate: the CPU
+detector and vision-model fallbacks are switched off (the hybrid is measured
+offline by ``rescore.py --hybrid``).
 
 Usage (from ``backend/``)::
 
@@ -111,7 +114,11 @@ def row_from_response(
 ) -> dict[str, Any]:
     """One result row from a successful /inspect response.
 
-    Raises :class:`ProvenanceError` unless ``provenance == "live"``.
+    Raises :class:`ProvenanceError` unless ``provenance == "live"``, and,
+    in depth behind the switches :func:`_bootstrap_env` sets, when the CPU detector
+    answered (``ai_outputs.detector`` non-null) or a fallback vision model
+    did (``ai_outputs.vlm.fallback_from`` non-empty): this run measures the
+    primary VLM alone.
     """
     provenance = body.get("provenance")
     if provenance != "live":
@@ -122,6 +129,16 @@ def row_from_response(
         )
     ai = body.get("ai_outputs") or {}
     vlm = ai.get("vlm") or {}
+    if ai.get("detector") is not None:
+        raise ProvenanceError(
+            f"{item['image']}: the CPU detector ran; this run measures the VLM-only "
+            "gate (DETECTOR_MODEL_PATH must be empty)."
+        )
+    if vlm.get("fallback_from"):
+        raise ProvenanceError(
+            f"{item['image']}: a fallback vision model ({vlm.get('model')!r}) answered; "
+            "this run measures the primary VLM only (VLM_FALLBACK_MODELS must be empty)."
+        )
     llm = ai.get("llm") or {}
     detected = vlm.get("detected") or {}
     return {
@@ -200,14 +217,22 @@ def build_summary(
 
     summary = metrics.compute(rows)
     good = [r for r in rows if not r.get("error")]
+    vlm_models: dict[str, int] = {}
+    for r in good:
+        if r.get("vlm_model"):
+            vlm_models[r["vlm_model"]] = vlm_models.get(r["vlm_model"], 0) + 1
     summary.update(
         {
+            # What the API allow-lists as a live run (never by file name).
+            "kind": "live",
             "framing": FRAMING,
             "date": date,
             "manifest_n": manifest_n,
             "complete": len(good) == manifest_n,
             "attempt_stats": metrics.attempt_stats(attempts if attempts is not None else rows),
-            "vlm_model": next((r["vlm_model"] for r in good if r.get("vlm_model")), None),
+            # The most-used model; ``vlm_models`` counts every one that answered.
+            "vlm_model": max(vlm_models, key=vlm_models.__getitem__) if vlm_models else None,
+            "vlm_models": vlm_models,
             "llm_model": next((r["llm_model"] for r in good if r.get("llm_model")), None),
             "provider": next((r["provider"] for r in good if r.get("provider")), None),
             "provenance": sorted({r["provenance"] for r in good if r.get("provenance")}),
@@ -257,6 +282,10 @@ def _bootstrap_env() -> None:
 
     config._load_dotenv(str(BACKEND_DIR / ".env"))
     os.environ["LYNCEUS_STORAGE_DIR"] = str(RUNS_DIR)
+    # Measure the VLM-only gate: no CPU detector (the hybrid is measured by
+    # ``rescore.py --hybrid``) and no fallback model, whatever .env says.
+    os.environ["DETECTOR_MODEL_PATH"] = ""
+    os.environ["VLM_FALLBACK_MODELS"] = ""
 
 
 def run(
@@ -301,8 +330,14 @@ def run(
             log(f"[{n}/{len(items)}] {item['image']} RATE LIMITED: stopping, no row written")
             break
         if status == 200:
-            row = row_from_response(item, body, total_ms)  # may abort: no row written
-            consecutive_errors = 0
+            try:
+                row = row_from_response(item, body, total_ms)
+                consecutive_errors = 0
+            except ProvenanceError as exc:
+                # Not a measurement (e.g. detector_only_degraded): an error
+                # row the next run retries, never a counted verdict.
+                row = error_row(item, str(exc)[:300], total_ms)
+                consecutive_errors += 1
         else:
             message = _error_message(body)
             row = error_row(item, f"HTTP {status}: {message}"[:300], total_ms)

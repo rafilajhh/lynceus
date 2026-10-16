@@ -125,11 +125,13 @@ export const WASTE_STREAMS = [
   { value: "dry-recyclables", label: "dry-recyclables" },
 ] as const;
 
-/** The five interlock gates (audit.GATE_NAMES order). */
+/** The interlock gates: audit.GATE_NAMES order, then the CPU detector's
+    second opinion (audit.OPTIONAL_GATE_NAMES; NOT RUN on older backends). */
 export const GATE_ORDER = [
   { key: "vlm_confidence", label: "VLM" },
   { key: "ocr_confidence", label: "MANIFEST" },
   { key: "manifest_crosscheck", label: "XCHECK" },
   { key: "gas_plausibility", label: "GAS" },
   { key: "weight_plausibility", label: "WEIGHT" },
+  { key: "detector_second_opinion", label: "YOLO" },
 ] as const;

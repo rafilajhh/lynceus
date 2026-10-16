@@ -281,3 +281,12 @@ The skipped test is the live smoke module; enable it with `LYNCEUS_LIVE_TESTS=1`
   (attribution, non-commercial, share-alike). Details:
   `backend/benchmark/images/ATTRIBUTION.md`. The benchmark images are excluded
   from the Docker image.
+- **Third-party model weights.** The bundled CPU detector
+  (`backend/models/lynceus-yolo26s-realwaste.onnx`) is **not** covered by the
+  MIT licence. The weights derive from Ultralytics YOLO26 (**AGPL-3.0**) and
+  were fine-tuned on RealWaste (**CC BY-NC-SA 4.0** treated as binding, as
+  above). Their training and export source is in `ml/` (our offer of the
+  corresponding source). Commercial use requires retraining on your own data
+  and an Ultralytics Enterprise licence, or a permissively licensed detector
+  (`DETECTOR_MODEL_PATH` points at it; empty turns the detector off). Details:
+  `backend/models/NOTICE`.

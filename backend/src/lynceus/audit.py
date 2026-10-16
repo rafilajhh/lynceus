@@ -142,6 +142,9 @@ GATE_NAMES = (
     "gas_plausibility",
     "weight_plausibility",
 )
+#: Gates added after format v1: optional in the schema so records written
+#: before them still load, always written by the current API.
+OPTIONAL_GATE_NAMES = ("detector_second_opinion",)
 
 #: Consistent error prefixes so failures are greppable (engine
 #: NO_READINGS_ERROR pattern — prefixed-error rule).
@@ -568,6 +571,10 @@ class VLMOutput(_StrictModel):
     latency_ms: Optional[float] = None
     boxes: List[ContaminantBox] = []
     localisation: Optional[str] = None
+    #: The vision models that failed before ``model`` answered (each
+    #: "<model>: <error> after <s> s"); absent when the primary answered and
+    #: on records written before the fallback chain existed.
+    fallback_from: Optional[List[str]] = None
 
     @field_validator("latency_ms")
     @classmethod
@@ -633,10 +640,77 @@ class GasOutput(_StrictModel):
     model_basis: Optional[str] = None
 
 
+class DetectorBox(_StrictModel):
+    """One detector box: class label, its confidence, and ``[x0, y0, x1, y1]``
+    normalised 0..1 from the top-left with x0 < x1 and y0 < y1."""
+
+    label: str
+    confidence: float
+    box: List[float]
+
+    @field_validator("confidence")
+    @classmethod
+    def _v_conf(cls, v: float) -> float:
+        return _validate_confidence(v, "ai_outputs.detector.boxes[].confidence")
+
+    @field_validator("box")
+    @classmethod
+    def _v_box(cls, v: List[float]) -> List[float]:
+        field = "ai_outputs.detector.boxes[].box"
+        if len(v) != 4:
+            raise _err(_ERR_FORMAT, field, f"must have 4 coordinates (got {len(v)})")
+        for coord in v:
+            _validate_confidence(coord, field)
+        if not (v[0] < v[2] and v[1] < v[3]):
+            raise _err(_ERR_FORMAT, field, f"must satisfy x0 < x1 and y0 < y1 (got {v!r})")
+        return v
+
+
+class DetectorThresholds(_StrictModel):
+    """The gate settings a detector result was judged with."""
+
+    hard: float
+    light: float
+    escalate_light: bool
+
+    @field_validator("hard", "light")
+    @classmethod
+    def _v_conf(cls, v: float) -> float:
+        return _validate_confidence(v, "ai_outputs.detector.thresholds")
+
+
+class DetectorOutput(_StrictModel):
+    """The CPU object detector's second opinion (absent on older records).
+
+    ``model_sha256`` (the ONNX file's digest) and ``thresholds`` are optional
+    so detector blocks written before them still load.
+    """
+
+    model: str
+    runtime: str
+    latency_ms: Optional[float] = None
+    boxes: List[DetectorBox] = []
+    hard_contaminants: List[str] = []
+    light_contaminants: List[str] = []
+    model_sha256: Optional[str] = None
+    thresholds: Optional[DetectorThresholds] = None
+
+    @field_validator("latency_ms")
+    @classmethod
+    def _v_latency(cls, v: Optional[float]) -> Optional[float]:
+        return _validate_latency_ms(v, "ai_outputs.detector.latency_ms")
+
+    @field_validator("model_sha256")
+    @classmethod
+    def _v_model_sha(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _validate_sha256_field(v, "ai_outputs.detector.model_sha256")
+
+
 class AIOutputs(_StrictModel):
     vlm: VLMOutput
     llm: LLMOutput
     gas: Optional[GasOutput] = None
+    detector: Optional[DetectorOutput] = None
 
 
 class SuitabilityOutput(_StrictModel):
@@ -728,6 +802,7 @@ class Gates(_StrictModel):
     manifest_crosscheck: GateResult
     gas_plausibility: GateResult
     weight_plausibility: GateResult
+    detector_second_opinion: Optional[GateResult] = None
 
 
 class Digest(_StrictModel):

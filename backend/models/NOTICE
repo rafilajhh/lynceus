@@ -1,0 +1,35 @@
+Third-party model weights: lynceus-yolo26s-realwaste.onnx
+=========================================================
+
+The ONNX weights in this directory are NOT covered by the MIT licence of the
+Lynceus repository (LICENSE). They are distributed under the terms below.
+
+1. Ultralytics YOLO26 (AGPL-3.0)
+   The weights were fine-tuned from Ultralytics' pretrained YOLO26s and
+   exported with Ultralytics, both licensed under the GNU Affero General Public
+   License v3.0 (https://www.gnu.org/licenses/agpl-3.0.html). The weights are
+   a work derived from them and carry the AGPL-3.0 obligations, including when
+   they are served inside a network service. lynceus.detector (our own decoder)
+   does not import Ultralytics.
+
+2. RealWaste training data (CC BY-NC-SA 4.0 treated as binding)
+   Fine-tuned on RealWaste by S. Single, S. Iranmanesh and R. Raad (University
+   of Wollongong), UCI Machine Learning Repository id 908,
+   DOI 10.24432/C5SS4G. The UCI page states CC BY 4.0; the README inside the
+   dataset zip states CC BY-NC-SA 4.0. Until the authors clarify, the stricter
+   terms (attribution, non-commercial, share-alike) are treated as binding for
+   the dataset and, conservatively, for these weights.
+   See backend/benchmark/images/ATTRIBUTION.md.
+
+Corresponding source
+   The complete training and export source for these weights is in ml/ of this
+   repository (ml/README.md: fetch_realwaste.py, build_dataset.py, train.py,
+   export_onnx.py). This is our offer of the corresponding source under
+   AGPL-3.0 section 13 to anyone who interacts with a service running them.
+
+Commercial use
+   These weights are for evaluation and non-commercial use. Commercial use
+   requires both (a) retraining on data you have the rights to (not RealWaste)
+   and (b) an Ultralytics Enterprise licence, or replacing the detector with a
+   permissively licensed one. Point DETECTOR_MODEL_PATH at the replacement, or
+   set it empty to run without the detector.

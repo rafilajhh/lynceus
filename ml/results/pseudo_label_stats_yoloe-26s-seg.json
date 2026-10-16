@@ -1,0 +1,42 @@
+{
+ "model": "yoloe-26s-seg.pt",
+ "images": 4177,
+ "box_source": {
+  "full_frame": 223,
+  "glass:full_frame": 5,
+  "glass:largest": 301,
+  "glass:own_class": 107,
+  "largest": 1949,
+  "metal:full_frame": 36,
+  "metal:largest": 272,
+  "metal:own_class": 462,
+  "organic:full_frame": 61,
+  "organic:largest": 325,
+  "organic:own_class": 448,
+  "own_class": 2005,
+  "paper:full_frame": 40,
+  "paper:largest": 318,
+  "paper:own_class": 583,
+  "plastic:full_frame": 72,
+  "plastic:largest": 514,
+  "plastic:own_class": 325,
+  "textile:full_frame": 9,
+  "textile:largest": 219,
+  "textile:own_class": 80
+ },
+ "split": {
+  "train:glass": 372,
+  "train:metal": 693,
+  "train:organic": 751,
+  "train:paper": 847,
+  "train:plastic": 820,
+  "train:textile": 278,
+  "val:glass": 41,
+  "val:metal": 77,
+  "val:organic": 83,
+  "val:paper": 94,
+  "val:plastic": 91,
+  "val:textile": 30
+ },
+ "held_out_benchmark": 80
+}

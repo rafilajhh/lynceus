@@ -1,0 +1,87 @@
+{
+ "onnx": "yoloe26s_contaminants.onnx",
+ "size_mb": 41.8,
+ "provider": "CPUExecutionProvider",
+ "cpu": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+ "intra_op_threads": 6,
+ "latency_incl_preprocess": {
+  "p50_ms": 420.9,
+  "p90_ms": 565.6,
+  "mean_ms": 420.6
+ },
+ "metal_rule_t": 0.1,
+ "onnx_metal_report": {
+  "metal_recall": "14/20",
+  "metal_recall_pct": 70.0,
+  "false_flags": "23/60",
+  "false_flag_rate_pct": 38.3,
+  "metal_precision_pct": 37.8,
+  "flags_by_category": {
+   "Metal": "14/20",
+   "Glass": "6/7",
+   "Food Organics": "4/7",
+   "Vegetation": "1/6",
+   "Paper": "3/10",
+   "Cardboard": "5/10",
+   "Plastic": "3/10",
+   "Textile Trash": "1/10"
+  }
+ },
+ "parity_vs_ultralytics": [
+  {
+   "image": "metal_1.jpg",
+   "ultralytics_boxes": 0,
+   "onnx_boxes": 0,
+   "matched_iou>=0.9": 0,
+   "max_conf_delta": null,
+   "ultralytics_top": [],
+   "onnx_top": []
+  },
+  {
+   "image": "glass_1.jpg",
+   "ultralytics_boxes": 1,
+   "onnx_boxes": 1,
+   "matched_iou>=0.9": 1,
+   "max_conf_delta": 0.0015,
+   "ultralytics_top": [
+    [
+     "metal can",
+     0.258
+    ]
+   ],
+   "onnx_top": [
+    [
+     "metal can",
+     0.257
+    ]
+   ]
+  },
+  {
+   "image": "food_organics_1.jpg",
+   "ultralytics_boxes": 0,
+   "onnx_boxes": 0,
+   "matched_iou>=0.9": 0,
+   "max_conf_delta": null,
+   "ultralytics_top": [],
+   "onnx_top": []
+  },
+  {
+   "image": "vegetation_1.jpg",
+   "ultralytics_boxes": 0,
+   "onnx_boxes": 0,
+   "matched_iou>=0.9": 0,
+   "max_conf_delta": null,
+   "ultralytics_top": [],
+   "onnx_top": []
+  },
+  {
+   "image": "paper_1.jpg",
+   "ultralytics_boxes": 0,
+   "onnx_boxes": 0,
+   "matched_iou>=0.9": 0,
+   "max_conf_delta": null,
+   "ultralytics_top": [],
+   "onnx_top": []
+  }
+ ]
+}

@@ -119,6 +119,9 @@ export const vlmOutputSchema = z
     detected: z.record(z.string(), z.unknown()).nullish().catch(null),
     boxes: tolerantList(evidenceBoxSchema),
     localisation: z.enum(["box", "zone"]).nullish().catch(null),
+    /** Vision models that failed before `model` answered; absent when the
+        primary answered and on older records. */
+    fallback_from: z.array(z.string()).nullish().catch(null),
   })
   .catchall(z.unknown());
 
@@ -129,12 +132,52 @@ export const llmOutputSchema = z
   })
   .catchall(z.unknown());
 
+/** One CPU-detector box: class label, confidence and [x0, y0, x1, y1]
+    normalised 0..1. Malformed or inverted boxes are dropped (same rule as
+    the VLM boxes). */
+const detectorBoxSchema = z
+  .object({
+    label: z.string().catch("object"),
+    confidence: z.number(),
+    box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  })
+  .refine(
+    ({ box: [x0, y0, x1, y1] }) =>
+      0 <= x0 && x0 < x1 && x1 <= 1 && 0 <= y0 && y0 < y1 && y1 <= 1,
+  );
+
+/** The CPU detector's second opinion (backend lynceus.detector); absent on
+    older records and whenever the detector did not run. */
+export const detectorOutputSchema = z
+  .object({
+    model: z.string().catch("detector"),
+    runtime: z.string().nullish().catch(null),
+    latency_ms: z.number().nullish().catch(null),
+    boxes: tolerantList(detectorBoxSchema),
+    hard_contaminants: z.array(z.string()).catch([]),
+    light_contaminants: z.array(z.string()).catch([]),
+    /** sha256 of the ONNX file; absent on older records. */
+    model_sha256: z.string().nullish().catch(null),
+    /** The gate thresholds the boxes were judged with; absent on older records. */
+    thresholds: z
+      .object({
+        hard: z.number(),
+        light: z.number(),
+        escalate_light: z.boolean(),
+      })
+      .nullish()
+      .catch(null),
+  })
+  .catchall(z.unknown());
+
 /** Top-level AI provenance of an /inspect response. */
 export const provenanceSchema = z
-  .enum(["live", "stub", "stub_fallback_live_error"])
+  .enum(["live", "stub", "stub_fallback_live_error", "detector_only_degraded"])
   .nullish()
   .catch(null);
 
+export type DetectorBox = z.infer<typeof detectorBoxSchema>;
+export type DetectorOutput = z.infer<typeof detectorOutputSchema>;
 export type EvidenceBox = z.infer<typeof evidenceBoxSchema>;
 export type NextStep = z.infer<typeof nextStepSchema>;
 export type VlmOutput = z.infer<typeof vlmOutputSchema>;
@@ -150,7 +193,18 @@ const auditRecordSchema = z
         algorithm: z.string().optional(),
       })
       .optional(),
-    gates: z.record(z.string(), gateResultSchema).optional(),
+    // Gates added after v1 (detector_second_opinion) are null on older
+    // records: dropped here so every consumer sees only stated gates.
+    gates: z
+      .record(z.string(), gateResultSchema.nullable().catch(null))
+      .transform((gates) =>
+        Object.fromEntries(
+          Object.entries(gates).filter(
+            (entry): entry is [string, GateResult] => entry[1] !== null,
+          ),
+        ),
+      )
+      .optional(),
     inputs: z
       .object({
         truck_id: z.string().optional(),
@@ -191,6 +245,7 @@ const auditRecordSchema = z
       .object({
         llm: llmOutputSchema.nullish().catch(null),
         vlm: vlmOutputSchema.nullish().catch(null),
+        detector: detectorOutputSchema.nullish().catch(null),
         // null on records with no gas data (backend: GasOutput | None).
         gas: z
           .object({

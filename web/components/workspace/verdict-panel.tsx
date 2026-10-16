@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * VerdictPanel: verdict banner (lights only after all five gates
+ * VerdictPanel: verdict banner (lights only after all six gates
  * resolve) with its headline, a one-line live-AI provenance note, gate strip, photo
  * evidence beside the SOP-cited next steps, impact counter, reasons,
  * caveats, Pythia, and the audit-record link.
@@ -16,9 +16,14 @@ import { GateStrip, type GateDisplay, type GatePhase } from "./gate-strip";
 import { ImpactCounter } from "./impact-counter";
 import { AuditModal } from "./audit-modal";
 import { NextSteps } from "./next-steps";
-import { PhotoEvidence } from "./photo-evidence";
+import { PhotoEvidence, detectorName } from "./photo-evidence";
 import type { InspectResponse } from "@/lib/inspect-api";
-import { LIVE_LATENCY_COPY, formatSeconds, providerName } from "@/lib/format";
+import {
+  LIVE_LATENCY_COPY,
+  formatMilliseconds,
+  formatSeconds,
+  providerName,
+} from "@/lib/format";
 import { useElapsedSeconds } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
@@ -109,6 +114,52 @@ const REFUSE_EXPLANATION =
   "text. Rather than guessing, the engine declines to issue a verdict: " +
   "the truck is held at the gate until the missing input is supplied and " +
   "the inspection is re-run. No impact figure is invented for a refusal.";
+
+/** "Second opinion (YOLO26s, CPU, 154 ms): flagged metal, not confirmed by
+    the vision model; held for a manual check." (the hold clause only on an
+    escalate verdict). Null when the backend sent neither a detector block
+    nor its gate (an older backend). */
+function secondOpinionLine(
+  data: InspectResponse | null,
+  gates: GateDisplay[],
+): string | null {
+  const detector = data?.ai_outputs.detector ?? null;
+  const gate = gates.find((g) => g.key === "detector_second_opinion");
+  if (!detector) {
+    return data?.gates && "detector_second_opinion" in data.gates
+      ? "Second opinion (CPU detector): did not run for this photo."
+      : null;
+  }
+  const head = [detectorName(detector.model), "CPU", formatMilliseconds(detector.latency_ms)]
+    .filter(Boolean)
+    .join(", ");
+  const findings = [...detector.hard_contaminants, ...detector.light_contaminants]
+    .map((name) => name.replaceAll("_", " "));
+  const found = findings.length > 0 ? `flagged ${findings.join(", ")}` : "no metal, glass or organic found";
+  // The hold wording only when the verdict really is a hold: a REJECT or a
+  // REFUSE decided on other grounds outranks the detector's finding.
+  const decision = data?.verdict?.decision ?? data?.decision;
+  const held = decision === "escalate_human";
+  let verdict = "";
+  if (data?.provenance === "detector_only_degraded") {
+    const down =
+      data.failed_stage === "llm"
+        ? "; the waybill model was unavailable, so the vision answer was discarded"
+        : "; the vision model was unavailable";
+    verdict = held ? `${down} and the truck is held for a human` : down;
+  } else if (gate?.state === "failed") {
+    verdict = held
+      ? ", not confirmed by the vision model; held for a manual check"
+      : decision === "reject"
+        ? ", not confirmed by the vision model; the load is rejected on other grounds"
+        : ", not confirmed by the vision model";
+  } else if (gate?.state === "passed" && findings.length > 0) {
+    // Passed = the vision model agreed, or light findings are set not to
+    // escalate (the gate reason says which); either way no verdict change.
+    verdict = "; it did not change the verdict";
+  }
+  return `Second opinion (${head}): ${found}${verdict}.`;
+}
 
 /** Reasons from every place the backend may put them. */
 function collectReasons(data: InspectResponse | null): string[] {
@@ -222,6 +273,8 @@ export function VerdictPanel({
   const reasons = collectReasons(data);
   const caveats = dedupeCaveats(collectCaveats(data));
   const vlm = data?.ai_outputs.vlm ?? null;
+  const secondOpinion = secondOpinionLine(data, gates);
+  const degraded = data?.provenance === "detector_only_degraded";
   // Evidence and steps arrive with the verdict word, never before it.
   const verdictShown = phase === "resolved" && data !== null && bannerLit;
 
@@ -233,7 +286,7 @@ export function VerdictPanel({
       />
 
       <div className="flex flex-col gap-4 px-4 py-4">
-        {/* Verdict banner: lights only after the five gates resolve.
+        {/* Verdict banner: lights only after the six gates resolve.
             The reset control lives inside this row: after resolve it is
             the second-most-important action (critique P1 — it was buried
             mid-panel in the quietest variant). */}
@@ -299,6 +352,44 @@ export function VerdictPanel({
           </p>
         ) : null}
 
+        {/* A live model down, detector answered: degraded, not dark. A
+            refusal is about a missing input, not the detector's findings. */}
+        {phase === "resolved" && degraded ? (
+          <p
+            role="note"
+            className="m-0 rounded-[10px] border border-amber-line bg-amber-dim px-4 py-2.5 text-[13px] leading-snug text-ink"
+          >
+            {decision === "refuse_insufficient_input" ? (
+              <>
+                <span className="font-semibold text-amber">
+                  Live AI unavailable — inspection refused: a mandatory input is missing.
+                </span>{" "}
+                Supply the missing input (the reasons below name it) and re-run
+                once the live endpoint responds.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-amber">
+                  {data?.failed_stage === "llm"
+                    ? "Waybill model unavailable — detector-only verdict."
+                    : "Vision model unavailable — detector-only verdict."}
+                </span>{" "}
+                {data?.failed_stage === "llm"
+                  ? "The live waybill model did not answer, so the vision answer was discarded unfused and"
+                  : "The live vision model did not answer, so"}{" "}
+                this truck is held for a human on the CPU detector alone (the
+                reasons below say why). Detector-only mode never accepts or
+                rejects a load; re-run once the live endpoint responds.
+              </>
+            )}
+          </p>
+        ) : null}
+
+        {/* One line for the CPU detector's second opinion. */}
+        {phase === "resolved" && secondOpinion ? (
+          <p className="figure m-0 text-[12px] text-faint">{secondOpinion}</p>
+        ) : null}
+
         {/* The interlock gate strip: the decision theater comes before the
             money figure (critique: impact counter outranked the verdict
             evidence at decision time) */}
@@ -319,12 +410,17 @@ export function VerdictPanel({
               boxes={vlm?.boxes ?? []}
               localisation={vlm?.localisation}
               model={vlm?.model}
+              detector={data?.ai_outputs.detector}
               sourceNote={
                 data?.provenance === "stub"
                   ? "Scripted sample"
                   : data?.provenance === "stub_fallback_live_error"
                     ? "Scripted fallback"
-                    : null
+                    : degraded
+                      ? data?.failed_stage === "llm"
+                        ? "Vision answer discarded"
+                        : "Vision model unavailable"
+                      : null
               }
               pending={!verdictShown}
             />

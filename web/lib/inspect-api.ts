@@ -4,11 +4,13 @@
  */
 
 import {
+  detectorOutputSchema,
   llmOutputSchema,
   nextStepsSchema,
   provenanceSchema,
   vlmOutputSchema,
   type Decision,
+  type DetectorOutput,
   type GateResult,
   type ImpactEstimate,
   type InspectProvenance,
@@ -38,6 +40,9 @@ export interface InspectResponse {
   record_id?: string;
   /** Backend-provenanced; null when absent or unrecognised. */
   provenance: InspectProvenance;
+  /** Detector-only degraded runs: which live call failed (vision or
+      waybill model); null otherwise or when unrecognised. */
+  failed_stage: "vlm" | "llm" | null;
   /** SOP-cited operator steps; [] when the backend sent none. */
   actions: NextStep[];
   verdict?: {
@@ -54,6 +59,8 @@ export interface InspectResponse {
   ai_outputs: {
     vlm: VlmOutput | null;
     llm: LlmOutput | null;
+    /** CPU detector second opinion; null when it did not run. */
+    detector: DetectorOutput | null;
   };
   engine_outputs?: {
     recommendation?: {
@@ -166,11 +173,15 @@ function normaliseInspectResponse(raw: Record<string, unknown>): InspectResponse
   return {
     ...raw,
     provenance: provenanceSchema.parse(raw.provenance),
+    failed_stage:
+      raw.failed_stage === "vlm" || raw.failed_stage === "llm" ? raw.failed_stage : null,
     actions: nextStepsSchema.parse(raw.actions),
     ai_outputs: {
       ...ai, // keeps gas and any other blocks for the raw audit view
       vlm: vlmOutputSchema.nullish().catch(null).parse(ai.vlm) ?? null,
       llm: llmOutputSchema.nullish().catch(null).parse(ai.llm) ?? null,
+      detector:
+        detectorOutputSchema.nullish().catch(null).parse(ai.detector) ?? null,
     },
   };
 }

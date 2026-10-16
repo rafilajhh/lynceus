@@ -275,7 +275,7 @@ export function WorkspaceClient() {
       setData(resp);
       setImpactRunKey((k) => k + 1);
       setPhase("resolved");
-      // Banner lights only after the five gates resolve (GateStrip
+      // Banner lights only after the six gates resolve (GateStrip
       // calls onAllResolved after the last stagger step).
       setBannerLit(false);
     } catch (err) {

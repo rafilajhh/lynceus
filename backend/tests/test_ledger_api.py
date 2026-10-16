@@ -179,9 +179,10 @@ def test_list_inspections_returns_seeded_records_sorted_desc(client):
         assert audit.TIMESTAMP_RE.match(row["decided_at_utc"]), row
         assert isinstance(row["prevented_loss_idr"], int), row
         assert row["prevented_loss_idr"] >= 0, row
-        # All five audit gates stated, each from the closed enum.
+        # All five audit gates stated, plus the optional detector gate the
+        # current API always writes; each from the closed enum.
         states = row["gate_states"]
-        assert set(states) == set(GATE_NAMES), (demo_case, states)
+        assert set(states) == set(GATE_NAMES) | {"detector_second_opinion"}, (demo_case, states)
         assert all(state in GateState.ALL for state in states.values()), states
 
     # Red: weight-mismatch gate failed on the REJECT row.
@@ -230,7 +231,11 @@ def test_get_single_record_returns_full_audit_record(client, tmp_path):
     assert body["verdict"]["decision"] == Decision.REJECT
     assert body["inputs"]["truck_id"] == "F-7702-TS"
     assert audit.SHA256_FIELD_RE.match(body["digest"]["record_sha256"])
-    assert set(body["gates"]) == set(GATE_NAMES)
+    # Current records state every gate, the detector's second opinion included
+    # (a scripted demo case sends no photo bytes, so it did not run).
+    assert set(body["gates"]) == set(GATE_NAMES) | set(audit.OPTIONAL_GATE_NAMES)
+    assert body["gates"]["detector_second_opinion"]["state"] == GateState.NOT_RUN
+    assert body["ai_outputs"]["detector"] is None
     assert body["gates"]["weight_plausibility"]["state"] == GateState.FAILED
 
 

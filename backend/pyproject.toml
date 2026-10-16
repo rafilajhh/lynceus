@@ -12,6 +12,11 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic>=2",
     "httpx",
+    # CPU detector second opinion (lynceus.detector); without them it is off.
+    # Floors are the versions the bundled model and the tests were run with.
+    "onnxruntime>=1.31.0",
+    "numpy>=2.5.4",
+    "pillow>=12.3.0",
 ]
 
 [project.optional-dependencies]

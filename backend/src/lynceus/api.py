@@ -16,9 +16,11 @@ import base64
 import binascii
 import json
 import os
+import re
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, AsyncIterator, Iterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +32,7 @@ from lynceus import actions
 from lynceus import assist
 from lynceus import audit
 from lynceus import decision
+from lynceus import detector
 from lynceus import engine_adapter
 from lynceus import gas_twin
 from lynceus import impact
@@ -62,6 +65,9 @@ _BENCHMARK_DIR = _dir_from_env(
 BENCHMARK_FRAMING = (
     "component validation on public RealWaste images — not field data from a plant"
 )
+#: Summary file names that count without a ``kind`` field (written before it).
+_LEGACY_LIVE_NAME = re.compile(r"\d{4}-\d{2}-\d{2}\.summary\.json")
+_LEGACY_REPLAY_NAME = re.compile(r"\d{4}-\d{2}-\d{2}\.rescore\.summary\.json")
 
 # No OCR is performed on the waybill; this is the fixed confidence attached
 # to operator-typed manifest text, not an OCR score.
@@ -402,7 +408,19 @@ def _run_inspection_with_audit(
     # Resolve the AI clients before the record is begun: an unreachable live
     # endpoint with stub fallback disabled raises LiveAIUnavailableError here
     # (HTTP 503) and leaves no ``inspection-*`` shell behind.
-    ai_clients = pipeline.resolve_clients(payload, settings)
+    detector_kwargs: dict[str, Any] = {}
+    try:
+        ai_clients = pipeline.resolve_clients(payload, settings)
+    except pipeline.LiveAIUnavailableError as exc:
+        # Degraded, not dark: when the CPU detector can read this photo the
+        # truck is held for a human on its findings instead of a 503.  It
+        # runs before the record is begun, so a photo it cannot read still
+        # leaves no record shell behind.
+        early = pipeline.safe_detect(photo_bytes, settings) if photo_bytes else None
+        if early is None:
+            raise
+        ai_clients = pipeline.UnavailableAIClients(str(exc))
+        detector_kwargs["precomputed_detector"] = early
 
     # Reserve the record identity first so the gate gas channel — whose
     # deterministic twin is seeded by it — can run BEFORE the record is
@@ -443,9 +461,20 @@ def _run_inspection_with_audit(
         record_id,
         allow_stub_fallback=settings.allow_stub_fallback,
         precomputed_gas=gas_result,
+        settings=settings,
+        **detector_kwargs,
     )
     vlm_result = ai.get("vlm") or {}
     llm_result = ai.get("llm") or {}
+    detector_result = ai.get("detector")
+    degraded = ai.get("provenance") == pipeline.DEGRADED_PROVENANCE
+    # Which live call failed in a degraded run: "vlm" (vision) or "llm" (waybill).
+    failed_stage = str(ai.get("failed_stage") or "vlm")
+    vision_label = (
+        "AMD vision model"
+        if provider_for_url(settings.vllm_vlm_url) == "amd-token-factory"
+        else "live vision model"
+    )
 
     engine_result = None
     if (
@@ -468,7 +497,28 @@ def _run_inspection_with_audit(
         ):
             engine_result = None
 
-    verdict, gates, reasons = decision.decide(payload, vlm_result, llm_result, engine_result)
+    if degraded:
+        verdict, gates, reasons = decision.decide_degraded(
+            detector_result,
+            str(ai.get("fallback_reason") or "live AI failed"),
+            detector_hard_conf=settings.detector_hard_conf,
+            detector_light_conf=settings.detector_light_conf,
+            vision_label=vision_label,
+            inputs=payload,
+            failed_stage=failed_stage,
+        )
+    else:
+        verdict, gates, reasons = decision.decide(
+            payload,
+            ai.get("vlm"),
+            llm_result,
+            engine_result,
+            detector_result,
+            detector_hard_conf=settings.detector_hard_conf,
+            detector_light_conf=settings.detector_light_conf,
+            detector_escalate_light=settings.detector_escalate_light,
+            benchmarked_vlm_models=settings.vlm_benchmarked_models,
+        )
 
     # No engine run (missing batch inputs): the audit record states so with a
     # hold-for-review route rather than a guessed one.
@@ -538,21 +588,55 @@ def _run_inspection_with_audit(
     suitability = {
         "classification": audit.Classification.SCREENING_ESTIMATE,
         "score": float(vlm_result.get("confidence", 0.0)),
-        "rule": "fusion of VLM visual analysis, LLM cross-check and engine assessment",
+        "rule": (
+            "detector-only degraded mode: "
+            + (
+                "the waybill analysis failed, so the vision answer was discarded"
+                if failed_stage == "llm"
+                else "no VLM or LLM analysis ran"
+            )
+            + " and nothing was fused; the CPU detector's findings only hold the"
+            " truck for a human"
+            if degraded
+            else "fusion of VLM visual analysis, LLM cross-check and engine assessment"
+        ),
     }
     engine_outputs = {"suitability": suitability, "recommendation": engine_recommendation}
 
     uncertainty = f"AI provenance: {ai.get('provenance', 'unknown')}."
-    if ai.get("fallback_reason"):
+    if degraded:
+        uncertainty += (
+            f" The waybill model was unavailable ({ai.get('fallback_reason')}); the"
+            " vision answer was not fused and is discarded."
+            if failed_stage == "llm"
+            else f" The {vision_label} was unavailable ({ai.get('fallback_reason')});"
+            " no vision-language or waybill analysis ran."
+        )
+        uncertainty += (
+            " A mandatory input was missing, so the inspection was refused."
+            if verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT
+            else " The truck is held for a human on the CPU detector (YOLO26s,"
+            " trained on RealWaste photos, not gate imagery) alone."
+        )
+    elif ai.get("fallback_reason"):
         uncertainty += f" Live AI failed ({ai['fallback_reason']}); stub used."
+    if vlm_result.get("fallback_from"):
+        uncertainty += (
+            f" Vision model fallback: {'; '.join(vlm_result['fallback_from'])} failed,"
+            f" {vlm_result.get('model', 'unknown')} answered."
+        )
     uncertainty += " Verdict is a screening estimate, not a validated classification."
 
     vlm_sha = audit.sha256_field(str(vlm_result.get("raw_output", "")).encode("utf-8"))
     llm_raw = str(llm_result.get("raw_output", ""))
+    # Degraded runs got no model output: the record names the models
+    # "unavailable" with zero confidence and the digest of an empty output,
+    # never a fabricated reading.
+    no_model = "unavailable" if degraded else ""
     ai_outputs = {
         "vlm": {
-            "model": str(vlm_result.get("model", "")),
-            "model_version": str(vlm_result.get("model_version", "")),
+            "model": str(vlm_result.get("model", no_model)),
+            "model_version": str(vlm_result.get("model_version", no_model)),
             "raw_output_sha256": vlm_sha,
             "detected": vlm_result.get("detected", {}),
             "confidence": float(vlm_result.get("confidence", 0.0)),
@@ -564,10 +648,12 @@ def _run_inspection_with_audit(
             # them stay valid as an empty list / unspecified mode.
             "boxes": vlm_result.get("boxes", []),
             "localisation": vlm_result.get("localisation"),
+            # The vision models that failed before this one answered.
+            "fallback_from": vlm_result.get("fallback_from"),
         },
         "llm": {
-            "model": str(llm_result.get("model", "")),
-            "model_version": str(llm_result.get("model_version", "")),
+            "model": str(llm_result.get("model", no_model)),
+            "model_version": str(llm_result.get("model_version", no_model)),
             "prompt_sha256": audit.sha256_field(manifest_text.encode("utf-8")),
             "raw_output_sha256": audit.sha256_field(llm_raw.encode("utf-8")),
             "reasoning": str(llm_result.get("reasoning", "")),
@@ -576,8 +662,14 @@ def _run_inspection_with_audit(
             "latency_ms": llm_result.get("latency_ms"),
         },
         "gas": gas_ai_output,
+        # The CPU detector's second opinion (None when it did not run).
+        "detector": detector_result,
     }
-    audit_gates = {k: v for k, v in gates.items() if k in audit.GATE_NAMES}
+    audit_gates = {
+        k: v
+        for k, v in gates.items()
+        if k in audit.GATE_NAMES or k in audit.OPTIONAL_GATE_NAMES
+    }
     verdict_payload = {
         "decision": verdict,
         "decided_at_utc": audit.now_utc(),
@@ -623,6 +715,8 @@ def _run_inspection_with_audit(
         "reasons": reasons,
         "actions": next_steps,
         "provenance": ai.get("provenance"),
+        # Degraded runs only: which live call failed ("vlm" or "llm").
+        "failed_stage": failed_stage if degraded else None,
         "ai_outputs": ai_outputs,
         "engine_outputs": engine_outputs,
     }
@@ -633,10 +727,19 @@ def _run_inspection_with_audit(
 
 def create_app() -> FastAPI:
     """Build the application; kept as a factory for clean test clients."""
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Load the CPU detector before the first truck instead of on it
+        # (logs once when it is disabled).
+        detector.warm()
+        yield
+
     app = FastAPI(
         title="Lynceus backend",
         version=__version__,
         description="Assessment service wrapping the Lynceus decision engine.",
+        lifespan=lifespan,
     )
 
     # Dev-friendly: the demo UI may be served from any origin.
@@ -806,6 +909,11 @@ def create_app() -> FastAPI:
             states = {
                 gate: getattr(record.gates, gate).state for gate in audit.GATE_NAMES
             }
+            # Optional gates appear only on records that carry them.
+            for gate in audit.OPTIONAL_GATE_NAMES:
+                result = getattr(record.gates, gate, None)
+                if result is not None:
+                    states[gate] = result.state
             estimate_idr = impact.estimate_prevented_loss(
                 record.verdict.decision,
                 {"detected": record.ai_outputs.vlm.detected},
@@ -875,17 +983,28 @@ def create_app() -> FastAPI:
         return FileResponse(page, media_type="text/html")
 
     def _benchmark_summaries(replay: bool) -> Iterator[dict[str, Any]]:
-        """Readable summaries, newest first: live runs, or offline replays
-        (``*.rescore.summary.json``, which never count as a live run)."""
+        """Readable summaries, newest first: live runs, or offline replays.
+
+        Allow-listed by the summary's own ``kind`` (``"live"`` / ``"replay"``),
+        never by its file name, so a hybrid what-if (or any other kind) is
+        never served as a live run.  A live run that stopped early is still
+        a live run and may be served: its summary says ``complete: false``
+        and the validation page flags it as partial.  Summaries written
+        before ``kind`` existed count only under their exact legacy names
+        (``YYYY-MM-DD.summary.json`` live, ``YYYY-MM-DD.rescore.summary.json``
+        replay)."""
+        wanted = "replay" if replay else "live"
+        legacy = _LEGACY_REPLAY_NAME if replay else _LEGACY_LIVE_NAME
         results = _BENCHMARK_DIR / "results"
         for path in sorted(results.glob("*.summary.json"), reverse=True):
-            if path.name.endswith(".rescore.summary.json") != replay:
-                continue
             try:
                 summary = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if isinstance(summary, dict):
+            if not isinstance(summary, dict):
+                continue
+            kind = summary.get("kind")
+            if kind == wanted or (kind is None and legacy.fullmatch(path.name)):
                 yield summary
 
     @app.get("/benchmark/latest")

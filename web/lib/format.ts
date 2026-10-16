@@ -81,6 +81,12 @@ export function formatSeconds(ms: number | null | undefined): string | null {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** Short latency in whole milliseconds: 153.7 → "154 ms". */
+export function formatMilliseconds(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  return `${Math.round(ms)} ms`;
+}
+
 /**
  * "Live · AMD Token Factory · {model} · 14.5 s": the provenance line for
  * output a live model produced. Missing parts are left out, never guessed.

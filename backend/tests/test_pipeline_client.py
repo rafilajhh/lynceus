@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import threading
 import time
 from email.utils import parsedate_to_datetime
@@ -80,6 +81,181 @@ def test_vlm_result_carries_provider_and_latency(monkeypatch):
     assert result["provider"] == "amd-token-factory"
     assert result["latency_ms"] >= 0
     assert result["provenance"] == "live"
+
+
+def test_vlm_fallback_models_parsed_deduped_and_exclude_primary(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", " vlm-b, vlm-a,,vlm-b , vlm-c")
+    assert get_settings().vlm_fallback_models == ("vlm-b", "vlm-c")
+    monkeypatch.delenv("VLM_FALLBACK_MODELS")
+    assert get_settings().vlm_fallback_models == ()
+
+
+def test_vlm_falls_back_to_next_model_and_reports_it(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    calls = []
+
+    def _chat_once(self, base_url, model, messages, max_tokens=512):
+        calls.append(model)
+        if model == "vlm-a":
+            raise httpx.HTTPStatusError("503", request=None, response=None)
+        return _VLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _chat_once)
+    result = VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert calls == ["vlm-a", "vlm-b"]
+    assert result["model"] == result["model_version"] == "vlm-b"
+    assert len(result["fallback_from"]) == 1
+    assert re.fullmatch(r"vlm-a: HTTPStatusError after \d+\.\d s", result["fallback_from"][0])
+
+
+class _Clock:
+    """A fake ``time.monotonic`` / ``time.perf_counter`` the test advances."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _with_clock(monkeypatch) -> _Clock:
+    clock = _Clock()
+    monkeypatch.setattr(pipeline.time, "monotonic", clock)
+    monkeypatch.setattr(pipeline.time, "perf_counter", clock)
+    return clock
+
+
+def test_vlm_fallback_chain_shares_one_budget_and_times_each_attempt(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    clock = _with_clock(monkeypatch)
+    budgets = []
+
+    def _chat_once(self, base_url, model, messages, max_tokens=512):
+        budgets.append((model, self._timeout_s))
+        if model == "vlm-a":
+            clock.now += 4.0
+            raise httpx.HTTPStatusError("500 no available workers", request=None, response=None)
+        clock.now += 1.5
+        return _VLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _chat_once)
+    result = VLLMClient(settings=get_settings(), timeout_s=10.0).vlm("aGVsbG8=")
+    assert budgets == [("vlm-a", 10.0), ("vlm-b", 6.0)]
+    assert result["fallback_from"] == ["vlm-a: HTTPStatusError after 4.0 s"]
+    assert result["latency_ms"] == pytest.approx(1500.0)  # the answering attempt only
+
+
+def test_vlm_json_retry_only_gets_what_is_left_of_the_budget(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.delenv("VLM_FALLBACK_MODELS", raising=False)
+    clock = _with_clock(monkeypatch)
+    budgets = []
+
+    def _chat_once(self, base_url, model, messages, max_tokens=512):
+        budgets.append(self._timeout_s)
+        clock.now += 7.0
+        return "not json" if len(budgets) == 1 else _VLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _chat_once)
+    VLLMClient(settings=get_settings(), timeout_s=10.0).vlm("aGVsbG8=")
+    assert budgets == [10.0, 3.0]
+
+
+def test_vlm_unreachable_endpoint_does_not_fall_back(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    calls = []
+
+    def _down(self, base_url, model, messages, max_tokens=512):
+        calls.append(model)
+        raise httpx.ConnectError(f"{model}: connection refused")
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _down)
+    with pytest.raises(httpx.ConnectError, match="vlm-a"):
+        VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert calls == ["vlm-a"]
+
+
+def test_vlm_budget_spent_by_the_primary_ends_the_chain(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    clock = _with_clock(monkeypatch)
+    calls = []
+
+    def _chat_once(self, base_url, model, messages, max_tokens=512):
+        calls.append(model)
+        clock.now += 11.0
+        raise httpx.HTTPStatusError("503", request=None, response=None)
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _chat_once)
+    with pytest.raises(pipeline.VisionModelsFailedError) as info:
+        VLLMClient(settings=get_settings(), timeout_s=10.0).vlm("aGVsbG8=")
+    assert calls == ["vlm-a"]
+    assert "vlm-a: HTTPStatusError after 11.0 s" in str(info.value)
+    assert "vlm-b: ReadTimeout" in str(info.value)
+
+
+def test_vlm_every_model_failing_lists_every_attempt(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+
+    def _chat_once(self, base_url, model, messages, max_tokens=512):
+        if model == "vlm-a":
+            raise httpx.HTTPStatusError("400 model not supported", request=None, response=None)
+        raise httpx.ReadTimeout(f"{model} down")
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _chat_once)
+    with pytest.raises(pipeline.VisionModelsFailedError) as info:
+        VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    message = str(info.value)
+    assert message.index("vlm-a: HTTPStatusError") < message.index("vlm-b: ReadTimeout")
+    assert "model not supported" in message
+    assert isinstance(info.value.__cause__, httpx.ReadTimeout)
+
+
+def test_all_vision_models_failing_surfaces_the_primary_in_fallback_reason(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    monkeypatch.setattr(pipeline, "safe_detect", lambda raw, settings: None)
+
+    def _chat_once(self, base_url, model, messages, max_tokens=512):
+        if "image_url" in json.dumps(messages):
+            raise httpx.HTTPStatusError(f"{model} 503", request=None, response=None)
+        return _LLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _chat_once)
+    out = run_inspection(
+        {"photo_base64": "aGVsbG8=", "manifest_text": "x"},
+        VLLMClient(settings=get_settings()),
+        precomputed_gas=None,
+    )
+    assert out["provenance"] == "stub_fallback_live_error"
+    assert "vlm-a: HTTPStatusError" in out["fallback_reason"]
+    assert "vlm-b: HTTPStatusError" in out["fallback_reason"]
+
+
+def test_vlm_without_fallback_reraises_the_original_error(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.delenv("VLM_FALLBACK_MODELS", raising=False)
+
+    def _down(self, base_url, model, messages, max_tokens=512):
+        raise httpx.ReadTimeout(f"{model} down")
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _down)
+    with pytest.raises(httpx.ReadTimeout, match="vlm-a down"):
+        VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+
+
+def test_vlm_primary_success_has_no_fallback_marker(monkeypatch):
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    monkeypatch.setattr(VLLMClient, "_chat_once", lambda self, *a, **k: _VLM_JSON)
+    result = VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+    assert result["model"] == "vlm-a"
+    assert "fallback_from" not in result
 
 
 def test_llm_result_carries_provider_and_latency(monkeypatch):

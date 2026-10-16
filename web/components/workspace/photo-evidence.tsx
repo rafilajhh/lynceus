@@ -10,10 +10,35 @@
  *
  * Honesty: the caption always says how the regions were produced:
  * a 3×3 zone marking (coarse), a model's own boxes, or a scripted sample.
+ *
+ * The CPU detector's second opinion (YOLO26s) is drawn alongside in a
+ * distinct style: dashed outline, "YOLO" tag under the box. Only the boxes
+ * the gate acts on are drawn: metal at/above the hard threshold, glass and
+ * organic at/above the light one (the backend's ``thresholds``, else 0.25);
+ * feedstock detections (paper, plastic, textile) never flag a load.
  */
 
-import type { EvidenceBox } from "@/lib/api";
+import type { DetectorBox, DetectorOutput, EvidenceBox } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+/** Detector classes the gate acts on (backend detector.HARD/LIGHT_LABELS). */
+const DETECTOR_HARD_LABELS = new Set(["metal"]);
+const DETECTOR_LIGHT_LABELS = new Set(["glass", "organic"]);
+/** Backend default thresholds, for records written before they were sent. */
+const DEFAULT_DETECTOR_CONF = 0.25;
+
+/** A detector box the gate would act on: a hard class at/above the hard
+    threshold, a light class at/above the light one; feedstock never. */
+function detectorFlags(box: DetectorBox, detector: DetectorOutput): boolean {
+  const t = detector.thresholds;
+  if (DETECTOR_HARD_LABELS.has(box.label)) {
+    return box.confidence >= (t?.hard ?? DEFAULT_DETECTOR_CONF);
+  }
+  if (DETECTOR_LIGHT_LABELS.has(box.label)) {
+    return box.confidence >= (t?.light ?? DEFAULT_DETECTOR_CONF);
+  }
+  return false;
+}
 
 const HARD_CONTAMINANTS = new Set([
   "metal",
@@ -50,12 +75,19 @@ function captionFor({
   return `Located by ${model || "the vision model"}`;
 }
 
+/** "yolo26s-realwaste" → "YOLO26s"; unknown ids are shown as sent. */
+export function detectorName(model: string | null | undefined): string {
+  if (!model) return "the detector";
+  return /^yolo26s/i.test(model) ? "YOLO26s" : model;
+}
+
 export function PhotoEvidence({
   src,
   alt,
   boxes,
   localisation,
   model,
+  detector = null,
   sourceNote = null,
   pending = false,
   className,
@@ -68,6 +100,8 @@ export function PhotoEvidence({
   localisation: "box" | "zone" | null | undefined;
   /** Vision model id, named when it drew the boxes itself. */
   model?: string | null;
+  /** CPU detector second opinion; null = it did not run (nothing drawn). */
+  detector?: DetectorOutput | null;
   /** Where non-live regions came from ("Scripted sample", "Scripted
       fallback"), prefixed to the caption; null makes no provenance claim. */
   sourceNote?: string | null;
@@ -76,9 +110,19 @@ export function PhotoEvidence({
   className?: string;
 }) {
   const shown = pending ? [] : boxes;
-  const items = shown.map(
-    (b) => `${b.label}${isHardContaminant(b.label) ? " (hard contaminant)" : ""}`,
-  );
+  const detectorShown =
+    pending || !detector
+      ? []
+      : detector.boxes.filter((b) => detectorFlags(b, detector));
+  const yolo = detectorName(detector?.model);
+  const items = [
+    ...shown.map(
+      (b) => `${b.label}${isHardContaminant(b.label) ? " (hard contaminant)" : ""}`,
+    ),
+    ...detectorShown.map(
+      (b) => `${yolo} detector: ${b.label} ${b.confidence.toFixed(2)}`,
+    ),
+  ];
   const ariaLabel =
     `${alt}. ` +
     (pending
@@ -86,9 +130,21 @@ export function PhotoEvidence({
       : items.length > 0
         ? `${items.length} marked region${items.length === 1 ? "" : "s"}: ${items.join(", ")}.`
         : "No contaminant regions marked.");
-  const caption = captionFor({ pending, boxes: shown, localisation, model });
-  const hasHard = shown.some((b) => isHardContaminant(b.label));
-  const hasLight = shown.some((b) => !isHardContaminant(b.label));
+  const vlmCaption = captionFor({ pending, boxes: shown, localisation, model });
+  // Both models named: the VLM's regions are solid, the detector's dashed.
+  const caption =
+    pending || !detector
+      ? vlmCaption
+      : `${vlmCaption}${shown.length > 0 ? " (solid)" : ""} · ` +
+        (detectorShown.length > 0
+          ? `${yolo} on CPU (dashed): ${detectorShown.length} region${detectorShown.length === 1 ? "" : "s"}`
+          : `${yolo} on CPU: no metal, glass or organic boxes`);
+  const hasHard =
+    shown.some((b) => isHardContaminant(b.label)) ||
+    detectorShown.some((b) => isHardContaminant(b.label));
+  const hasLight =
+    shown.some((b) => !isHardContaminant(b.label)) ||
+    detectorShown.some((b) => !isHardContaminant(b.label));
 
   return (
     <figure className={cn("m-0 flex flex-col gap-2", className)}>
@@ -152,6 +208,43 @@ export function PhotoEvidence({
                 </span>
               );
             })}
+            {detectorShown.map((d, i) => {
+              const [x0, y0, x1, y1] = d.box;
+              const hard = isHardContaminant(d.label);
+              // The YOLO tag hangs under the box (VLM chips sit above), inside
+              // it when the box reaches the bottom edge.
+              const tagInside = y1 > 0.92;
+              const tagRight = x0 > 0.7;
+              return (
+                <span
+                  key={`yolo-${d.label}-${i}`}
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute rounded-[3px] border-2 border-dashed",
+                    hard ? "border-verdict-red" : "border-amber",
+                  )}
+                  style={{
+                    left: `${x0 * 100}%`,
+                    top: `${y0 * 100}%`,
+                    width: `${(x1 - x0) * 100}%`,
+                    height: `${(y1 - y0) * 100}%`,
+                  }}
+                >
+                  <span
+                    className={cn(
+                      "figure absolute rounded-[3px] border bg-ground/85 px-1 py-px text-[10px] font-semibold tracking-[0.4px] whitespace-nowrap uppercase",
+                      hard
+                        ? "border-verdict-red text-verdict-red"
+                        : "border-amber text-amber",
+                      tagInside ? "bottom-0" : "top-full mt-0.5",
+                      tagRight ? "right-0" : "left-0",
+                    )}
+                  >
+                    {`YOLO ${d.label} ${d.confidence.toFixed(2)}`}
+                  </span>
+                </span>
+              );
+            })}
           </div>
         ) : (
           <p className="m-0 flex min-h-[120px] w-full items-center justify-center px-4 py-6 text-center text-[13px] text-muted">
@@ -174,6 +267,12 @@ export function PhotoEvidence({
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-amber" />
             other contaminant
+          </span>
+        ) : null}
+        {detectorShown.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-dashed border-muted" />
+            {`${yolo} detector`}
           </span>
         ) : null}
       </figcaption>

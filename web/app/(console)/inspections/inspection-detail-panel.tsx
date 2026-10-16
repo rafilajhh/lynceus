@@ -9,7 +9,13 @@ import {
   type PhotoInput,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { formatSeconds, formatWeight, liveProvenance, relativeTime } from "@/lib/format";
+import {
+  formatMilliseconds,
+  formatSeconds,
+  formatWeight,
+  liveProvenance,
+  relativeTime,
+} from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -44,6 +50,7 @@ const GATE_LABEL: Record<string, string> = {
   weight_plausibility: "Weight Plausibility",
   gas_plausibility: "Gas Plausibility",
   manifest_crosscheck: "Manifest Cross-check",
+  detector_second_opinion: "Detector second opinion",
 };
 
 /** Demo photos are public assets: a record whose photo came from one can
@@ -72,6 +79,8 @@ function scriptedNote(model: string | null | undefined, uncertainty: string | un
 /** One model's provenance, stated from what the record holds. */
 function modelProvenance(out: ModelOutput, uncertainty: string | undefined): string {
   if (!out?.model) return "Not recorded";
+  // Detector-only degraded run: the backend records no model output.
+  if (out.model === "unavailable") return "Unavailable · detector-only degraded run";
   if (out.provider) return liveProvenance(out.provider, out.model, out.latency_ms);
   const note = scriptedNote(out.model, uncertainty);
   if (note) return `${note} · ${out.model}`;
@@ -354,6 +363,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             boxes={vlm?.boxes ?? []}
             localisation={vlm?.localisation}
             model={vlm?.model}
+            detector={detail.ai_outputs?.detector}
             sourceNote={scriptedNote(vlm?.model, uncertainty)}
           />
         </section>
@@ -371,6 +381,18 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
           <dd className="m-0 break-words text-ink">{modelProvenance(vlm, uncertainty)}</dd>
           <dt className="text-muted">Waybill</dt>
           <dd className="m-0 break-words text-ink">{modelProvenance(llm, uncertainty)}</dd>
+          <dt className="text-muted">Detector</dt>
+          <dd className="m-0 break-words text-ink">
+            {detail.ai_outputs?.detector
+              ? [
+                  detail.ai_outputs.detector.model,
+                  detail.ai_outputs.detector.runtime,
+                  formatMilliseconds(detail.ai_outputs.detector.latency_ms),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Not run"}
+          </dd>
         </dl>
       </section>
 

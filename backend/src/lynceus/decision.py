@@ -21,6 +21,19 @@ pattern 14):
 4. ``accept`` — no red flags and the engine recommendation is actionable
    and not tied.
 
+The CPU object detector (:mod:`lynceus.detector`) is a second opinion, never
+a verdict of its own: a hard contaminant it flags (at/above
+``detector_hard_conf``) that the VLM did not confidently confirm holds the
+truck for a human (escalate, never accept, never reject); a light one the VLM
+did not report does the same unless ``detector_escalate_light`` is off.  When
+the live vision model is unavailable, :func:`decide_degraded` holds every
+truck for a human and lists what the detector saw (or refuses, when a
+mandatory input is missing).
+
+A VLM answer from a fallback model outside the benchmarked set never
+decides a load on its own: an accept or a reject becomes ``escalate_human``.
+A VLM answer with no numeric confidence counts as a missing VLM result.
+
 Only the audit enums are used so the fused output slots straight into
 ``audit.finish_record`` without any mapping layer.
 """
@@ -28,8 +41,9 @@ Only the audit enums are used so the fused output slots straight into
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from lynceus import detector as cv_detector
 from lynceus.audit import Decision, GateState, Route
 
 __all__ = [
@@ -38,9 +52,12 @@ __all__ = [
     "HARD_CONTAMINANT_CONFIDENCE",
     "UNSAFE_VLM_CONFIDENCE",
     "WEIGHT_MISMATCH_THRESHOLD",
+    "DETECTOR_HARD_CONFIDENCE",
+    "DETECTOR_LIGHT_CONFIDENCE",
     "confident_hard_contaminants",
     "GAS_CH4_ANAEROBIC_THRESHOLD_PPM",
     "decide",
+    "decide_degraded",
 ]
 
 
@@ -70,6 +87,15 @@ MOISTURE_CONFLICT_MARGIN = 0.15
 #: (ppmv above the bin).  Very high CH4 with a "dry" waybill claim means
 #: the load is far wetter and older than declared.
 GAS_CH4_ANAEROBIC_THRESHOLD_PPM = 100.0
+#: Default detector thresholds (``config.Settings`` overrides them per call).
+#: Read off the 80-image RealWaste test set itself (no calibration split).
+DETECTOR_HARD_CONFIDENCE = 0.25
+DETECTOR_LIGHT_CONFIDENCE = 0.25
+#: How reasons name the detector.
+DETECTOR_NAME = "Detector (YOLO26s)"
+#: Vision models with a benchmark run behind them (``config.Settings``
+#: overrides this per call): a fallback model outside it cannot decide alone.
+BENCHMARKED_VLM_MODELS: Tuple[str, ...] = ("MiniCPM-V-4.7-35B-A3B",)
 
 
 def _gate(
@@ -155,6 +181,203 @@ def confident_hard_contaminants(
     return []
 
 
+def _findings_text(findings: Dict[str, float]) -> str:
+    return ", ".join(f"{name} ({conf:.2f})" for name, conf in sorted(findings.items()))
+
+
+def _top_finding(
+    hard: Dict[str, float], light: Dict[str, float], hard_conf: float, light_conf: float
+) -> Tuple[Optional[float], float]:
+    """``(value, threshold)`` for a detector gate: the highest finding and the
+    threshold of its own class (hard or light), so the two share a unit.
+    Nothing found: ``(None, hard_conf)``."""
+    best = max(
+        [(conf, hard_conf) for conf in hard.values()]
+        + [(conf, light_conf) for conf in light.values()],
+        default=None,
+    )
+    return (None, hard_conf) if best is None else best
+
+
+#: Appended to a failed detector gate's reason once the verdict is known.
+_DETECTOR_HELD = " The truck is held for a manual check."
+_DETECTOR_OUTRANKED = (
+    " Not acted on: the load is rejected on other grounds, which outrank a "
+    "detector finding."
+)
+
+
+def _missing_mandatory(inputs: Dict[str, Any]) -> List[str]:
+    """The mandatory inputs (photo, manifest) the payload lacks."""
+    photo_present = bool(
+        inputs.get("photo_base64")
+        or inputs.get("photo")
+        or inputs.get("photo_filename")
+        or inputs.get("demo_case")
+    )
+    missing = [] if photo_present else ["photo"]
+    if not str(inputs.get("manifest_text") or "").strip():
+        missing.append("manifest_text")
+    return missing
+
+
+def _detector_second_opinion(
+    detector_result: Optional[Dict[str, Any]],
+    confirmed_hard: List[str],
+    confirmed_light: List[str],
+    hard_conf: float,
+    light_conf: float,
+    escalate_light: bool,
+) -> Tuple[Dict[str, Any], List[str]]:
+    """The ``detector_second_opinion`` gate and its escalate reasons.
+
+    The gate fails when the detector flags a contaminant the VLM did not
+    confirm (a hard one not in the VLM's confident list; a light one the VLM
+    did not report, only while ``escalate_light`` is on).  Agreement, or
+    nothing flagged, passes.  The detector never produces a reject.  A failed
+    gate's reason states the finding only; :func:`decide` appends what came
+    of it once the verdict is known (held, or outranked by a reject).
+    """
+    if not isinstance(detector_result, dict):
+        return (
+            _not_run("Detector second opinion did not run (disabled, no photo, or "
+                     "an image it could not read)."),
+            [],
+        )
+    hard, light = cv_detector.flagged(detector_result, hard_conf, light_conf)
+    unconfirmed_hard = {k: v for k, v in hard.items() if k not in confirmed_hard}
+    unconfirmed_light = {k: v for k, v in light.items() if k not in confirmed_light}
+    findings = [
+        f"{DETECTOR_NAME} flagged {name} ({conf:.2f}) that the vision model did not confirm"
+        for name, conf in sorted(unconfirmed_hard.items())
+    ]
+    if escalate_light:
+        findings += [
+            f"{DETECTOR_NAME} flagged {name} ({conf:.2f}) that the vision model did not report"
+            for name, conf in sorted(unconfirmed_light.items())
+        ]
+    if findings:
+        value, threshold = _top_finding(
+            unconfirmed_hard, unconfirmed_light if escalate_light else {}, hard_conf, light_conf
+        )
+        return (
+            _gate(
+                GateState.FAILED,
+                value=value,
+                threshold=threshold,
+                reason=" ".join(f"{f}." for f in findings),
+            ),
+            [f"{f}; hold for a manual check." for f in findings],
+        )
+    found = {**hard, **light}
+    if unconfirmed_light:  # escalate_light is off
+        reason = (
+            f"{DETECTOR_NAME} flagged {_findings_text(unconfirmed_light)} that the vision "
+            "model did not report; light detector findings are set not to escalate."
+        )
+    elif found:
+        reason = f"{DETECTOR_NAME} findings agree with the vision model: {_findings_text(found)}."
+    else:
+        reason = (
+            f"{DETECTOR_NAME} found no hard contaminant at/above {hard_conf:.2f} and no "
+            f"light one at/above {light_conf:.2f}."
+        )
+    value, threshold = _top_finding(hard, light, hard_conf, light_conf)
+    return (
+        _gate(GateState.PASSED, value=value, threshold=threshold, reason=reason),
+        [],
+    )
+
+
+def decide_degraded(
+    detector_result: Dict[str, Any],
+    failure: str,
+    *,
+    detector_hard_conf: float = DETECTOR_HARD_CONFIDENCE,
+    detector_light_conf: float = DETECTOR_LIGHT_CONFIDENCE,
+    vision_label: str = "AMD vision model",
+    inputs: Optional[Dict[str, Any]] = None,
+    failed_stage: str = "vlm",
+) -> Tuple[str, Dict[str, Any], List[str]]:
+    """Verdict when a live model call failed but the detector answered.
+
+    ``escalate_human``: one CPU detector trained on RealWaste photos may hold
+    a truck for a human, never clear or reject it on its own.  The reasons
+    say which live call failed (``failed_stage``: ``"vlm"``, the vision
+    model; ``"llm"``, the waybill model, whose vision answer is then
+    discarded unfused) and list what the detector saw; every AI-dependent
+    gate is stated ``not_run``, and a detector that flagged nothing is
+    ``not_evaluated`` (with no vision answer to compare against, silence is
+    no clearance).  When ``inputs`` lacks a mandatory input (photo,
+    manifest) the verdict is ``refuse_insufficient_input`` instead, exactly
+    as :func:`decide` refuses (``gates["missing"]`` lists them): never an
+    accept or a reject.
+    """
+    hard, light = cv_detector.flagged(detector_result, detector_hard_conf, detector_light_conf)
+    unavailable = (
+        f"The waybill model was unavailable ({failure}); the vision answer was not "
+        "fused and is discarded."
+        if failed_stage == "llm"
+        else f"The {vision_label} was unavailable ({failure})."
+    )
+    missing = _missing_mandatory(dict(inputs)) if inputs is not None else []
+    gates: Dict[str, Any]
+    if missing:
+        gates = {
+            "vlm_confidence": _not_run(unavailable),
+            "ocr_confidence": _not_run("Manifest analysis not run: input incomplete."),
+            "manifest_crosscheck": _not_run("Cross-check not run: input incomplete."),
+            "gas_plausibility": _not_run("Gas readings not part of this inspection."),
+            "weight_plausibility": _not_run("Weight not evaluated: input incomplete."),
+            "detector_second_opinion": _gate(
+                GateState.NOT_EVALUATED,
+                reason="Detector second opinion not evaluated: input incomplete.",
+            ),
+            "missing": missing,
+        }
+        return (
+            Decision.REFUSE_INSUFFICIENT_INPUT,
+            gates,
+            [
+                f"Mandatory input missing: {name}. The inspection cannot proceed without it."
+                for name in missing
+            ],
+        )
+    found = {**hard, **light}
+    value, threshold = _top_finding(hard, light, detector_hard_conf, detector_light_conf)
+    gates = {
+        "vlm_confidence": _not_run(unavailable),
+        "ocr_confidence": _not_run("Manifest analysis not run: live AI unavailable."),
+        "manifest_crosscheck": _not_run("Cross-check not run: live AI unavailable."),
+        "gas_plausibility": _not_run("Not evaluated in detector-only degraded mode."),
+        "weight_plausibility": _not_run("Not evaluated in detector-only degraded mode."),
+        "detector_second_opinion": _gate(
+            GateState.FAILED if found else GateState.NOT_EVALUATED,
+            value=value,
+            threshold=threshold,
+            reason=(
+                f"Detector-only mode: {DETECTOR_NAME} flagged {_findings_text(found)}."
+                if found
+                else f"Detector-only mode: {DETECTOR_NAME} flagged nothing at/above "
+                "its thresholds; with no vision answer to compare against, that is "
+                "not a clearance."
+            ),
+        ),
+    }
+    reasons = [unavailable + " The truck is held for a human inspector."]
+    if hard:
+        reasons.append(f"{DETECTOR_NAME} flagged hard contamination: {_findings_text(hard)}.")
+    if light:
+        reasons.append(f"{DETECTOR_NAME} flagged light contamination: {_findings_text(light)}.")
+    if not found:
+        reasons.append(
+            f"{DETECTOR_NAME} flagged no contaminant at/above its thresholds; the "
+            "detector alone cannot clear a load."
+        )
+    reasons.append("Detector-only degraded mode never accepts or rejects a load.")
+    return Decision.ESCALATE_HUMAN, gates, reasons
+
+
 # ---------------------------------------------------------------------------
 # The fusion layer
 # ---------------------------------------------------------------------------
@@ -165,8 +388,19 @@ def decide(
     vlm_result: Optional[Dict[str, Any]],
     llm_result: Optional[Dict[str, Any]],
     engine_result: Optional[Dict[str, Any]],
+    detector_result: Optional[Dict[str, Any]] = None,
+    *,
+    detector_hard_conf: float = DETECTOR_HARD_CONFIDENCE,
+    detector_light_conf: float = DETECTOR_LIGHT_CONFIDENCE,
+    detector_escalate_light: bool = True,
+    benchmarked_vlm_models: Sequence[str] = BENCHMARKED_VLM_MODELS,
 ) -> Tuple[str, Dict[str, Any], List[str]]:
     """Fuse all pipeline outputs into ``(verdict, gates, reasons)``.
+
+    A VLM result that came from a fallback model (non-empty
+    ``fallback_from``) whose ``model`` is not in ``benchmarked_vlm_models``
+    may hold a load but never accept or reject it: either becomes
+    ``escalate_human`` with a reason naming the model.
 
     Args:
         inputs: The inspection payload dict (``truck_id``, ``photo_base64``,
@@ -174,11 +408,16 @@ def decide(
             All keys optional at this layer; absence feeds the refuse logic.
         vlm_result: ``ai_clients.vlm(photo)`` output — must contain
             ``detected`` (dict) and ``confidence`` (float 0..1); ``None``
-            means the VLM call failed outright.
+            means the VLM call failed outright, and a result without a
+            numeric ``confidence`` is refused the same way.
         llm_result: ``ai_clients.llm(manifest_text, context)`` output with
             ``reasoning`` / ``confidence`` / optional ``crosscheck``.
         engine_result: ``engine_adapter.run_assessment`` output dict, or None
             when the engine was unavailable.
+        detector_result: :func:`lynceus.detector.detect` output, or None when
+            the detector did not run (gate ``detector_second_opinion`` then
+            says ``not_run``).  Its thresholds and the light-escalation
+            switch come from the keyword arguments.
 
         ``gas_plausibility``, ``weight_plausibility``) and ``reasons`` is a
         list of human-readable English sentences for the demo UI.
@@ -206,15 +445,17 @@ def decide(
     manifest_text = inputs.get("manifest_text") or ""
     manifest_present = bool(manifest_text.strip())
 
+    vlm_detected: Dict[str, Any] = (vlm_result or {}).get("detected") or {}
+    vlm_confidence = _as_float((vlm_result or {}).get("confidence"))
+
     if not photo_present:
         missing.append("photo")
-    if vlm_result is None:
+    # A VLM answer without a numeric confidence is no answer: it could
+    # otherwise slip past every confidence rule into an accept.
+    if vlm_result is None or vlm_confidence is None:
         missing.append("vlm_result")
     if not manifest_present:
         missing.append("manifest_text")
-
-    vlm_detected: Dict[str, Any] = (vlm_result or {}).get("detected") or {}
-    vlm_confidence = _as_float((vlm_result or {}).get("confidence"))
 
     if missing:
         # Even the gates stay honest: a gate that could not run says so.
@@ -230,6 +471,12 @@ def decide(
             "manifest_crosscheck": _not_run("Cross-check not run: input incomplete."),
             "gas_plausibility": _not_run("Gas readings not part of this inspection."),
             "weight_plausibility": _not_run("Weight not evaluated: input incomplete."),
+            "detector_second_opinion": _gate(
+                GateState.NOT_EVALUATED,
+                reason="Detector second opinion not evaluated: input incomplete.",
+            )
+            if isinstance(detector_result, dict)
+            else _not_run("Detector second opinion did not run."),
             "missing": missing,
         }
         reasons = [
@@ -279,26 +526,19 @@ def decide(
         weight_gate = _not_run("No weighbridge weight supplied.")
 
     # ----- VLM confidence gate -------------------------------------------
-    if vlm_confidence is None:
-        vlm_gate = _gate(
-            GateState.FAILED,
-            value=None,
-            threshold=UNSAFE_VLM_CONFIDENCE,
-            reason="VLM did not report a usable confidence value.",
+    assert vlm_confidence is not None  # refused above, kept for type checkers
+    vlm_gate = _gate(
+        GateState.FAILED,
+        value=vlm_confidence,
+        threshold=UNSAFE_VLM_CONFIDENCE,
+        reason=f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
+        f"{UNSAFE_VLM_CONFIDENCE:.2f}.",
+    )
+    if vlm_confidence >= UNSAFE_VLM_CONFIDENCE:
+        vlm_gate["state"] = GateState.PASSED
+        vlm_gate["reason"] = (
+            f"VLM confidence {vlm_confidence:.2f} is within the safe range."
         )
-    else:
-        vlm_gate = _gate(
-            GateState.FAILED,
-            value=vlm_confidence,
-            threshold=UNSAFE_VLM_CONFIDENCE,
-            reason=f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
-            f"{UNSAFE_VLM_CONFIDENCE:.2f}.",
-        )
-        if vlm_confidence >= UNSAFE_VLM_CONFIDENCE:
-            vlm_gate["state"] = GateState.PASSED
-            vlm_gate["reason"] = (
-                f"VLM confidence {vlm_confidence:.2f} is within the safe range."
-            )
 
     # ----- Contamination scan (hard: shared helper; light: VLM detections) --
     detected_text = " ".join(str(part) for part in vlm_detected.values()).lower()
@@ -399,12 +639,22 @@ def decide(
                 ),
             )
 
+    detector_gate, detector_reasons = _detector_second_opinion(
+        detector_result,
+        confident_hard,
+        light_hits,
+        detector_hard_conf,
+        detector_light_conf,
+        detector_escalate_light,
+    )
+
     gates: Dict[str, Any] = {
         "vlm_confidence": vlm_gate,
         "ocr_confidence": ocr_gate,
         "manifest_crosscheck": manifest_gate,
         "gas_plausibility": gas_gate,
         "weight_plausibility": weight_gate,
+        "detector_second_opinion": detector_gate,
     }
 
     # ----- Verdict fusion (priority: refuse > reject > escalate > accept) --
@@ -424,7 +674,30 @@ def decide(
             f"{UNSAFE_VLM_CONFIDENCE:.2f} — the visual analysis is unsafe to act on."
         )
 
+    # A fallback vision model with no benchmark run behind it may hold a
+    # load, never decide one: its would-be accept or reject is escalated.
+    fallback_from = (vlm_result or {}).get("fallback_from")
+    answered_by = str((vlm_result or {}).get("model") or "unknown")
+    unbenchmarked = (
+        f"The photo was read by {answered_by}, a fallback vision model with no "
+        "benchmark run behind it (failed first: "
+        f"{'; '.join(str(f) for f in fallback_from)}). An unbenchmarked model cannot "
+        "accept or reject a load on its own; hold for a manual check."
+        if fallback_from and answered_by not in benchmarked_vlm_models
+        else None
+    )
+
     if reasons:  # any hard red flag → reject
+        if unbenchmarked:
+            if detector_reasons:
+                detector_gate["reason"] += _DETECTOR_HELD
+            return (
+                Decision.ESCALATE_HUMAN,
+                gates,
+                [unbenchmarked, *reasons, *detector_reasons],
+            )
+        if detector_reasons:  # the gate failed, but the reject outranks it
+            detector_gate["reason"] += _DETECTOR_OUTRANKED
         return Decision.REJECT, gates, reasons
 
     # Amber flags → escalate
@@ -443,6 +716,10 @@ def decide(
         escalate_reasons.append(
             "The manifest cross-check failed, but not on a major weight mismatch."
         )
+    # The detector's unconfirmed findings: never a reject, never an accept.
+    escalate_reasons.extend(detector_reasons)
+    if detector_reasons:
+        detector_gate["reason"] += _DETECTOR_HELD
 
     if escalate_reasons:
         return Decision.ESCALATE_HUMAN, gates, escalate_reasons
@@ -468,6 +745,9 @@ def decide(
             gates,
             ["Engine routes tied within 0.02; hold for supervisor review."],
         )
+
+    if unbenchmarked:
+        return Decision.ESCALATE_HUMAN, gates, [unbenchmarked]
 
     reasons.append(
         "No red flags: no hard contamination, weight within tolerance, VLM confidence "

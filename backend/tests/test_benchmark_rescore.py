@@ -173,3 +173,101 @@ def test_live_source_untouched_and_globals_restored(replayed):
     assert replayed["source"].read_text(encoding="utf-8") == replayed["source_text"]
     assert pipeline.resolve_clients is replayed["original_resolve"]
     assert os.environ.get("LYNCEUS_GAS_SENSOR_URL") == "http://gas.invalid"
+
+
+def test_plain_replay_runs_with_the_detector_off(replayed):
+    # The recorded run had no detector: the replay states the gate not_run.
+    for row in replayed["rows"].values():
+        if not row.get("error"):
+            assert row["gates"]["detector_second_opinion"] == "not_run"
+
+
+# ---------------------------------------------------------------------------
+# Hybrid what-if: the same recorded rows fused with recorded detections.
+# ---------------------------------------------------------------------------
+
+
+def _boxes(*pairs):
+    return {"boxes": [{"label": label, "confidence": conf, "box": [0.1, 0.1, 0.5, 0.5]}
+                      for label, conf in pairs], "latency_ms": None}
+
+
+HYBRID_RECORDED = [
+    _row("metal_1.jpg", "Metal", "reject", "reject", hard=["metal"], prose="metal can"),
+    # The VLM missed this metal item; the detector did not.
+    _row("metal_2.jpg", "Metal", "reject", "accept"),
+    # The VLM missed this glass item; only light escalation catches it.
+    _row("glass_1.jpg", "Glass", "escalate", "accept"),
+    _row("paper_1.jpg", "Paper", "accept", "accept"),
+]
+DETECTIONS = {
+    "metal_1.jpg": _boxes(("metal", 0.96)),
+    "metal_2.jpg": _boxes(("metal", 0.3)),
+    "glass_1.jpg": _boxes(("glass", 0.8)),
+    "paper_1.jpg": _boxes(("paper", 0.9)),
+}
+
+
+@pytest.fixture
+def hybrid(tmp_path, monkeypatch):
+    def no_network(*args, **kwargs):
+        raise AssertionError("the replay must not touch the network")
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", no_network)
+    monkeypatch.setattr(httpx, "get", no_network)
+    images = tmp_path / "images"
+    images.mkdir()
+    for row in HYBRID_RECORDED:  # distinct bytes: detections are matched by photo digest
+        (images / row["image"]).write_bytes(JPEG + row["image"].encode("ascii"))
+    manifest = tmp_path / "manifest.csv"
+    manifest.write_text("image,category,expected\n" + "".join(
+        f"{r['image']},x,y\n" for r in HYBRID_RECORDED), encoding="utf-8")
+    source = tmp_path / "2026-10-13.jsonl"
+    source.write_text("".join(json.dumps(r) + "\n" for r in HYBRID_RECORDED), encoding="utf-8")
+    out = tmp_path / "2026-10-16.hybrid-rescore.summary.json"
+    original_detect = pipeline.safe_detect
+    summary = rescore.hybrid_rescore(source, DETECTIONS, detections_source="test",
+                                     detector_runtime="ultralytics-predict",
+                                     out=out, images_dir=images, manifest=manifest,
+                                     log=lambda m: None, today="2026-10-16")
+    assert pipeline.safe_detect is original_detect  # restored after every variant
+    return {"summary": summary, "out": out}
+
+
+def test_hybrid_variants(hybrid):
+    s = hybrid["summary"]
+    assert s["kind"] == "hybrid_replay" and "no calibration split" in s["disclosure"]
+    assert json.loads(hybrid["out"].read_text(encoding="utf-8")) == s
+    # The summary names what produced the boxes, not a runtime it did not use.
+    assert s["detector"]["runtime"] == "ultralytics-predict"
+    t = s["table"]
+    assert t["vlm_only"]["metal_accepted"] == 1
+    assert t["hybrid_light_escalation_on"]["metal_accepted"] == 0
+    assert t["hybrid_light_escalation_on"]["escalate_recall"] == 1.0
+    assert t["hybrid_light_escalation_off"]["escalate_recall"] == 0.0
+    # The detector alone never rejects: metal recall stays the VLM's.
+    assert t["hybrid_light_escalation_on"]["metal_reject_recall"] == 0.5
+    changed = {c["image"]: c for c in
+               s["variants"]["hybrid_light_escalation_on"]["changed_vs_vlm_only"]}
+    assert set(changed) == {"metal_2.jpg", "glass_1.jpg"}
+    assert changed["metal_2.jpg"]["hybrid"] == "escalate"
+    # At 0.5 the 0.3 metal box no longer holds the truck; at 0.1 it does.
+    assert s["sweep_detector_hard_conf"]["0.5"]["light_escalation_off"]["metal_accepted"] == 1
+    assert s["sweep_detector_hard_conf"]["0.1"]["light_escalation_off"]["metal_accepted"] == 0
+
+
+def test_committed_hybrid_summary_was_produced_by_lynceus_detector():
+    path = Path(rescore.__file__).resolve().parent / "results" / "2026-10-16.hybrid-rescore.summary.json"
+    d = json.loads(path.read_text(encoding="utf-8"))["detector"]
+    assert d["runtime"] == "onnxruntime-cpu" and d["detections_source"].startswith("lynceus.detector")
+    assert d["model_sha256"].startswith("sha256:")
+
+
+def test_hybrid_degraded_mode_holds_every_truck(hybrid):
+    d = hybrid["summary"]["variants"]["detector_only_degraded"]
+    assert d["confusion"]["accept"]["escalate"] == 1 and d["review_rate"] == 1.0
+    assert d["errors"] == 0
+    f = d["detector_findings"]
+    assert f["by_expected"]["reject"] == {"n": 2, "metal": 2, "light": 0, "nothing": 0}
+    assert f["by_expected"]["accept"]["nothing"] == 1
+    assert f["advisory_gate"] == "4/4"

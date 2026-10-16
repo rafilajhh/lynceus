@@ -234,13 +234,21 @@ def estimate_prevented_loss(
     if verdict == "escalate_human":
         moisture = _visual_moisture_fraction(vlm_result)
         if moisture is None:
+            # No vision analysis at all (detector-only degraded mode) is not
+            # the same as a VLM that answered without a moisture figure.
+            ran = bool((vlm_result or {}).get("detected"))
             return {
                 "prevented_loss_idr": 0,
                 "prevented_loss_usd": 0,
                 "basis": basis,
                 "note": (
                     "ESCALATE: combustion impact cannot be estimated — "
-                    "the VLM reported no usable moisture estimate."
+                    + (
+                        "the VLM reported no usable moisture estimate."
+                        if ran
+                        else "no vision-language analysis was used (detector-only "
+                        "degraded mode), so there is no moisture estimate."
+                    )
                 ),
             }
         water_kg = weight * moisture

@@ -1,0 +1,2101 @@
+[
+ {
+  "image": "metal_1.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.4907,
+    "box": [
+     0.3867,
+     0.1325,
+     0.7753,
+     0.5834
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1328,
+    "box": [
+     0.0,
+     0.0002,
+     0.995,
+     0.9945
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_1.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "plastic bottle",
+    "conf": 0.3203,
+    "box": [
+     0.3934,
+     0.08,
+     0.6235,
+     0.9378
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1419,
+    "box": [
+     0.0002,
+     0.0,
+     0.9967,
+     0.9908
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_1.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.1306,
+    "box": [
+     0.0,
+     0.0,
+     1.0,
+     0.9937
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_1.jpg",
+  "category": "Vegetation",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.1048,
+    "box": [
+     0.0,
+     0.0337,
+     0.9979,
+     1.0
+    ]
+   },
+   {
+    "label": "leaves",
+    "conf": 0.0504,
+    "box": [
+     0.5807,
+     0.2249,
+     0.6969,
+     0.3719
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_1.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "rock",
+    "conf": 0.0738,
+    "box": [
+     0.0,
+     0.0,
+     0.9962,
+     0.9896
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_1.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.4063,
+    "box": [
+     0.0066,
+     0.0,
+     0.9995,
+     0.982
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_1.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.3179,
+    "box": [
+     0.1935,
+     0.0858,
+     0.7896,
+     0.9196
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2022,
+    "box": [
+     0.0081,
+     0.0003,
+     0.9997,
+     0.9929
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_1.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.126,
+    "box": [
+     0.0,
+     0.0,
+     0.996,
+     0.9808
+    ]
+   },
+   {
+    "label": "metal pipe",
+    "conf": 0.1253,
+    "box": [
+     0.0656,
+     0.2045,
+     0.9604,
+     0.7005
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_40.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.2911,
+    "box": [
+     0.0072,
+     0.0,
+     1.0,
+     0.9965
+    ]
+   },
+   {
+    "label": "plastic bottle",
+    "conf": 0.1761,
+    "box": [
+     0.3464,
+     0.0361,
+     0.5573,
+     0.9036
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_61.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.2771,
+    "box": [
+     0.0,
+     0.0001,
+     0.9965,
+     0.9954
+    ]
+   },
+   {
+    "label": "metal can",
+    "conf": 0.1412,
+    "box": [
+     0.2806,
+     0.3249,
+     0.7083,
+     0.7196
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_59.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.6048,
+    "box": [
+     0.0,
+     0.0,
+     0.9954,
+     0.9897
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.2008,
+    "box": [
+     0.4498,
+     0.7452,
+     0.4863,
+     0.769
+    ]
+   },
+   {
+    "label": "food waste",
+    "conf": 0.0535,
+    "box": [
+     0.3321,
+     0.39,
+     0.6452,
+     0.6836
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_73.jpg",
+  "category": "Vegetation",
+  "boxes": [
+   {
+    "label": "metal scrap",
+    "conf": 0.203,
+    "box": [
+     0.1198,
+     0.1626,
+     0.8251,
+     0.8093
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0738,
+    "box": [
+     0.0001,
+     0.0,
+     0.9935,
+     0.9933
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_51.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.3372,
+    "box": [
+     0.0947,
+     0.0848,
+     0.9328,
+     0.9158
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_47.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.4259,
+    "box": [
+     0.0807,
+     0.0489,
+     0.8968,
+     0.9004
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.0509,
+    "box": [
+     0.4142,
+     0.4363,
+     0.5809,
+     0.6129
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_93.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.4052,
+    "box": [
+     0.4264,
+     0.3335,
+     0.7098,
+     0.6175
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2184,
+    "box": [
+     0.0,
+     0.0,
+     0.9976,
+     0.9914
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_32.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.2567,
+    "box": [
+     0.0006,
+     0.0,
+     0.9976,
+     0.9969
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_79.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.5068,
+    "box": [
+     0.1273,
+     0.2177,
+     0.8968,
+     0.7925
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0542,
+    "box": [
+     0.0,
+     0.0007,
+     0.9902,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_121.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.4386,
+    "box": [
+     0.0,
+     0.0,
+     0.9953,
+     0.9959
+    ]
+   },
+   {
+    "label": "cardboard box",
+    "conf": 0.247,
+    "box": [
+     0.2693,
+     0.2519,
+     0.7488,
+     0.6878
+    ]
+   },
+   {
+    "label": "cardboard box",
+    "conf": 0.0541,
+    "box": [
+     0.3237,
+     0.2513,
+     0.7522,
+     0.5207
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_117.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.4183,
+    "box": [
+     0.0,
+     0.0,
+     0.9972,
+     0.9955
+    ]
+   },
+   {
+    "label": "food waste",
+    "conf": 0.0625,
+    "box": [
+     0.266,
+     0.2615,
+     0.7878,
+     0.7889
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_145.jpg",
+  "category": "Vegetation",
+  "boxes": [
+   {
+    "label": "leaves",
+    "conf": 0.0793,
+    "box": [
+     0.0156,
+     0.0425,
+     0.9568,
+     0.9859
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_101.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.274,
+    "box": [
+     0.1099,
+     0.1185,
+     0.8956,
+     0.8035
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.061,
+    "box": [
+     0.0,
+     0.0,
+     1.0,
+     0.991
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_93.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "cardboard box",
+    "conf": 0.8573,
+    "box": [
+     0.2124,
+     0.1379,
+     0.8439,
+     0.9091
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1636,
+    "box": [
+     0.0,
+     0.0,
+     0.9936,
+     0.9964
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_185.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal pipe",
+    "conf": 0.1685,
+    "box": [
+     0.2273,
+     0.0347,
+     0.8051,
+     0.8943
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1335,
+    "box": [
+     0.0,
+     0.0023,
+     0.9964,
+     0.9965
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0804,
+    "box": [
+     0.4352,
+     0.3601,
+     0.8089,
+     0.8786
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_63.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.1619,
+    "box": [
+     0.0056,
+     0.0,
+     0.9999,
+     0.9951
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_118.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.665,
+    "box": [
+     0.3225,
+     0.1376,
+     0.6808,
+     0.8452
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1132,
+    "box": [
+     0.0,
+     0.0,
+     0.9965,
+     0.9963
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_181.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "glass jar",
+    "conf": 0.5712,
+    "box": [
+     0.2837,
+     0.1723,
+     0.6733,
+     0.8251
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.4458,
+    "box": [
+     0.006,
+     0.0002,
+     0.9997,
+     0.9966
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_175.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.3872,
+    "box": [
+     0.0,
+     0.0,
+     0.9993,
+     0.9956
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.2474,
+    "box": [
+     0.0,
+     0.3896,
+     0.0827,
+     0.4403
+    ]
+   },
+   {
+    "label": "leaves",
+    "conf": 0.0839,
+    "box": [
+     0.2072,
+     0.601,
+     0.3428,
+     0.6661
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_217.jpg",
+  "category": "Vegetation",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.1591,
+    "box": [
+     0.0082,
+     0.0,
+     0.986,
+     0.966
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.0763,
+    "box": [
+     0.0324,
+     0.2801,
+     0.9621,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_151.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.3167,
+    "box": [
+     0.0712,
+     0.0565,
+     0.9154,
+     0.9433
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0893,
+    "box": [
+     0.1232,
+     0.0577,
+     0.5144,
+     0.9193
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_139.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "cardboard box",
+    "conf": 0.6362,
+    "box": [
+     0.1928,
+     0.2102,
+     0.7696,
+     0.7909
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0737,
+    "box": [
+     0.0,
+     0.0003,
+     0.9964,
+     0.9905
+    ]
+   },
+   {
+    "label": "battery",
+    "conf": 0.0596,
+    "box": [
+     0.6006,
+     0.2091,
+     0.6646,
+     0.2638
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_277.jpg",
+  "category": "Plastic",
+  "boxes": []
+ },
+ {
+  "image": "textile_trash_94.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.2111,
+    "box": [
+     0.1167,
+     0.0865,
+     0.8407,
+     0.9132
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_157.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.6631,
+    "box": [
+     0.2288,
+     0.1596,
+     0.7921,
+     0.7662
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2024,
+    "box": [
+     0.0074,
+     0.0,
+     0.9997,
+     0.9971
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_241.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "battery",
+    "conf": 0.7845,
+    "box": [
+     0.1152,
+     0.4609,
+     0.3526,
+     0.6281
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.3448,
+    "box": [
+     0.1211,
+     0.0799,
+     0.9262,
+     0.6265
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.3426,
+    "box": [
+     0.7668,
+     0.7114,
+     0.8449,
+     0.7838
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.132,
+    "box": [
+     0.0002,
+     0.0,
+     0.9991,
+     0.9982
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_233.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.4314,
+    "box": [
+     0.0001,
+     0.0,
+     0.9996,
+     0.9927
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_289.jpg",
+  "category": "Vegetation",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.1628,
+    "box": [
+     0.0029,
+     0.0,
+     1.0,
+     0.9866
+    ]
+   },
+   {
+    "label": "leaves",
+    "conf": 0.0658,
+    "box": [
+     0.0636,
+     0.0556,
+     0.9891,
+     0.7452
+    ]
+   },
+   {
+    "label": "leaves",
+    "conf": 0.0626,
+    "box": [
+     0.5176,
+     0.3667,
+     0.7369,
+     0.7462
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_201.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.6607,
+    "box": [
+     0.2724,
+     0.1688,
+     0.767,
+     0.7085
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.2157,
+    "box": [
+     0.0,
+     0.0,
+     0.9928,
+     0.9925
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_185.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.475,
+    "box": [
+     0.0059,
+     0.0,
+     1.0,
+     0.9877
+    ]
+   },
+   {
+    "label": "plastic bag",
+    "conf": 0.23,
+    "box": [
+     0.2684,
+     0.2336,
+     0.749,
+     0.7688
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_369.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.2266,
+    "box": [
+     0.0758,
+     0.3018,
+     0.8944,
+     0.7729
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2027,
+    "box": [
+     0.007,
+     0.0,
+     1.0,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_125.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.0751,
+    "box": [
+     0.0,
+     0.0,
+     0.9993,
+     0.9966
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_196.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "battery",
+    "conf": 0.562,
+    "box": [
+     0.4219,
+     0.4157,
+     0.5921,
+     0.6083
+    ]
+   },
+   {
+    "label": "plastic bottle",
+    "conf": 0.1699,
+    "box": [
+     0.1403,
+     0.121,
+     0.7501,
+     0.6865
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1176,
+    "box": [
+     0.0075,
+     0.0,
+     0.9993,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_301.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "plastic bottle",
+    "conf": 0.4433,
+    "box": [
+     0.369,
+     0.0816,
+     0.648,
+     0.6573
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.3349,
+    "box": [
+     0.0,
+     0.0,
+     0.9979,
+     0.9922
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_291.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "food waste",
+    "conf": 0.194,
+    "box": [
+     0.0737,
+     0.0925,
+     0.9583,
+     0.8092
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1476,
+    "box": [
+     0.0001,
+     0.0,
+     0.9982,
+     0.9929
+    ]
+   }
+  ]
+ },
+ {
+  "image": "vegetation_361.jpg",
+  "category": "Vegetation",
+  "boxes": [
+   {
+    "label": "metal pipe",
+    "conf": 0.151,
+    "box": [
+     0.331,
+     0.1292,
+     0.7586,
+     0.9563
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0935,
+    "box": [
+     0.0001,
+     0.0004,
+     0.9986,
+     0.9948
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_251.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.1239,
+    "box": [
+     0.0946,
+     0.2803,
+     0.9517,
+     0.718
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_231.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.405,
+    "box": [
+     0.0074,
+     0.0,
+     1.0,
+     0.9954
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_461.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.3452,
+    "box": [
+     0.3125,
+     0.1852,
+     0.649,
+     0.7678
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0753,
+    "box": [
+     0.0074,
+     0.0,
+     1.0,
+     0.9902
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_156.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.3301,
+    "box": [
+     0.2623,
+     0.2718,
+     0.8603,
+     0.6049
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_235.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.5814,
+    "box": [
+     0.2328,
+     0.0797,
+     0.7802,
+     0.7268
+    ]
+   }
+  ]
+ },
+ {
+  "image": "glass_361.jpg",
+  "category": "Glass",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.6073,
+    "box": [
+     0.0,
+     0.0003,
+     0.9969,
+     0.9963
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.4169,
+    "box": [
+     0.3255,
+     0.3369,
+     0.6899,
+     0.7178
+    ]
+   },
+   {
+    "label": "food waste",
+    "conf": 0.1906,
+    "box": [
+     0.4374,
+     0.4619,
+     0.6659,
+     0.672
+    ]
+   }
+  ]
+ },
+ {
+  "image": "food_organics_349.jpg",
+  "category": "Food Organics",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.2898,
+    "box": [
+     0.0115,
+     0.0,
+     0.9994,
+     0.9924
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.2301,
+    "box": [
+     0.2712,
+     0.4302,
+     0.3326,
+     0.5329
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_301.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.2694,
+    "box": [
+     0.1798,
+     0.1871,
+     0.9047,
+     0.7307
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_277.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.7491,
+    "box": [
+     0.0,
+     0.0,
+     0.9961,
+     0.9957
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.4635,
+    "box": [
+     0.1772,
+     0.5382,
+     0.7198,
+     0.7535
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.226,
+    "box": [
+     0.4619,
+     0.2265,
+     0.7333,
+     0.4596
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.132,
+    "box": [
+     0.1861,
+     0.2254,
+     0.7419,
+     0.7485
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.1214,
+    "box": [
+     0.178,
+     0.4311,
+     0.725,
+     0.7542
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.087,
+    "box": [
+     0.2553,
+     0.5335,
+     0.6783,
+     0.7177
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_553.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal pipe",
+    "conf": 0.3048,
+    "box": [
+     0.4654,
+     0.1468,
+     0.7294,
+     0.865
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2667,
+    "box": [
+     0.0,
+     0.0,
+     1.0,
+     0.9925
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_187.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.5386,
+    "box": [
+     0.0631,
+     0.1338,
+     0.9151,
+     0.6807
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_274.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.2997,
+    "box": [
+     0.237,
+     0.1366,
+     0.5743,
+     0.7413
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.1796,
+    "box": [
+     0.2375,
+     0.1382,
+     0.5701,
+     0.4912
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1504,
+    "box": [
+     0.0071,
+     0.0002,
+     0.9999,
+     0.9955
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_351.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.7122,
+    "box": [
+     0.2294,
+     0.151,
+     0.7887,
+     0.7625
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1422,
+    "box": [
+     0.0063,
+     0.0007,
+     1.0,
+     0.9923
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_323.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.7472,
+    "box": [
+     0.0966,
+     0.2025,
+     0.9182,
+     0.8348
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.1872,
+    "box": [
+     0.0,
+     0.0,
+     0.9975,
+     0.9935
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_645.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.3099,
+    "box": [
+     0.0049,
+     0.0,
+     1.0,
+     0.9947
+    ]
+   },
+   {
+    "label": "metal can",
+    "conf": 0.0613,
+    "box": [
+     0.2192,
+     0.2879,
+     0.6843,
+     0.7522
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_218.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.5306,
+    "box": [
+     0.026,
+     0.0174,
+     0.9906,
+     0.844
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_313.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.5427,
+    "box": [
+     0.2689,
+     0.222,
+     0.7869,
+     0.7837
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.3617,
+    "box": [
+     0.0,
+     0.0,
+     0.9954,
+     0.9927
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_401.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.8014,
+    "box": [
+     0.0445,
+     0.0437,
+     0.9267,
+     0.911
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_369.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.6731,
+    "box": [
+     0.0,
+     0.0,
+     0.9916,
+     0.9965
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.4786,
+    "box": [
+     0.3172,
+     0.0669,
+     0.7089,
+     0.8948
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.2596,
+    "box": [
+     0.3085,
+     0.0468,
+     0.6589,
+     0.3867
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1198,
+    "box": [
+     0.3169,
+     0.3233,
+     0.7127,
+     0.9096
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0764,
+    "box": [
+     0.4752,
+     0.8117,
+     0.6016,
+     0.9228
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0763,
+    "box": [
+     0.4833,
+     0.1055,
+     0.7092,
+     0.8902
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0533,
+    "box": [
+     0.3168,
+     0.4044,
+     0.5997,
+     0.8914
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_737.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.7068,
+    "box": [
+     0.287,
+     0.2166,
+     0.757,
+     0.8383
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.5713,
+    "box": [
+     0.0007,
+     0.0005,
+     0.994,
+     0.9928
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_249.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "cloth",
+    "conf": 0.3195,
+    "box": [
+     0.2923,
+     0.191,
+     0.7879,
+     0.6595
+    ]
+   },
+   {
+    "label": "rock",
+    "conf": 0.0698,
+    "box": [
+     0.0,
+     0.0001,
+     0.9947,
+     0.9941
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_352.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.3561,
+    "box": [
+     0.2811,
+     0.1765,
+     0.7243,
+     0.7963
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0839,
+    "box": [
+     0.0,
+     0.0,
+     0.9931,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "paper_451.jpg",
+  "category": "Paper",
+  "boxes": [
+   {
+    "label": "aluminium foil",
+    "conf": 0.3852,
+    "box": [
+     0.1936,
+     0.2696,
+     0.771,
+     0.6807
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.3705,
+    "box": [
+     0.0,
+     0.0,
+     0.9965,
+     1.0
+    ]
+   }
+  ]
+ },
+ {
+  "image": "cardboard_415.jpg",
+  "category": "Cardboard",
+  "boxes": [
+   {
+    "label": "cardboard box",
+    "conf": 0.4574,
+    "box": [
+     0.0372,
+     0.0219,
+     0.9344,
+     0.9291
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1636,
+    "box": [
+     0.4539,
+     0.2206,
+     0.9372,
+     0.6299
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0761,
+    "box": [
+     0.5369,
+     0.5997,
+     0.8448,
+     0.9093
+    ]
+   },
+   {
+    "label": "cardboard box",
+    "conf": 0.0701,
+    "box": [
+     0.0499,
+     0.4446,
+     0.617,
+     0.9373
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.0515,
+    "box": [
+     0.0465,
+     0.4137,
+     0.4761,
+     0.7414
+    ]
+   }
+  ]
+ },
+ {
+  "image": "plastic_829.jpg",
+  "category": "Plastic",
+  "boxes": [
+   {
+    "label": "metal pipe",
+    "conf": 0.2913,
+    "box": [
+     0.4436,
+     0.2391,
+     0.5984,
+     0.6089
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.1092,
+    "box": [
+     0.0,
+     0.0,
+     0.9949,
+     0.9962
+    ]
+   }
+  ]
+ },
+ {
+  "image": "textile_trash_280.jpg",
+  "category": "Textile Trash",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.2282,
+    "box": [
+     0.0,
+     0.0,
+     0.9959,
+     0.9899
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_391.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "plastic bag",
+    "conf": 0.5604,
+    "box": [
+     0.2576,
+     0.2191,
+     0.7812,
+     0.6961
+    ]
+   },
+   {
+    "label": "aluminium foil",
+    "conf": 0.1666,
+    "box": [
+     0.274,
+     0.2171,
+     0.4633,
+     0.4071
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_430.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "rock",
+    "conf": 0.2471,
+    "box": [
+     0.1576,
+     0.2091,
+     0.7415,
+     0.7295
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2048,
+    "box": [
+     0.0042,
+     0.0002,
+     0.9999,
+     0.9924
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_469.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "tyre",
+    "conf": 0.2797,
+    "box": [
+     0.0624,
+     0.0539,
+     0.9293,
+     0.8264
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_508.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "plastic bag",
+    "conf": 0.548,
+    "box": [
+     0.2149,
+     0.2768,
+     0.7898,
+     0.8609
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0971,
+    "box": [
+     0.0038,
+     0.0,
+     0.9994,
+     0.9928
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_547.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal sheet",
+    "conf": 0.2221,
+    "box": [
+     0.004,
+     0.0,
+     1.0,
+     0.9967
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.2179,
+    "box": [
+     0.2371,
+     0.353,
+     0.7291,
+     0.5968
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_586.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "plastic bag",
+    "conf": 0.6653,
+    "box": [
+     0.3216,
+     0.322,
+     0.6037,
+     0.6038
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0611,
+    "box": [
+     0.0075,
+     0.0,
+     1.0,
+     0.9998
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_625.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "plastic bag",
+    "conf": 0.1702,
+    "box": [
+     0.1769,
+     0.1901,
+     0.8849,
+     0.8339
+    ]
+   },
+   {
+    "label": "metal sheet",
+    "conf": 0.0532,
+    "box": [
+     0.0,
+     0.0,
+     0.9938,
+     0.9987
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_664.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "paper",
+    "conf": 0.4009,
+    "box": [
+     0.082,
+     0.2015,
+     0.8329,
+     0.7956
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.2495,
+    "box": [
+     0.0756,
+     0.1797,
+     0.2723,
+     0.3688
+    ]
+   },
+   {
+    "label": "metal scrap",
+    "conf": 0.0817,
+    "box": [
+     0.8302,
+     0.3595,
+     0.9562,
+     0.4076
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_703.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.6796,
+    "box": [
+     0.4299,
+     0.1582,
+     0.8514,
+     0.6298
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.2924,
+    "box": [
+     0.0001,
+     0.0004,
+     0.9976,
+     0.9998
+    ]
+   }
+  ]
+ },
+ {
+  "image": "metal_742.jpg",
+  "category": "Metal",
+  "boxes": [
+   {
+    "label": "metal can",
+    "conf": 0.3772,
+    "box": [
+     0.335,
+     0.0678,
+     0.7981,
+     0.6838
+    ]
+   },
+   {
+    "label": "paper",
+    "conf": 0.271,
+    "box": [
+     0.0,
+     0.0,
+     0.9973,
+     1.0
+    ]
+   }
+  ]
+ }
+]

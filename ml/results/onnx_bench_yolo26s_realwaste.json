@@ -1,0 +1,127 @@
+{
+ "onnx": "yolo26s_realwaste.onnx",
+ "size_mb": 38.2,
+ "provider": "CPUExecutionProvider",
+ "cpu": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+ "intra_op_threads": 6,
+ "latency_incl_preprocess": {
+  "p50_ms": 153.6,
+  "p90_ms": 238.8,
+  "mean_ms": 170.6
+ },
+ "metal_rule_t": 0.25,
+ "onnx_metal_report": {
+  "metal_recall": "18/20",
+  "metal_recall_pct": 90.0,
+  "false_flags": "0/60",
+  "false_flag_rate_pct": 0.0,
+  "metal_precision_pct": 100.0,
+  "flags_by_category": {
+   "Metal": "18/20",
+   "Glass": "0/7",
+   "Food Organics": "0/7",
+   "Vegetation": "0/6",
+   "Paper": "0/10",
+   "Cardboard": "0/10",
+   "Plastic": "0/10",
+   "Textile Trash": "0/10"
+  }
+ },
+ "parity_vs_ultralytics": [
+  {
+   "image": "metal_1.jpg",
+   "ultralytics_boxes": 1,
+   "onnx_boxes": 1,
+   "matched_iou>=0.9": 1,
+   "max_conf_delta": 0.0,
+   "ultralytics_top": [
+    [
+     "metal",
+     0.963
+    ]
+   ],
+   "onnx_top": [
+    [
+     "metal",
+     0.963
+    ]
+   ]
+  },
+  {
+   "image": "glass_1.jpg",
+   "ultralytics_boxes": 1,
+   "onnx_boxes": 1,
+   "matched_iou>=0.9": 1,
+   "max_conf_delta": 0.0002,
+   "ultralytics_top": [
+    [
+     "glass",
+     0.939
+    ]
+   ],
+   "onnx_top": [
+    [
+     "glass",
+     0.939
+    ]
+   ]
+  },
+  {
+   "image": "food_organics_1.jpg",
+   "ultralytics_boxes": 1,
+   "onnx_boxes": 1,
+   "matched_iou>=0.9": 1,
+   "max_conf_delta": 0.0,
+   "ultralytics_top": [
+    [
+     "organic",
+     0.877
+    ]
+   ],
+   "onnx_top": [
+    [
+     "organic",
+     0.877
+    ]
+   ]
+  },
+  {
+   "image": "vegetation_1.jpg",
+   "ultralytics_boxes": 1,
+   "onnx_boxes": 1,
+   "matched_iou>=0.9": 1,
+   "max_conf_delta": 0.0006,
+   "ultralytics_top": [
+    [
+     "organic",
+     0.91
+    ]
+   ],
+   "onnx_top": [
+    [
+     "organic",
+     0.911
+    ]
+   ]
+  },
+  {
+   "image": "paper_1.jpg",
+   "ultralytics_boxes": 1,
+   "onnx_boxes": 1,
+   "matched_iou>=0.9": 1,
+   "max_conf_delta": 0.0002,
+   "ultralytics_top": [
+    [
+     "paper",
+     0.816
+    ]
+   ],
+   "onnx_top": [
+    [
+     "paper",
+     0.817
+    ]
+   ]
+  }
+ ]
+}

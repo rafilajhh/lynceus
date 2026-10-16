@@ -1,0 +1,86 @@
+{
+ "weights": "ml\\runs\\yolo26s_realwaste\\weights\\best.pt",
+ "val_images": 416,
+ "per_class": {
+  "metal": 77,
+  "glass": 41,
+  "organic": 83,
+  "paper": 94,
+  "plastic": 91,
+  "textile": 30
+ },
+ "map50": 0.7774,
+ "map50_95": 0.7067,
+ "rule": "hard t = lowest with val false-metal rate <= 0.02; light t = lowest with val false-escalate rate on paper/plastic/textile <= 0.05",
+ "hard_threshold": 0.05,
+ "light_threshold": 0.1,
+ "at_selected": {
+  "metal_recall": 0.961,
+  "metal_false_rate": 0.0088,
+  "light_recall": 0.9919,
+  "light_false_rate_clean": 0.0465
+ },
+ "gpu_latency_ms_p50": 71.9,
+ "sweep": {
+  "0.05": {
+   "metal_recall": 0.961,
+   "metal_false_rate": 0.0088,
+   "light_recall": 1.0,
+   "light_false_rate_clean": 0.0698
+  },
+  "0.1": {
+   "metal_recall": 0.9221,
+   "metal_false_rate": 0.0059,
+   "light_recall": 0.9919,
+   "light_false_rate_clean": 0.0465
+  },
+  "0.15": {
+   "metal_recall": 0.9091,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.9758,
+   "light_false_rate_clean": 0.0326
+  },
+  "0.2": {
+   "metal_recall": 0.8701,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.9516,
+   "light_false_rate_clean": 0.0279
+  },
+  "0.25": {
+   "metal_recall": 0.8571,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.9516,
+   "light_false_rate_clean": 0.0279
+  },
+  "0.3": {
+   "metal_recall": 0.8571,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.9274,
+   "light_false_rate_clean": 0.0279
+  },
+  "0.35": {
+   "metal_recall": 0.8442,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.9113,
+   "light_false_rate_clean": 0.0233
+  },
+  "0.4": {
+   "metal_recall": 0.8442,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.8952,
+   "light_false_rate_clean": 0.0186
+  },
+  "0.5": {
+   "metal_recall": 0.8312,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.7742,
+   "light_false_rate_clean": 0.0186
+  },
+  "0.6": {
+   "metal_recall": 0.7792,
+   "metal_false_rate": 0.0029,
+   "light_recall": 0.6694,
+   "light_false_rate_clean": 0.014
+  }
+ }
+}

@@ -57,3 +57,11 @@ deploy/lynceus.env
 /app-*.png
 /shift-*.png
 /validation-*.png
+
+# ML detector track (heavy artifacts stay local; commit scripts, small JSON results, README)
+ml/.venv/
+ml/.cache/
+ml/data/
+ml/runs/
+ml/weights/
+ml/dist/

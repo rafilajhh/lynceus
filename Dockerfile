@@ -27,8 +27,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Backend sources, sample-shift seeder and the committed benchmark manifest/results
-# (the benchmark images are excluded by .dockerignore).
+# Backend sources, sample-shift seeder, the committed benchmark manifest/results
+# (the benchmark images are excluded by .dockerignore) and the CPU detector model
+# (backend/models/, 38 MB ONNX).
 COPY backend/ ./backend/
 
 # Regular (non-editable) install; knowledge/*.md ships as package data.
@@ -40,11 +41,14 @@ COPY --from=web /app/web/out ./web/out
 COPY deploy/entrypoint.sh /usr/local/bin/lynceus-entrypoint
 RUN chmod +x /usr/local/bin/lynceus-entrypoint
 
-# A site-packages install cannot find web/out or benchmark/ relative to the
-# source tree, so point the app at where they were staged.
+# A site-packages install cannot find web/out, benchmark/ or models/ relative to
+# the source tree, so point the app at where they were staged.
 # Audit records live on a volume so they survive container replacement.
+# The detector runs on CPU onnxruntime here (DETECTOR_PROVIDERS defaults to
+# CPUExecutionProvider); GPU providers need a different onnxruntime build.
 ENV LYNCEUS_WEB_DIR=/app/web/out \
     LYNCEUS_BENCHMARK_DIR=/app/backend/benchmark \
+    DETECTOR_MODEL_PATH=/app/backend/models/lynceus-yolo26s-realwaste.onnx \
     LYNCEUS_STORAGE_DIR=/data/runs \
     PORT=8020
 

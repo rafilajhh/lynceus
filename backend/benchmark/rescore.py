@@ -17,13 +17,25 @@ Usage (from ``backend/``)::
 Writes ``<stem>.rescore.jsonl`` and ``<stem>.rescore.summary.json`` next to the
 source; the live files are never modified.  The latest row per image is
 replayed; a recorded error row stays an error row (there is no model output
-to replay).
+to replay).  The plain replay runs with the CPU detector off: the recorded
+run had none.
+
+Hybrid what-if (the same recorded VLM outputs fused with the CPU detector)::
+
+    PYTHONPATH=src python -m benchmark.rescore --source benchmark/results/2026-10-13.jsonl --hybrid
+    # or run lynceus.detector over benchmark/images instead of the ml/ results:
+    PYTHONPATH=src python -m benchmark.rescore --source benchmark/results/2026-10-13.jsonl --hybrid --run-detector
+
+writes ``<today>.hybrid-rescore.summary.json``: VLM-only vs hybrid (light
+escalation on / off), a ``detector_hard_conf`` sweep, and detector-only
+degraded mode.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -68,6 +80,12 @@ LLM_NOTE = (
 #: Fills the ocr_confidence gate value only (see LLM_NOTE).
 REPLAY_LLM_CONFIDENCE = 0.95
 REPLAY_PROVENANCE = "replay"
+#: Detector settings (``lynceus.config``), named here so this module imports
+#: nothing from ``lynceus`` before ``main`` has set up the path.
+DETECTOR_MODEL_PATH_ENV = "DETECTOR_MODEL_PATH"
+DETECTOR_HARD_CONF_ENV = "DETECTOR_HARD_CONF"
+DETECTOR_LIGHT_CONF_ENV = "DETECTOR_LIGHT_CONF"
+DETECTOR_ESCALATE_LIGHT_ENV = "DETECTOR_ESCALATE_LIGHT"
 
 
 class ReplayAIClients:
@@ -115,27 +133,59 @@ class ReplayAIClients:
 
 
 @contextmanager
-def _replay_app(clients: Dict[str, ReplayAIClients]) -> Iterator[Callable[[Dict[str, Any]], tuple]]:
+def _replay_app(
+    clients: Dict[str, Any],
+    env: Optional[Dict[str, str]] = None,
+    detections: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Iterator[Callable[[Dict[str, Any]], tuple]]:
     """A ``post(payload)`` against the real app, offline, in a temp storage dir.
 
     ``pipeline.resolve_clients`` is swapped for a lookup by ``truck_id`` and
-    the gas sensor URL is unset, so nothing can reach the network.  The
-    environment and the pipeline are restored on exit.
+    the gas sensor URL is unset, so nothing can reach the network.  ``env``
+    adds variables for this replay (the plain replay turns the CPU detector
+    off with ``DETECTOR_MODEL_PATH=""``: it scores the recorded VLM-only
+    run).  ``detections`` (photo sha256 -> recorded detector boxes) replaces
+    the detector with those recordings.  The environment and the pipeline are
+    restored on exit.
     """
     from fastapi.testclient import TestClient
 
-    from lynceus import gas_ingest, pipeline
+    from lynceus import detector, gas_ingest, pipeline
     from lynceus.api import create_app
     from lynceus.config import LYNCEUS_ALLOW_STUB_FALLBACK_ENV, LYNCEUS_STORAGE_DIR_ENV
 
-    keys = (LYNCEUS_STORAGE_DIR_ENV, LYNCEUS_ALLOW_STUB_FALLBACK_ENV, gas_ingest.GAS_SENSOR_URL_ENV)
+    env = dict(env or {})
+    keys = (
+        LYNCEUS_STORAGE_DIR_ENV,
+        LYNCEUS_ALLOW_STUB_FALLBACK_ENV,
+        gas_ingest.GAS_SENSOR_URL_ENV,
+        *env,
+    )
     saved = {key: os.environ.get(key) for key in keys}
     original = pipeline.resolve_clients
+    original_detect = pipeline.safe_detect
+
+    def recorded_detect(photo_bytes: bytes, settings: Any) -> Optional[Dict[str, Any]]:
+        found = detections.get(hashlib.sha256(photo_bytes).hexdigest()) if detections else None
+        if found is None:
+            return None
+        floor = min(settings.detector_hard_conf, settings.detector_light_conf)
+        return detector.summarize(
+            [b for b in found["boxes"] if b["confidence"] >= floor],
+            found.get("latency_ms"),
+            settings.detector_hard_conf,
+            settings.detector_light_conf,
+            escalate_light=settings.detector_escalate_light,
+        )
+
     with tempfile.TemporaryDirectory(prefix="lynceus-rescore-") as storage:
         os.environ[LYNCEUS_STORAGE_DIR_ENV] = storage
         os.environ[LYNCEUS_ALLOW_STUB_FALLBACK_ENV] = "0"
         os.environ.pop(gas_ingest.GAS_SENSOR_URL_ENV, None)
+        os.environ.update(env)
         pipeline.resolve_clients = lambda payload, settings=None: clients[payload["truck_id"]]
+        if detections is not None:
+            pipeline.safe_detect = recorded_detect
         try:
             client = TestClient(create_app())
 
@@ -149,6 +199,7 @@ def _replay_app(clients: Dict[str, ReplayAIClients]) -> Iterator[Callable[[Dict[
             yield post
         finally:
             pipeline.resolve_clients = original
+            pipeline.safe_detect = original_detect
             for key, value in saved.items():
                 if value is None:
                     os.environ.pop(key, None)
@@ -210,7 +261,8 @@ def rescore(
         payloads.append((row, payload))
 
     replayed: Dict[str, Dict[str, Any]] = {}
-    with _replay_app(clients) as post:
+    # The recorded run had no detector: replay it VLM-only.
+    with _replay_app(clients, env={DETECTOR_MODEL_PATH_ENV: ""}) as post:
         for row, payload in payloads:
             status, body = post(payload)
             replayed[row["image"]] = _replay_row(row, status, body)
@@ -262,8 +314,14 @@ def build_summary(
         for r in rows
         if metrics.label_for(r) != metrics.label_for(recorded[r["image"]])
     ]
+    # Gates the live run recorded only: a gate added since (the detector's)
+    # is new information, not a change.
     gates_changed = [
-        r["image"] for r in good if r.get("gates") != recorded[r["image"]].get("gates")
+        r["image"]
+        for r in good
+        if {k: v for k, v in (r.get("gates") or {}).items()
+            if k in (recorded[r["image"]].get("gates") or {})}
+        != recorded[r["image"]].get("gates")
     ]
     summary.update(
         {
@@ -293,6 +351,272 @@ def build_summary(
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Hybrid what-if: the recorded VLM outputs fused with the CPU detector
+# ---------------------------------------------------------------------------
+
+#: Per-image detections of the fine-tuned detector (written by ml/eval_finetuned.py).
+DEFAULT_DETECTIONS = BACKEND_DIR.parent / "ml" / "results" / "finetuned_yolo26s_realwaste_nmsfree.json"
+HYBRID_FRAMING = (
+    "What-if re-score: the recorded live VLM outputs of the {source_run} AMD Token Factory "
+    "run, fused with the CPU detector (YOLO26s fine-tuned on RealWaste) through the "
+    "current decision rules. No new model calls."
+)
+HYBRID_DISCLOSURE = (
+    "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the "
+    "same sessions as these 80 held-out images (one item per frame on the same floor; the "
+    "held-out images were excluded from training), and every detector threshold here was "
+    "read off this same test set: there is no calibration split. It shows the fusion "
+    "rules work as designed on these images, not that the detector works on a truck bed "
+    "of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were "
+    "changed after the live run, using that run's data."
+)
+DEGRADED_NOTE = (
+    "Detector-only degraded mode (vision model unavailable, stub fallback off) holds "
+    "every truck for a human by design, so its verdict is escalate on all images. "
+    "'detector_findings' counts what the hold reasons would list; 'advisory_gate' reads "
+    "those findings as if they were a verdict (metal -> reject, glass/organic -> escalate, "
+    "else accept), which Lynceus never does."
+)
+#: Swept ``detector_hard_conf`` values (light threshold fixed at the default).
+_SWEEP_HARD_CONF = (0.05, 0.1, 0.25, 0.5)
+_DEFAULT_CONF = 0.25
+
+
+def load_detections(path: Path) -> Dict[str, Dict[str, Any]]:
+    """``image -> {"boxes": [{label, confidence, box}], "latency_ms": None}``
+    from an ``ml/results/finetuned_*.json`` file (``conf`` renamed)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        item["image"]: {
+            "boxes": [
+                {"label": b["label"], "confidence": float(b["conf"]), "box": list(b["box"])}
+                for b in item.get("boxes") or []
+                if b["box"][0] < b["box"][2] and b["box"][1] < b["box"][3]
+            ],
+            "latency_ms": None,
+        }
+        for item in data
+    }
+
+
+def run_detections(images_dir: Path, images: list[str], min_conf: float = 0.05) -> Dict[str, Dict[str, Any]]:
+    """Same shape as :func:`load_detections`, from ``lynceus.detector`` itself."""
+    from lynceus import detector
+    from lynceus.config import get_settings
+
+    settings = get_settings()
+    if not detector.enabled(settings):
+        raise RuntimeError("the detector is disabled (no model, or onnxruntime/numpy/Pillow missing)")
+    found = {}
+    for name in images:
+        result = detector.detect((images_dir / name).read_bytes(), settings, min_conf=min_conf)
+        found[name] = {"boxes": result["boxes"], "latency_ms": result["latency_ms"],
+                       "model_sha256": result.get("model_sha256"),
+                       "runtime": result["runtime"]}
+    return found
+
+
+def _variant_row(recorded: Dict[str, Any], status: int, body: Dict[str, Any]) -> Dict[str, Any]:
+    row = {"image": recorded["image"], "category": recorded["category"],
+           "expected": recorded["expected"]}
+    if status != 200 or body.get("provenance") not in (REPLAY_PROVENANCE, "detector_only_degraded"):
+        return {**row, "predicted": None,
+                "error": f"replay HTTP {status}: {bench._error_message(body)}"[:300]}
+    gate = (body.get("gates") or {}).get("detector_second_opinion") or {}
+    return {**row, "predicted": (body.get("verdict") or {}).get("decision"),
+            "detector_gate": gate.get("state"), "error": None}
+
+
+def _variant_metrics(rows: list[Dict[str, Any]], baseline: Optional[list[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    m = metrics.compute(rows)
+    graded = [r for r in rows if metrics.label_for(r) != "error"]
+    correct = sum(1 for r in rows if metrics.label_for(r) == r["expected"])
+    out = {
+        "n": m["n"],
+        "errors": m["errors"],
+        "clean_accept_rate": m["clean_accept_rate"],
+        "review_rate": m["review_rate"],
+        "escalate_recall": m["escalate_recall"],
+        "metal_reject": {k: m["reject"][k] for k in ("precision", "recall", "tp", "fp", "fn")},
+        # The costly miss: a metal load waved through.
+        "metal_accepted": m["confusion"]["reject"]["accept"],
+        "gate_accuracy": correct / len(rows) if rows else None,
+        "gate_correct": f"{correct}/{len(rows)}",
+        "graded": len(graded),
+        "confusion": m["confusion"],
+        "detector_gate_failed": sum(1 for r in rows if r.get("detector_gate") == "failed"),
+    }
+    if baseline is not None:
+        before = {r["image"]: metrics.label_for(r) for r in baseline}
+        out["changed_vs_vlm_only"] = [
+            {"image": r["image"], "expected": r["expected"],
+             "vlm_only": before.get(r["image"]), "hybrid": metrics.label_for(r)}
+            for r in rows
+            if metrics.label_for(r) != before.get(r["image"])
+        ]
+    return out
+
+
+def _detector_findings(
+    detections: Dict[str, Dict[str, Any]], recorded_rows: list[Dict[str, Any]], conf: float
+) -> Dict[str, Any]:
+    """What detector-only mode would list per expected label, plus the
+    advisory reading of those findings as a verdict."""
+    from lynceus import detector
+
+    by_expected: Dict[str, Dict[str, int]] = {}
+    advisory_correct = 0
+    for row in recorded_rows:
+        hard, light = detector.flagged(detections.get(row["image"]), conf, conf)
+        cell = by_expected.setdefault(row["expected"], {"n": 0, "metal": 0, "light": 0, "nothing": 0})
+        cell["n"] += 1
+        cell["metal"] += bool(hard)
+        cell["light"] += bool(light) and not hard
+        cell["nothing"] += not hard and not light
+        advisory = "reject" if hard else "escalate" if light else "accept"
+        advisory_correct += advisory == row["expected"]
+    return {
+        "threshold": conf,
+        "by_expected": by_expected,
+        "advisory_gate": f"{advisory_correct}/{len(recorded_rows)}",
+        "advisory_gate_accuracy": advisory_correct / len(recorded_rows) if recorded_rows else None,
+    }
+
+
+def hybrid_rescore(
+    source: Path,
+    detections: Dict[str, Dict[str, Any]],
+    *,
+    detections_source: str,
+    detector_runtime: str = "onnxruntime-cpu",
+    out: Optional[Path] = None,
+    images_dir: Path = bench.IMAGES_DIR,
+    manifest: Path = bench.MANIFEST,
+    log: Callable[[str], None] = print,
+    today: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Re-decide every recorded VLM output with the detector fused in.
+
+    Variants: VLM-only (detector off), hybrid with light escalation on and
+    off, a ``detector_hard_conf`` sweep, and detector-only degraded mode (the
+    vision model made unavailable).  Writes ``out`` (default
+    ``<today>.hybrid-rescore.summary.json`` next to the source).
+    """
+    from lynceus import pipeline
+
+    today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    recorded_rows = bench.load_rows(source)
+    if not recorded_rows:
+        raise ValueError(f"{source}: no recorded rows to replay")
+    missing = [r["image"] for r in recorded_rows if r["image"] not in detections]
+    if missing:
+        raise ValueError(f"no detections for {len(missing)} images, e.g. {missing[:3]}")
+    by_sha: Dict[str, Dict[str, Any]] = {}
+    jobs = []
+    for n, row in enumerate(recorded_rows, start=1):
+        raw = (images_dir / row["image"]).read_bytes()
+        by_sha[hashlib.sha256(raw).hexdigest()] = detections[row["image"]]
+        jobs.append((row, bench.build_payload(row, n, base64.b64encode(raw).decode("ascii"))))
+
+    def run_variant(env: Dict[str, str], degraded: bool = False) -> list[Dict[str, Any]]:
+        if degraded:
+            clients = {p["truck_id"]: pipeline.UnavailableAIClients(
+                "what-if: vision model unavailable") for _, p in jobs}
+        else:
+            clients = {p["truck_id"]: ReplayAIClients(r) for r, p in jobs if not r.get("error")}
+        rows = []
+        detector_off = env.get(DETECTOR_MODEL_PATH_ENV) == ""
+        with _replay_app(clients, env=env, detections=None if detector_off else by_sha) as post:
+            for row, payload in jobs:
+                if row.get("error") and not degraded:
+                    rows.append({**row, "predicted": None})  # nothing to replay
+                    continue
+                rows.append(_variant_row(row, *post(payload)))
+        return rows
+
+    def detector_env(hard: float, light_on: bool) -> Dict[str, str]:
+        return {
+            DETECTOR_HARD_CONF_ENV: str(hard),
+            DETECTOR_LIGHT_CONF_ENV: str(_DEFAULT_CONF),
+            DETECTOR_ESCALATE_LIGHT_ENV: "1" if light_on else "0",
+        }
+
+    log("variant vlm_only")
+    vlm_only = run_variant({DETECTOR_MODEL_PATH_ENV: ""})
+    sweep: Dict[str, Dict[str, Any]] = {}
+    hybrid: Dict[str, list] = {}
+    for hard in _SWEEP_HARD_CONF:
+        for light_on in (True, False):
+            key = "light_escalation_on" if light_on else "light_escalation_off"
+            log(f"variant hard_conf={hard} {key}")
+            rows = run_variant(detector_env(hard, light_on))
+            sweep.setdefault(str(hard), {})[key] = _variant_metrics(rows, vlm_only)
+            if hard == _DEFAULT_CONF:
+                hybrid[key] = rows
+    log("variant detector_only_degraded")
+    degraded_rows = run_variant(detector_env(_DEFAULT_CONF, True), degraded=True)
+
+    def headline(rows: list[Dict[str, Any]]) -> Dict[str, Any]:
+        m = _variant_metrics(rows)
+        return {
+            "clean_accept_rate": m["clean_accept_rate"],
+            "review_rate": m["review_rate"],
+            "metal_reject_recall": m["metal_reject"]["recall"],
+            "metal_reject_precision": m["metal_reject"]["precision"],
+            "metal_accepted": m["metal_accepted"],
+            "escalate_recall": m["escalate_recall"],
+            "gate_accuracy": m["gate_accuracy"],
+        }
+
+    degraded_metrics = _variant_metrics(degraded_rows)
+    degraded_metrics["note"] = DEGRADED_NOTE
+    degraded_metrics["detector_findings"] = _detector_findings(
+        detections, recorded_rows, _DEFAULT_CONF
+    )
+    source_run = source.stem
+    summary = {
+        "kind": "hybrid_replay",
+        "source_run": source_run,
+        "framing": HYBRID_FRAMING.format(source_run=source_run),
+        "scope": bench.FRAMING,
+        "disclosure": HYBRID_DISCLOSURE,
+        "llm_note": LLM_NOTE.format(confidence=REPLAY_LLM_CONFIDENCE),
+        "rescored_on": today,
+        "manifest_n": len(bench.read_manifest(manifest)),
+        "vlm_model": next((r["vlm_model"] for r in recorded_rows if r.get("vlm_model")), None),
+        "detector": {
+            "model": "yolo26s-realwaste",
+            # What produced the boxes: lynceus.detector, or the ml/ results.
+            "runtime": detector_runtime,
+            "model_sha256": next(
+                (d["model_sha256"] for d in detections.values() if d.get("model_sha256")), None
+            ),
+            "detections_source": detections_source,
+            "hard_conf_default": _DEFAULT_CONF,
+            "light_conf": _DEFAULT_CONF,
+            "thresholds_note": "Read off this 80-image test set itself; no calibration split.",
+        },
+        "table": {
+            "vlm_only": headline(vlm_only),
+            "hybrid_light_escalation_on": headline(hybrid["light_escalation_on"]),
+            "hybrid_light_escalation_off": headline(hybrid["light_escalation_off"]),
+            "detector_only_degraded": headline(degraded_rows),
+        },
+        "variants": {
+            "vlm_only": _variant_metrics(vlm_only),
+            "hybrid_light_escalation_on": _variant_metrics(hybrid["light_escalation_on"], vlm_only),
+            "hybrid_light_escalation_off": _variant_metrics(hybrid["light_escalation_off"], vlm_only),
+            "detector_only_degraded": degraded_metrics,
+        },
+        "sweep_detector_hard_conf": sweep,
+    }
+    out = out or source.with_name(f"{today}.hybrid-rescore.summary.json")
+    out.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    log(f"hybrid summary -> {out}")
+    return summary
+
+
 def _default_source() -> Optional[Path]:
     live = [
         p for p in sorted(bench.RESULTS_DIR.glob("*.jsonl")) if not p.name.endswith(".rescore.jsonl")
@@ -305,13 +629,52 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "--source", type=Path, default=None, help="live run jsonl (default: newest in results/)"
     )
+    parser.add_argument(
+        "--hybrid", action="store_true",
+        help="what-if: fuse the CPU detector into every recorded VLM output "
+        "(writes <today>.hybrid-rescore.summary.json)",
+    )
+    parser.add_argument(
+        "--detections", type=Path, default=DEFAULT_DETECTIONS,
+        help="per-image detector results for --hybrid (default: the ml/ NMS-free results)",
+    )
+    parser.add_argument(
+        "--run-detector", action="store_true",
+        help="--hybrid with lynceus.detector run over the images instead of --detections",
+    )
+    parser.add_argument("--out", type=Path, default=None, help="--hybrid summary path")
     args = parser.parse_args(argv)
     source = args.source or _default_source()
     if source is None or not source.is_file():
         print(f"ABORT: no live run jsonl found ({source})", file=sys.stderr)
         return 2
     sys.path.insert(0, str(BACKEND_DIR / "src"))
-    rescore(source)
+    if not args.hybrid:
+        rescore(source)
+        return 0
+    if args.run_detector:
+        images = [r["image"] for r in bench.load_rows(source)]
+        detections = run_detections(bench.IMAGES_DIR, images)
+        # The provider the detector actually ran on (DETECTOR_PROVIDERS, CPU fallback).
+        detector_runtime = next(
+            (d["runtime"] for d in detections.values() if d.get("runtime")), "onnxruntime-cpu"
+        )
+        detections_source = (
+            f"lynceus.detector ({detector_runtime}) run over benchmark/images, conf >= 0.05"
+        )
+    else:
+        if not args.detections.is_file():
+            print(f"ABORT: detections file not found ({args.detections})", file=sys.stderr)
+            return 2
+        detections = load_detections(args.detections)
+        try:  # a repo-relative path: no machine paths in a committed summary
+            shown = args.detections.resolve().relative_to(BACKEND_DIR.parent).as_posix()
+        except ValueError:
+            shown = args.detections.name
+        detections_source = f"{shown} (Ultralytics predict, conf >= 0.05)"
+        detector_runtime = "ultralytics-predict"
+    hybrid_rescore(source, detections, detections_source=detections_source,
+                   detector_runtime=detector_runtime, out=args.out)
     return 0
 
 

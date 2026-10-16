@@ -1,0 +1,19 @@
+{
+ "source": "TACO official annotations (CC BY 4.0), Flickr 640-px images",
+ "unmapped_categories": [
+  "Cigarette",
+  "Unlabeled litter"
+ ],
+ "stats": {
+  "box_dropped:Cigarette": 45,
+  "box_dropped:Unlabeled litter": 33,
+  "source:original": 46,
+  "test:box:glass": 13,
+  "test:box:metal": 58,
+  "test:box:paper": 65,
+  "test:box:plastic": 208,
+  "test:box:textile": 2,
+  "test:images": 150,
+  "test:images_with_metal": 29
+ }
+}

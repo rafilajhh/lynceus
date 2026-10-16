@@ -95,10 +95,84 @@ def test_row_records_the_measurement_fields(workspace):
     assert workspace[2].with_name("out.summary.json").is_file()
 
 
-def test_non_live_provenance_aborts_and_writes_no_row(workspace):
-    with pytest.raises(bench.ProvenanceError, match="not 'live'"):
-        _run(workspace, lambda p: (200, _ok_body(provenance="stub")))
-    assert not workspace[2].exists() or workspace[2].read_text(encoding="utf-8") == ""
+def test_non_live_provenance_is_an_error_row_never_a_measurement(workspace):
+    summary = _run(workspace, lambda p: (200, _ok_body(provenance="stub")))
+    rows = _lines(workspace[2])
+    assert [r["image"] for r in rows] == ["a.jpg", "b.jpg", "c.jpg"]
+    assert all(r["predicted"] is None and "not 'live'" in r["error"] for r in rows)
+    assert summary["errors"] == 3 and summary["complete"] is False
+
+
+def test_degraded_row_is_an_error_the_next_run_retries(workspace):
+    def post(payload):
+        degraded = payload["truck_id"] == "BENCH-2"
+        return 200, _ok_body(decision="escalate",
+                             provenance="detector_only_degraded" if degraded else "live")
+
+    _run(workspace, post)  # no abort: the run goes on past the degraded row
+    rows = _lines(workspace[2])
+    assert [r["image"] for r in rows] == ["a.jpg", "b.jpg", "c.jpg"]
+    assert "detector_only_degraded" in rows[1]["error"] and rows[1]["predicted"] is None
+    seen = []
+
+    def live(payload):
+        seen.append(payload["truck_id"])
+        return 200, _ok_body()
+
+    summary = _run(workspace, live)
+    assert seen == ["BENCH-2"]
+    assert summary["errors"] == 0 and summary["complete"] is True
+
+
+def test_detector_or_fallback_answer_is_never_a_vlm_only_row():
+    item = {"image": "a.jpg", "category": "Metal", "expected": "reject"}
+    body = _ok_body()
+    assert bench.row_from_response(item, {**body, "ai_outputs": {**body["ai_outputs"],
+                                                                 "detector": None}}, 1.0)
+    with_detector = {**body, "ai_outputs": {**body["ai_outputs"],
+                                            "detector": {"model": "yolo26s-realwaste"}}}
+    with pytest.raises(bench.ProvenanceError, match="CPU detector ran"):
+        bench.row_from_response(item, with_detector, 1.0)
+    fallback_vlm = {**body["ai_outputs"]["vlm"], "model": "other-vl",
+                    "fallback_from": ["vlm-x: HTTPStatusError after 2.0 s"]}
+    with_fallback = {**body, "ai_outputs": {**body["ai_outputs"], "vlm": fallback_vlm}}
+    with pytest.raises(bench.ProvenanceError, match="fallback vision model .*other-vl"):
+        bench.row_from_response(item, with_fallback, 1.0)
+
+
+def test_summary_counts_every_vlm_model_and_is_kind_live(workspace):
+    def post(payload):
+        body = _ok_body()
+        if payload["truck_id"] == "BENCH-3":
+            body["ai_outputs"]["vlm"]["model"] = "vlm-fallback"
+        return 200, body
+
+    summary = _run(workspace, post)
+    assert summary["kind"] == "live"
+    assert summary["vlm_models"] == {"vlm-x": 2, "vlm-fallback": 1}
+    assert summary["vlm_model"] == "vlm-x"
+
+
+def test_bootstrap_pins_the_vlm_only_gate_over_dotenv(monkeypatch):
+    from lynceus import config
+
+    for name in ("LYNCEUS_STORAGE_DIR", "LYNCEUS_ALLOW_STUB_FALLBACK",
+                 "DETECTOR_MODEL_PATH", "VLM_FALLBACK_MODELS"):
+        monkeypatch.setenv(name, "unset-by-test")
+    monkeypatch.setattr(sys, "path", list(sys.path))
+
+    def dotenv(path):  # a .env that turns the detector and a fallback on
+        import os
+
+        os.environ["DETECTOR_MODEL_PATH"] = "models/x.onnx"
+        os.environ["VLM_FALLBACK_MODELS"] = "other-vlm"
+
+    monkeypatch.setattr(config, "_load_dotenv", dotenv)
+    bench._bootstrap_env()
+    settings = config.get_settings()
+    assert settings.detector_model_path == ""
+    assert settings.vlm_fallback_models == ()
+    assert settings.allow_stub_fallback is False
 
 
 def test_resume_skips_finished_images(workspace):
@@ -287,20 +361,20 @@ def test_non_rate_limit_error_still_records_row_and_continues(workspace):
     assert summary["errors"] == 1 and summary["n"] == 3
 
 
-def test_provenance_abort_mid_run_keeps_earlier_rows_and_writes_none_for_the_stub(
-    workspace, monkeypatch
-):
+def test_non_live_rows_count_toward_the_consecutive_error_stop(workspace):
+    manifest, images, out = workspace
+    (images / "d.jpg").write_bytes(JPEG)
+    with manifest.open("a", encoding="utf-8") as fh:
+        fh.write("d.jpg,Paper,accept\n")
+    calls = []
+
     def post(payload):
-        stub = payload["truck_id"] == "BENCH-2"
-        return 200, _ok_body(provenance="stub" if stub else "live")
+        calls.append(payload["truck_id"])
+        return 200, _ok_body(provenance="detector_only_degraded")
 
-    assert _main_with(monkeypatch, workspace, post) == 2
-    assert [r["image"] for r in _lines(workspace[2])] == ["a.jpg"]  # nothing for item 2
-
-
-def test_non_live_provenance_on_first_item_exits_2_before_any_row(workspace, monkeypatch):
-    assert _main_with(monkeypatch, workspace, lambda p: (200, _ok_body(provenance="stub"))) == 2
-    assert not workspace[2].exists() or workspace[2].read_text(encoding="utf-8") == ""
+    summary = _run(workspace, post)
+    assert calls == ["BENCH-1", "BENCH-2", "BENCH-3"]  # stopped: d.jpg never posted
+    assert summary["errors"] == 3
 
 
 def test_detection_matches_the_real_pipeline_and_api_wording(tmp_path, monkeypatch):

@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * GateStrip: the signature move: five industrial indicator lights
- * (VLM, OCR, XCHECK, GAS, WEIGHT) on a horizontal strip that light
- * up sequentially with a 120ms stagger when a verdict arrives, like
- * a machine startup interlock. Green = passed, red = failed,
+ * GateStrip: the signature move: six industrial indicator lights
+ * (VLM, MANIFEST, XCHECK, GAS, WEIGHT, YOLO) on a horizontal strip that
+ * light up sequentially with a 120ms stagger when a verdict arrives,
+ * like a machine startup interlock. Green = passed, red = failed,
  * graphite = not_run/not_evaluated.
  *
- * The verdict banner may only light after all five gates resolve:
+ * The verdict banner may only light after every gate resolves:
  * the parent reads `allResolved`.
  */
 
@@ -46,8 +46,13 @@ export function normalizeGates(
       typeof raw === "object" && raw !== null
         ? String((raw as GateResult).state ?? "not_evaluated")
         : String(raw ?? "not_run");
+    // not_evaluated stays its own neutral N/A: a gate that ran but cannot
+    // pass or fail (e.g. a detector-only run that flagged nothing) is
+    // neither a green clearance nor "not run".
     display.state =
-      state === "passed" || state === "failed" ? state : "not_run";
+      state === "passed" || state === "failed" || state === "not_evaluated"
+        ? state
+        : "not_run";
     display.reason =
       typeof raw === "object" && raw !== null
         ? ((raw as GateResult).reason ?? null)
@@ -131,9 +136,9 @@ export function GateStrip({
             <div
               key={gate.key}
               className={cn(
-                // min-w-0 + tight phone padding: five cells must fit a
-                // 390px screen (WEIGHT was clipped at px-2.5).
-                "flex min-w-0 flex-1 flex-col items-center gap-1.5 border-r border-seam bg-raised px-1 py-3 last:border-r-0 transition-colors duration-150 sm:px-2.5",
+                // min-w-0 + tight phone padding: six cells must fit a
+                // 390px screen (WEIGHT was clipped at px-2.5 with five).
+                "flex min-w-0 flex-1 flex-col items-center gap-1.5 border-r border-seam bg-raised px-0.5 py-3 last:border-r-0 transition-colors duration-150 sm:px-2.5",
                 evaluating && "animate-[gate-pulse_1.1s_ease-in-out_infinite]",
                 evaluating && "bg-amber-soft",
                 lit && gate.state === "failed" && "bg-red-dim",
@@ -154,14 +159,17 @@ export function GateStrip({
               />
               <span
                 className={cn(
-                  "figure text-[12px] font-semibold tracking-[0.8px]",
+                  "figure text-[11px] font-semibold tracking-[0.3px] sm:text-[12px] sm:tracking-[0.8px]",
                   textTone,
                 )}
               >
                 {gate.label}
               </span>
               <span
-                className={cn("text-[12px] font-semibold tracking-wide", textTone)}
+                className={cn(
+                  "text-[11px] font-semibold tracking-wide sm:text-[12px]",
+                  textTone,
+                )}
                 aria-hidden="true"
               >
                 {lit ? STATE_LABEL[gate.state] : "—"}
@@ -190,7 +198,8 @@ export function GateStrip({
       {allResolved ? (
         <p className="mt-1.5 text-center text-[11px] leading-relaxed text-faint">
           VLM visual contaminants · MANIFEST manual waybill text · XCHECK waybill vs
-          observed load · GAS gate sensors · WEIGHT weighbridge vs declared
+          observed load · GAS gate sensors · WEIGHT weighbridge vs declared ·
+          YOLO CPU detector second opinion
         </p>
       ) : null}
     </div>

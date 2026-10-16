@@ -14,13 +14,18 @@ Two interchangeable AI client implementations with the same contract:
 Provenance is stated, never inferred: every result carries a ``provenance``
 field (``"live"`` or ``"stub"``) and live failures fall back to the stub
 with an *honest* ``"stub_fallback_live_error"`` marker — the stub never
-masquerades as a live model.
+masquerades as a live model.  With stub fallback disabled, a live failure
+on a photo the CPU detector could read is answered in
+``"detector_only_degraded"`` mode (always held for a human) instead of 503.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import copy
 import json
+import logging
 import math
 import re
 import threading
@@ -28,10 +33,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 import httpx
 
+from lynceus import detector
 from lynceus import gas_ingest
 from lynceus import gas_twin
 from lynceus.config import Settings, get_settings, provider_for_url
@@ -49,6 +55,24 @@ EXPLAIN_TIMEOUT_S = ASSIST_TIMEOUT_S
 
 class LiveAIUnavailableError(RuntimeError):
     """Live AI failed and stub fallback is disabled (fail-closed mode)."""
+
+
+class VisionModelsFailedError(RuntimeError):
+    """The VLM and its fallbacks all failed; the message lists every attempt
+    (the primary's first) and the last failure is chained as the cause."""
+
+
+def _model_specific_failure(exc: BaseException) -> bool:
+    """True when the next vision model may still answer: the endpoint replied
+    with an error status (400 "model not supported", 503 "no available
+    workers", 429 retries spent) or the model's reply was not usable JSON.
+    Connection failures and timeouts are not: the endpoint is down or the
+    budget is spent."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return True
+    return isinstance(exc, (ValueError, KeyError, TypeError)) and not isinstance(
+        exc, httpx.HTTPError
+    )
 
 
 #: Bound each retry wait so a shared-key 429 cannot stall a request indefinitely.
@@ -104,6 +128,9 @@ __all__ = [
     "AIClients",
     "VLLMClient",
     "StubAIClients",
+    "UnavailableAIClients",
+    "VisionModelsFailedError",
+    "DEGRADED_PROVENANCE",
     "resolve_clients",
     "resolve_assist_client",
     "resolve_explain_client",
@@ -402,21 +429,38 @@ class VLLMClient:
         up to two waits before the error surfaces
         (and the honest stub-fallback / fail-closed path takes over).
         """
+        # One wall-clock budget for the attempts and the waits between them.
+        deadline = time.monotonic() + self._timeout_s
+        client = self
         for attempt in range(3):
             try:
-                return self._chat_once(base_url, model, messages, max_tokens)
+                return client._chat_once(base_url, model, messages, max_tokens)
             except _RateLimitedError as exc:
                 if attempt == 2:
                     raise ValueError(
                         f"endpoint rate-limited after 3 attempts ({base_url})"
                     ) from exc
                 time.sleep(min(MAX_RETRY_AFTER_S, exc.retry_after + 0.25 * (attempt + 1)))
+                client = self._remaining(deadline)
         raise AssertionError("unreachable")
+
+    def _remaining(self, deadline: float) -> "VLLMClient":
+        """A copy scoped to what is left before ``deadline``; raises the
+        deadline ``ReadTimeout`` when nothing is left."""
+        remaining_s = deadline - time.monotonic()
+        if remaining_s <= 0:
+            raise _deadline_error(self._timeout_s)
+        return self._scoped(remaining_s)
 
     def _chat_json(
         self, base_url: str, model: str, messages: list, max_tokens: int = 512
     ) -> Dict[str, Any]:
-        """Chat round trip with robust JSON parsing and exactly one retry."""
+        """Chat round trip with robust JSON parsing and exactly one retry.
+
+        The retry gets only what is left of ``self._timeout_s``: one budget
+        covers both round trips.
+        """
+        deadline = time.monotonic() + self._timeout_s
         content = self._chat(base_url, model, messages, max_tokens)
         parsed = _extract_json(content)
         if parsed is not None:
@@ -429,7 +473,7 @@ class VLLMClient:
                 "Reply again with ONLY the JSON object — no prose, no code fences.",
             },
         ]
-        content = self._chat(base_url, model, retry_messages, max_tokens)
+        content = self._remaining(deadline)._chat(base_url, model, retry_messages, max_tokens)
         parsed = _extract_json(content)
         if parsed is None:
             raise ValueError(
@@ -453,12 +497,45 @@ class VLLMClient:
                 ],
             }
         ]
-        started = time.perf_counter()
-        parsed = self._chat_json(
-            self._settings.vllm_vlm_url, self._settings.vlm_model, messages
-        )
+        # VLM_MODEL first, then VLM_FALLBACK_MODELS in order: a shared endpoint
+        # can drop one model ("no available workers") while others still serve.
+        # One wall-clock budget covers the whole chain.  Only a failure of the
+        # model itself (an HTTP error status, an unparseable reply) moves on;
+        # an unreachable endpoint or a spent budget ends the chain.  The model
+        # that answered is reported; the ones that failed are named in
+        # ``fallback_from`` so the audit never hides the switch.
+        models = (self._settings.vlm_model, *self._settings.vlm_fallback_models)
+        deadline = time.monotonic() + self._timeout_s
+        failed: List[str] = []
+        details: List[str] = []
+        for model in models:
+            started = time.perf_counter()
+            try:
+                parsed = self._remaining(deadline)._chat_json(
+                    self._settings.vllm_vlm_url, model, messages
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 — next model, else re-raise
+                took = f"{type(exc).__name__} after {time.perf_counter() - started:.1f} s"
+                failed.append(f"{model}: {took}")
+                details.append(f"{model}: {took} ({str(exc)[:160]})")
+                if model != models[-1] and _model_specific_failure(exc):
+                    continue
+                if len(failed) == 1:
+                    raise
+                raise VisionModelsFailedError(
+                    "every vision model tried failed: " + "; ".join(details)
+                ) from exc
         latency_ms = (time.perf_counter() - started) * 1000.0
         mode = self._settings.localisation_mode
+        result = self._vlm_result(parsed, model, latency_ms, mode)
+        if failed:
+            result["fallback_from"] = failed
+        return result
+
+    def _vlm_result(
+        self, parsed: Dict[str, Any], model: str, latency_ms: float, mode: str
+    ) -> Dict[str, Any]:
         return {
             "detected": {
                 "contamination": parsed.get("contamination", "unknown"),
@@ -469,8 +546,8 @@ class VLLMClient:
             "confidence": _clamp01(parsed.get("confidence")),
             "boxes": parse_locations(parsed.get("locations"), mode),
             "localisation": mode,
-            "model": self._settings.vlm_model,
-            "model_version": self._settings.vlm_model,
+            "model": model,
+            "model_version": model,
             "raw_output": json.dumps(parsed, sort_keys=True),
             "provenance": self.provenance,
             "provider": provider_for_url(self._settings.vllm_vlm_url),
@@ -832,14 +909,70 @@ def _simulate_gas_readings(
         return None
 
 
+#: Provenance of an inspection decided on the CPU detector alone because the
+#: live vision model failed with stub fallback disabled.
+DEGRADED_PROVENANCE = "detector_only_degraded"
+#: Same sentinel idea as ``_GAS_NOT_SUPPLIED``, for a detector result the API
+#: already computed (the probe-failure path runs it before the record begins).
+_DETECTOR_NOT_SUPPLIED = object()
+
+_log = logging.getLogger(__name__)
+
+
+class UnavailableAIClients:
+    """Live clients whose endpoint already failed its probe.
+
+    Used only when the detector can still answer: every call raises
+    :class:`LiveAIUnavailableError` with the probe's reason, so
+    :func:`run_inspection` takes its degraded path with that reason.
+    """
+
+    provenance = "live"
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+
+    def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
+        raise LiveAIUnavailableError(self.reason)
+
+    def llm(self, manifest_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        raise LiveAIUnavailableError(self.reason)
+
+
+def _photo_bytes(photo: Any) -> bytes:
+    """Raw bytes of a base64 photo (raw or ``data:`` URI); ``b""`` when the
+    payload carries none or it is not base64 (the API validated it already)."""
+    if not isinstance(photo, str) or not photo.strip():
+        return b""
+    text = photo.strip()
+    if text[:5].lower() == "data:":
+        text = text.partition(",")[2]
+    try:
+        return base64.b64decode("".join(text.split()), validate=True)
+    except (binascii.Error, ValueError):
+        return b""
+
+
+def safe_detect(photo_bytes: bytes, settings: Settings) -> Optional[Dict[str, Any]]:
+    """:func:`detector.detect`, with any failure logged and turned into None:
+    the second opinion must never fail the inspection."""
+    try:
+        return detector.detect(photo_bytes, settings)
+    except Exception as exc:  # noqa: BLE001 — logged, never raised
+        _log.warning("detector skipped: %s: %s", type(exc).__name__, exc)
+        return None
+
+
 def run_inspection(
     payload: Dict[str, Any],
     ai_clients: AIClients,
     record_id: Optional[str] = None,
     allow_stub_fallback: bool = True,
     precomputed_gas: Any = _GAS_NOT_SUPPLIED,
+    settings: Optional[Settings] = None,
+    precomputed_detector: Any = _DETECTOR_NOT_SUPPLIED,
 ) -> Dict[str, Any]:
-    """Run the VLM + LLM + gas-twin stages for one inspection payload.
+    """Run the VLM + LLM + detector + gas-twin stages for one inspection payload.
 
     Args:
         payload: The raw ``/inspect`` request payload (``truck_id``,
@@ -852,9 +985,19 @@ def run_inspection(
             :func:`collect_gate_gas`).  The default sentinel means "collect
             here"; an explicit value (including ``None``) is used as-is and
             never triggers another collection.
+        settings: Detector configuration (default: :func:`get_settings`).
+        precomputed_detector: A detector result the caller already has (the
+            default sentinel means "run it here when a photo is present").
 
     Returns:
-        ``{"vlm": ..., "llm": ..., "gas": ..., "provenance": "live"|"stub"}``.
+        ``{"vlm": ..., "llm": ..., "gas": ..., "detector": ...,
+        "provenance": "live"|"stub"}``.  ``detector`` is the CPU detector's
+        second opinion (:mod:`lynceus.detector`) or ``None`` when it did not
+        run (disabled, no photo bytes, or it failed: logged, never raised).
+        A live failure with stub fallback disabled returns provenance
+        ``"detector_only_degraded"`` (``vlm``/``llm`` None, ``failed_stage``
+        ``"vlm"`` or ``"llm"`` naming the call that failed) when the detector
+        answered, and raises :class:`LiveAIUnavailableError` otherwise.
         ``gas`` carries the digital-twin gate readings (see
         :mod:`lynceus.gas_twin`) or ``None`` when the twin could not run
         (incomplete batch description or engine unavailable).  When the
@@ -869,6 +1012,7 @@ def run_inspection(
         if precomputed_gas is _GAS_NOT_SUPPLIED
         else precomputed_gas
     )
+    settings = settings or get_settings()
     context = {
         "truck_id": payload.get("truck_id"),
         "weight_kg": payload.get("weight_kg"),
@@ -880,37 +1024,74 @@ def run_inspection(
     manifest_text = str(payload.get("manifest_text") or "")
     photo = payload.get("photo_base64") or payload.get("photo")
 
-    try:
-        # The two calls are independent and each takes seconds on a shared
-        # endpoint, so run them concurrently; .result() re-raises either error.
-        with ThreadPoolExecutor(max_workers=2) as pool:
+    # The CPU detector reads the real photo bytes only: a scripted demo case
+    # without a photo stays exactly as scripted.
+    photo_bytes = _photo_bytes(photo)
+    detector_result: Optional[Dict[str, Any]] = (
+        precomputed_detector if precomputed_detector is not _DETECTOR_NOT_SUPPLIED else None
+    )
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        # The detector runs beside the model calls (~150 ms on CPU, no network).
+        detector_future = (
+            pool.submit(safe_detect, photo_bytes, settings)
+            if precomputed_detector is _DETECTOR_NOT_SUPPLIED and photo_bytes
+            else None
+        )
+        try:
+            # The two calls are independent and each takes seconds on a shared
+            # endpoint, so run them concurrently; .result() re-raises either error.
             vlm_future = pool.submit(ai_clients.vlm, photo)
             llm_future = pool.submit(ai_clients.llm, manifest_text, context)
+            # Which call failed decides the degraded wording: a vision answer
+            # without its waybill check is still discarded, but it did run.
+            failed_stage = "vlm"
             vlm_result = vlm_future.result()
+            failed_stage = "llm"
             llm_result = llm_future.result()
-    except Exception as exc:  # noqa: BLE001 — any live failure falls back
-        if ai_clients.provenance == "live":
-            if not allow_stub_fallback:
-                raise LiveAIUnavailableError(
-                    f"live AI failed ({type(exc).__name__}: {exc}); "
-                    "stub fallback disabled"
-                ) from exc
-            fallback = StubAIClients(demo_case=payload.get("demo_case"))
-            vlm_result = fallback.vlm(photo)
-            llm_result = fallback.llm(manifest_text, context)
-            return {
-                "vlm": vlm_result,
-                "llm": llm_result,
-                "gas": gas_result,
-                "provenance": "stub_fallback_live_error",
-                "fallback_reason": f"{type(exc).__name__}: {exc}",
-            }
-        raise
+            live_error: Optional[Exception] = None
+        except Exception as exc:  # noqa: BLE001 — any live failure falls back
+            if ai_clients.provenance != "live":
+                raise
+            live_error = exc
+        if detector_future is not None:
+            detector_result = detector_future.result()
+
+    if live_error is not None:
+        exc = live_error
+        reason = f"{type(exc).__name__}: {exc}"
+        if not allow_stub_fallback:
+            if detector_result is not None:
+                # Degraded, not dark: the detector answered, so the truck
+                # is held for a human instead of the gate returning 503.
+                # A vision answer whose waybill call failed is not fused.
+                return {
+                    "vlm": None,
+                    "llm": None,
+                    "gas": gas_result,
+                    "detector": detector_result,
+                    "provenance": DEGRADED_PROVENANCE,
+                    "fallback_reason": reason,
+                    "failed_stage": failed_stage,
+                }
+            raise LiveAIUnavailableError(
+                f"live AI failed ({reason}); stub fallback disabled"
+            ) from exc
+        fallback = StubAIClients(demo_case=payload.get("demo_case"))
+        return {
+            "vlm": fallback.vlm(photo),
+            "llm": fallback.llm(manifest_text, context),
+            "gas": gas_result,
+            "detector": detector_result,
+            "provenance": "stub_fallback_live_error",
+            "fallback_reason": reason,
+        }
 
     result = {
         "vlm": vlm_result,
         "llm": llm_result,
         "gas": gas_result,
+        "detector": detector_result,
         "provenance": ai_clients.provenance,
     }
     fallback_reason = getattr(ai_clients, "fallback_reason", None)
