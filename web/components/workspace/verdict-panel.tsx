@@ -284,41 +284,38 @@ export function VerdictPanel({
       />
 
       <div className="flex flex-col gap-4 px-4 py-4">
-        {/* Verdict banner: lights only after the six gates resolve.
-            The reset control lives inside this row: after resolve it is
-            the second-most-important action (critique P1 — it was buried
-            mid-panel in the quietest variant). */}
-        <div
-          role="status"
-          aria-live="polite"
-          className={cn(
-            "flex items-center justify-between gap-3 rounded-[10px] border px-4 py-3 transition-opacity duration-200",
-            bannerLit
-              ? cn(style.cls, "opacity-100")
-              : "border-seam bg-raised text-faint opacity-70",
-          )}
-        >
-          {/* 10px radius: matches --radius-card for the banner container.
-              4px tracking: industrial register for the verdict label (small-caps companion). */}
-          <span className="text-[20px] font-bold tracking-[4px]">
-            {bannerLit ? style.label : "— — —"}
-          </span>
-          {phase === "resolved" && onReset ? (
-            <Button type="button" size="sm" onClick={onReset} className="shrink-0 text-[13px]">
-              Next truck
-            </Button>
-          ) : null}
-        </div>
+        {/* Verdict banner: only rendered once evaluating/resolved. Idle
+            is handled by the parent (quiet directive line). */}
+        {phase !== "idle" ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className={cn(
+              "flex items-center justify-between gap-3 rounded-[10px] border px-4 py-3 transition-opacity duration-200",
+              bannerLit
+                ? cn(style.cls, "opacity-100")
+                : "border-seam bg-raised text-faint opacity-70",
+            )}
+          >
+            <span className="text-[20px] font-bold tracking-[4px]">
+              {bannerLit ? style.label : "— — —"}
+            </span>
+            {phase === "resolved" && onReset ? (
+              <Button type="button" size="sm" onClick={onReset} className="shrink-0 text-[13px]">
+                Next truck
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
-        {/* Headline: directive sentence sits just under the verdict word
-            (critique: 15px was too quiet for the rushed operator) */}
-        <p className="m-0 text-[17px] font-semibold leading-snug text-ink">
-          {phase === "resolved" && data
-            ? headlineFor(decision, data)
-            : phase === "evaluating"
-              ? "Evaluating interlock…"
-              : "Upload a load photo, fill the register, then press Inspect Load."}
-        </p>
+        {/* Headline: directive sentence sits just under the verdict word */}
+        {phase !== "idle" ? (
+          <p className="m-0 text-[17px] font-semibold leading-snug text-ink">
+            {phase === "resolved" && data
+              ? headlineFor(decision, data)
+              : "Evaluating interlock…"}
+          </p>
+        ) : null}
 
         {phase === "evaluating" ? <EvaluatingNote runMode={runMode} /> : null}
 
@@ -388,19 +385,19 @@ export function VerdictPanel({
           <p className="figure m-0 text-[12px] text-faint">{secondOpinion}</p>
         ) : null}
 
-        {/* The interlock gate strip: the decision theater comes before the
-            money figure (critique: impact counter outranked the verdict
-            evidence at decision time) */}
-        <GateStrip
-          gates={gates}
-          phase={phase}
-          onAllResolved={onAllResolved}
-        />
-
-        {/* Evidence + what to do now: the photo the verdict is about with
-            the contaminants outlined, beside the SOP-cited steps. Shown
-            from submit so the long live wait has the photo on stage. */}
+        {/* The interlock gate strip: only while evaluating or resolved.
+            Idle shows nothing — the parent handles the quiet directive. */}
         {phase !== "idle" ? (
+          <GateStrip
+            gates={gates}
+            phase={phase}
+            onAllResolved={onAllResolved}
+          />
+        ) : null}
+
+        {/* Evidence + what to do now: shown from submit so the long
+            live wait has the photo on stage. */}
+        {phase === "evaluating" || phase === "resolved" ? (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <PhotoEvidence
               src={evidence.src}
@@ -424,20 +421,12 @@ export function VerdictPanel({
             />
             {verdictShown ? (
               <NextSteps steps={data.actions} emptyText="The backend returned no next steps." />
-            ) : (
-              <div className="flex flex-col gap-2">
-                <h3 className="smallcaps m-0">Next steps</h3>
-                <p className="m-0 rounded-[10px] border border-dashed border-seam-strong px-3.5 py-3 text-[13px] text-muted">
-                  Steps appear with the verdict, each citing its SOP clause.
-                </p>
-              </div>
-            )}
+            ) : null}
           </div>
         ) : null}
 
-        {/* Impact counter: demoted below the gates; hidden while idle so
-            the empty stage shows one placeholder, not three */}
-        {phase !== "idle" ? (
+        {/* Impact counter: only on resolved verdicts. */}
+        {phase === "resolved" && data ? (
           <ImpactCounter
             preventedLossIdr={preventedLossIdr}
             runKey={bannerLit ? impactRunKey : 0}

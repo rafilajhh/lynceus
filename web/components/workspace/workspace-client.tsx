@@ -436,35 +436,43 @@ export function WorkspaceClient() {
       </Panel>
 
       {/* ============ Inspection Verdict ============ */}
-      {/* min-h fills the viewport below the topbar: after Inspect scrolls
-          here, the verdict IS the screen (user direction — the incoming
-          panel must not peek above it). scroll-mt clears the sticky bar. */}
-      <div
-        ref={verdictRef}
-        className="flex min-h-[calc(100vh-84px)] scroll-mt-[72px] flex-col"
-      >
-      <VerdictPanel
-        phase={phase}
-        gates={gates}
-        data={data}
-        decision={decision}
-        preventedLossIdr={impact?.prevented_loss_idr ?? 0}
-        impactRunKey={impactRunKey}
-        bannerLit={bannerLit}
-        onAllResolved={onAllResolved}
-        onReset={onReset}
-        error={resultError}
-        evidence={evidence}
-        runMode={runMode}
-      >
-        {phase === "resolved" && impact ? (
-          <p className="m-0 text-[13px] leading-relaxed text-muted">
-            {impact.note}{" "}
-            {impact.provenance ? <span>({impact.provenance})</span> : null}
+      {/* Progressive disclosure: the verdict stage only exists once an
+          inspection is running or resolved. Idle shows a quiet directive
+          line instead of empty panels. */}
+      {phase !== "idle" ? (
+        <div
+          ref={verdictRef}
+          className="flex scroll-mt-[72px] flex-col"
+        >
+          <VerdictPanel
+            phase={phase}
+            gates={gates}
+            data={data}
+            decision={decision}
+            preventedLossIdr={impact?.prevented_loss_idr ?? 0}
+            impactRunKey={impactRunKey}
+            bannerLit={bannerLit}
+            onAllResolved={onAllResolved}
+            onReset={onReset}
+            error={resultError}
+            evidence={evidence}
+            runMode={runMode}
+          >
+            {phase === "resolved" && impact ? (
+              <p className="m-0 text-[13px] leading-relaxed text-muted">
+                {impact.note}{" "}
+                {impact.provenance ? <span>({impact.provenance})</span> : null}
+              </p>
+            ) : null}
+          </VerdictPanel>
+        </div>
+      ) : (
+        <div ref={verdictRef} className="scroll-mt-[72px]">
+          <p className="m-0 text-[13px] text-muted">
+            Upload a load photo, fill the register, then press Inspect Load.
           </p>
-        ) : null}
-      </VerdictPanel>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

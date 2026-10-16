@@ -109,12 +109,13 @@ export function IntakeForm({
         id="inspect-form"
         onSubmit={handleSubmit}
         aria-label="Truck intake form"
-        className="flex flex-1 flex-col gap-3 px-4 py-4"
+        className="flex flex-1 flex-col gap-4 px-4 py-4"
       >
+        {/* Register: truck identity + load parameters in one compact grid. */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="truck_id" className="smallcaps mb-1 block">
-              Truck ID <span className="text-muted normal-case">(plate)</span>
+              Truck ID
             </label>
             <input
               id="truck_id"
@@ -142,22 +143,10 @@ export function IntakeForm({
           </div>
         </div>
 
-        {/* Waybill: an optional photo. The declared waybill text the LLM
-            cross-checks is synthesized by the parent from stream + weight. */}
-        <div className="flex items-center gap-3">
-          <span className="smallcaps shrink-0">Waybill</span>
-          {uploadRow(
-            "waybill-photo-upload",
-            waybillPhoto.filename ? "Replace photo" : "Upload photo",
-            waybillPhoto,
-            onWaybillPhoto,
-          )}
-        </div>
-
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="weight_kg" className="smallcaps mb-1 block">
-              Weight <span className="text-muted normal-case">kg</span>
+              Weight kg
             </label>
             <input
               id="weight_kg"
@@ -190,7 +179,7 @@ export function IntakeForm({
           </div>
           <div>
             <label htmlFor="moisture_pct" className="smallcaps mb-1 block">
-              Moisture <span className="text-muted normal-case">%</span>
+              Moisture %
             </label>
             <input
               id="moisture_pct"
@@ -206,7 +195,7 @@ export function IntakeForm({
           </div>
           <div>
             <label htmlFor="age_h" className="smallcaps mb-1 block">
-              Age <span className="text-muted normal-case">h</span>
+              Age h
             </label>
             <input
               id="age_h"
@@ -221,6 +210,18 @@ export function IntakeForm({
           </div>
         </div>
 
+        {/* Waybill photo: optional evidence bytes; the declared text is
+            synthesized from stream + weight above. */}
+        <div className="flex items-center gap-3">
+          <span className="smallcaps shrink-0">Waybill</span>
+          {uploadRow(
+            "waybill-photo-upload",
+            waybillPhoto.filename ? "Replace photo" : "Upload photo",
+            waybillPhoto,
+            onWaybillPhoto,
+          )}
+        </div>
+
         {formError ? (
           <p
             role="alert"
@@ -230,8 +231,7 @@ export function IntakeForm({
           </p>
         ) : null}
 
-        {/* CTA row anchors the panel bottom (mt-auto): primary Inspect +
-            a quiet Reset to clear the gate before any verdict exists. */}
+        {/* CTA row anchors the panel bottom. */}
         <div className="mt-auto flex gap-2">
           <Button
             type="submit"
@@ -240,7 +240,7 @@ export function IntakeForm({
             disabled={loading}
             className="flex-1"
           >
-            {loading ? "Evaluating interlock…" : "Inspect Load"}
+            {loading ? "Evaluating…" : "Inspect Load"}
           </Button>
           <Button
             type="button"
