@@ -83,6 +83,8 @@ def taco_block() -> dict | None:
                      "neighbour_hamming": min(near) if near else None})
     return {
         "images": len(rows),
+        # Without meta.json no batch order is known: neighbour_hamming is all None.
+        "batch_neighbours": "computed" if meta_file.is_file() else "unavailable (no ml/data/taco/meta.json)",
         "pool_images": {"train": len(list((taco / "train").glob("*.jpg"))),
                         "val": len(list((taco / "val").glob("*.jpg")))},
         "nearest_hamming_cumulative": {f"<={k}": sum(o["hamming"] <= k for o in rows) for k in THRESHOLDS},

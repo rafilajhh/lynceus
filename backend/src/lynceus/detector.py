@@ -81,6 +81,9 @@ MAX_CONCURRENT_RUNS = 2
 #: How long a run waits for a free slot before giving up (seconds).
 _SLOT_WAIT_S = 30.0
 _RUN_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
+#: No-wait runs (scripted demo requests) take this first: at most one of them
+#: holds a run slot, so live inspections always keep the other.
+_NO_WAIT_SLOT = threading.BoundedSemaphore(1)
 
 
 class DetectorImageError(ValueError):
@@ -289,12 +292,13 @@ def _decode(photo_bytes: bytes) -> Any:
     """The photo as an upright RGB image, refused before decoding when it is
     over :data:`MAX_PIXELS` (below Pillow's own bomb-warning limit, so the
     header check fires first); Pillow's hard bomb error is refused too."""
-    from PIL import Image, ImageOps  # noqa: PLC0415
+    from PIL import Image, ImageOps, UnidentifiedImageError  # noqa: PLC0415
 
     try:
         # JPEG and PNG only (phone MPO files open through the JPEG plugin).
         raw = Image.open(io.BytesIO(photo_bytes), formats=["JPEG", "PNG"])
-    except Image.DecompressionBombError as exc:
+    except (Image.DecompressionBombError, UnidentifiedImageError) as exc:
+        # Not a JPEG/PNG Pillow can read (GIF, garbage, ...), or a bomb.
         raise DetectorImageError(f"image refused: {exc}") from exc
     with raw:
         width, height = raw.size
@@ -369,18 +373,25 @@ def detect(
         if min_conf is None
         else min_conf
     )
-    acquired = (
-        _RUN_SLOTS.acquire(timeout=slot_wait_s) if slot_wait_s > 0
-        else _RUN_SLOTS.acquire(blocking=False)
-    )
-    if not acquired:
-        raise RuntimeError(f"detector busy: no free run slot within {slot_wait_s:g} s")
+    no_wait = slot_wait_s <= 0
+    if no_wait and not _NO_WAIT_SLOT.acquire(blocking=False):
+        raise RuntimeError("detector busy: a no-wait run is already in flight")
     try:
-        started = time.perf_counter()
-        boxes = model(_decode(photo_bytes), floor)
-        latency_ms = (time.perf_counter() - started) * 1000.0
+        acquired = (
+            _RUN_SLOTS.acquire(blocking=False) if no_wait
+            else _RUN_SLOTS.acquire(timeout=slot_wait_s)
+        )
+        if not acquired:
+            raise RuntimeError(f"detector busy: no free run slot within {slot_wait_s:g} s")
+        try:
+            started = time.perf_counter()
+            boxes = model(_decode(photo_bytes), floor)
+            latency_ms = (time.perf_counter() - started) * 1000.0
+        finally:
+            _RUN_SLOTS.release()
     finally:
-        _RUN_SLOTS.release()
+        if no_wait:
+            _NO_WAIT_SLOT.release()
     return summarize(
         boxes,
         latency_ms,

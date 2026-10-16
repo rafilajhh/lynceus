@@ -10,7 +10,7 @@
  "neighbour_hamming": {
   "test_images_with_batch_neighbours": 150,
   "min": 5,
-  "median": 27,
+  "median": 27.0,
   "cumulative": {
    "<=8": 1,
    "<=10": 1,
@@ -53,7 +53,7 @@
       0.2196
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "2/29",
      "rate": 0.069,
      "wilson95": [
@@ -70,7 +70,7 @@
      "discordant_new_only/old_only": "11/1",
      "mcnemar_exact_p": 0.0063
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3448,
      "bootstrap95": [
       0.1379,
@@ -97,7 +97,7 @@
       0.0308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/121",
      "rate": 0.0083,
      "wilson95": [
@@ -114,7 +114,7 @@
      "discordant_new_only/old_only": "6/0",
      "mcnemar_exact_p": 0.0312
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.0413,
      "bootstrap95": [
       0.0,
@@ -141,7 +141,7 @@
       0.3774
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/11",
      "rate": 0.0909,
      "wilson95": [
@@ -158,7 +158,7 @@
      "discordant_new_only/old_only": "3/1",
      "mcnemar_exact_p": 0.625
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.1818,
      "bootstrap95": [
       -0.1818,
@@ -185,7 +185,7 @@
       0.328
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "23/112",
      "rate": 0.2054,
      "wilson95": [
@@ -202,7 +202,7 @@
      "discordant_new_only/old_only": "7/26",
      "mcnemar_exact_p": 0.0013
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1339,
      "bootstrap95": [
       -0.2321,
@@ -229,7 +229,7 @@
       0.328
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "24/112",
      "rate": 0.2143,
      "wilson95": [
@@ -246,7 +246,7 @@
      "discordant_new_only/old_only": "11/26",
      "mcnemar_exact_p": 0.0201
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1071,
      "bootstrap95": [
       -0.2054,
@@ -276,7 +276,7 @@
       0.2265
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "2/28",
      "rate": 0.0714,
      "wilson95": [
@@ -293,7 +293,7 @@
      "discordant_new_only/old_only": "10/1",
      "mcnemar_exact_p": 0.0117
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3214,
      "bootstrap95": [
       0.1071,
@@ -320,7 +320,7 @@
       0.031
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/120",
      "rate": 0.0083,
      "wilson95": [
@@ -337,7 +337,7 @@
      "discordant_new_only/old_only": "6/0",
      "mcnemar_exact_p": 0.0312
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.0417,
      "bootstrap95": [
       0.0,
@@ -364,7 +364,7 @@
       0.3774
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/11",
      "rate": 0.0909,
      "wilson95": [
@@ -381,7 +381,7 @@
      "discordant_new_only/old_only": "3/1",
      "mcnemar_exact_p": 0.625
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.1818,
      "bootstrap95": [
       -0.1818,
@@ -408,7 +408,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "23/111",
      "rate": 0.2072,
      "wilson95": [
@@ -425,7 +425,7 @@
      "discordant_new_only/old_only": "7/26",
      "mcnemar_exact_p": 0.0013
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1351,
      "bootstrap95": [
       -0.2342,
@@ -452,7 +452,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "24/111",
      "rate": 0.2162,
      "wilson95": [
@@ -469,7 +469,7 @@
      "discordant_new_only/old_only": "11/26",
      "mcnemar_exact_p": 0.0201
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1081,
      "bootstrap95": [
       -0.2072,
@@ -499,7 +499,7 @@
       0.2265
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "2/28",
      "rate": 0.0714,
      "wilson95": [
@@ -516,7 +516,7 @@
      "discordant_new_only/old_only": "10/1",
      "mcnemar_exact_p": 0.0117
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3214,
      "bootstrap95": [
       0.1071,
@@ -543,7 +543,7 @@
       0.031
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/120",
      "rate": 0.0083,
      "wilson95": [
@@ -560,7 +560,7 @@
      "discordant_new_only/old_only": "6/0",
      "mcnemar_exact_p": 0.0312
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.0417,
      "bootstrap95": [
       0.0,
@@ -587,7 +587,7 @@
       0.2775
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "0/10",
      "rate": 0.0,
      "wilson95": [
@@ -604,7 +604,7 @@
      "discordant_new_only/old_only": "3/0",
      "mcnemar_exact_p": 0.25
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3,
      "bootstrap95": [
       0.1,
@@ -631,7 +631,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "23/111",
      "rate": 0.2072,
      "wilson95": [
@@ -648,7 +648,7 @@
      "discordant_new_only/old_only": "7/26",
      "mcnemar_exact_p": 0.0013
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1351,
      "bootstrap95": [
       -0.2342,
@@ -675,7 +675,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "24/111",
      "rate": 0.2162,
      "wilson95": [
@@ -692,7 +692,7 @@
      "discordant_new_only/old_only": "11/26",
      "mcnemar_exact_p": 0.0201
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1081,
      "bootstrap95": [
       -0.2072,
@@ -722,7 +722,7 @@
       0.2337
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "2/27",
      "rate": 0.0741,
      "wilson95": [
@@ -739,7 +739,7 @@
      "discordant_new_only/old_only": "9/1",
      "mcnemar_exact_p": 0.0215
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.2963,
      "bootstrap95": [
       0.1111,
@@ -766,7 +766,7 @@
       0.031
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/120",
      "rate": 0.0083,
      "wilson95": [
@@ -783,7 +783,7 @@
      "discordant_new_only/old_only": "6/0",
      "mcnemar_exact_p": 0.0312
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.0417,
      "bootstrap95": [
       0.0,
@@ -810,7 +810,7 @@
       0.2775
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "0/10",
      "rate": 0.0,
      "wilson95": [
@@ -827,7 +827,7 @@
      "discordant_new_only/old_only": "3/0",
      "mcnemar_exact_p": 0.25
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3,
      "bootstrap95": [
       0.1,
@@ -854,7 +854,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "23/111",
      "rate": 0.2072,
      "wilson95": [
@@ -871,7 +871,7 @@
      "discordant_new_only/old_only": "7/26",
      "mcnemar_exact_p": 0.0013
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1351,
      "bootstrap95": [
       -0.2342,
@@ -898,7 +898,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "24/111",
      "rate": 0.2162,
      "wilson95": [
@@ -915,7 +915,7 @@
      "discordant_new_only/old_only": "11/26",
      "mcnemar_exact_p": 0.0201
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1081,
      "bootstrap95": [
       -0.2072,
@@ -945,7 +945,7 @@
       0.2265
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "2/28",
      "rate": 0.0714,
      "wilson95": [
@@ -962,7 +962,7 @@
      "discordant_new_only/old_only": "10/1",
      "mcnemar_exact_p": 0.0117
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3214,
      "bootstrap95": [
       0.1071,
@@ -989,7 +989,7 @@
       0.031
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/120",
      "rate": 0.0083,
      "wilson95": [
@@ -1006,7 +1006,7 @@
      "discordant_new_only/old_only": "6/0",
      "mcnemar_exact_p": 0.0312
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.0417,
      "bootstrap95": [
       0.0,
@@ -1033,7 +1033,7 @@
       0.3774
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/11",
      "rate": 0.0909,
      "wilson95": [
@@ -1050,7 +1050,7 @@
      "discordant_new_only/old_only": "3/1",
      "mcnemar_exact_p": 0.625
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.1818,
      "bootstrap95": [
       -0.1818,
@@ -1077,7 +1077,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "23/111",
      "rate": 0.2072,
      "wilson95": [
@@ -1094,7 +1094,7 @@
      "discordant_new_only/old_only": "7/26",
      "mcnemar_exact_p": 0.0013
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1351,
      "bootstrap95": [
       -0.2342,
@@ -1121,7 +1121,7 @@
       0.3308
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "24/111",
      "rate": 0.2162,
      "wilson95": [
@@ -1138,7 +1138,7 @@
      "discordant_new_only/old_only": "11/26",
      "mcnemar_exact_p": 0.0201
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1081,
      "bootstrap95": [
       -0.2072,
@@ -1168,7 +1168,7 @@
       0.2585
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "2/24",
      "rate": 0.0833,
      "wilson95": [
@@ -1185,7 +1185,7 @@
      "discordant_new_only/old_only": "8/1",
      "mcnemar_exact_p": 0.0391
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.2917,
      "bootstrap95": [
       0.0833,
@@ -1212,7 +1212,7 @@
       0.0321
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "1/116",
      "rate": 0.0086,
      "wilson95": [
@@ -1229,7 +1229,7 @@
      "discordant_new_only/old_only": "6/0",
      "mcnemar_exact_p": 0.0312
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.0431,
      "bootstrap95": [
       0.0,
@@ -1256,7 +1256,7 @@
       0.2991
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "0/9",
      "rate": 0.0,
      "wilson95": [
@@ -1273,7 +1273,7 @@
      "discordant_new_only/old_only": "3/0",
      "mcnemar_exact_p": 0.25
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": 0.3333,
      "bootstrap95": [
       0.1111,
@@ -1300,7 +1300,7 @@
       0.3294
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "22/108",
      "rate": 0.2037,
      "wilson95": [
@@ -1317,7 +1317,7 @@
      "discordant_new_only/old_only": "7/25",
      "mcnemar_exact_p": 0.0021
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1296,
      "bootstrap95": [
       -0.2222,
@@ -1344,7 +1344,7 @@
       0.3294
      ]
     },
-    "previous@0.15/0.30 (its val pick)": {
+    "previous@0.15/0.3 (its val pick)": {
      "count": "23/108",
      "rate": 0.213,
      "wilson95": [
@@ -1361,7 +1361,7 @@
      "discordant_new_only/old_only": "11/25",
      "mcnemar_exact_p": 0.0288
     },
-    "new_minus[previous@0.15/0.30 (its val pick)]": {
+    "new_minus[previous@0.15/0.3 (its val pick)]": {
      "diff": -0.1019,
      "bootstrap95": [
       -0.2037,

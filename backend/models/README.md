@@ -10,7 +10,7 @@ human). It replaced `lynceus-yolo26s-realwaste.onnx` on 2026-10-17; see
 |---|---|
 | File | `lynceus-yolo26s-realwaste-taco.onnx`, 38.2 MB, sha256 `c84f795aca8fb2126600efa69b9c62f8c3e8d22c2ff8262446d2c45620bf5405` |
 | Source | `ml/weights/yolo26s_e26l.onnx` (`ml/export_onnx.py` from the Colab run `yolo26s_e26l`), copied byte for byte |
-| Architecture | Ultralytics YOLO26s, fine-tuned from `yolo26s.pt` (`ml/colab_train.sh`: early stop with patience 25 stopped it after 66 epochs, best epoch 41; cosine LR, seed 0, deterministic, Ultralytics 8.4.177) |
+| Architecture | Ultralytics YOLO26s, fine-tuned from `yolo26s.pt` (`ml/colab_train.sh`: early stop with patience 25 stopped it after 66 epochs, best epoch 41; cosine LR; seed 0 and deterministic by Ultralytics 8.4.177 defaults) |
 | Training data | RealWaste train split with YOLOE-26l pseudo-boxes, plus TACO train (1,200 images) with human boxes (`ml/build_dataset.py --with-taco`) |
 | Export | fp32, opset 18, input 1×3×640×640, `nms=False`: NMS-free end-to-end output `(1, 300, 6)` = x0, y0, x1, y1, conf, cls in letterboxed pixels |
 | Classes (ONNX metadata) | metal, glass, organic, paper, plastic, textile |
@@ -120,7 +120,8 @@ RDF is still a different domain, so the detector stays a second opinion that can
 ### 80 benchmark images
 
 Image-level rule "metal if any metal box has conf ≥ t"
-(`ml/results/finetuned_summary_yolo26s_e26l_nmsfree.json`):
+(`ml/results/finetuned_summary_yolo26s_e26l_nmsfree.json`; the 0.35 row, which that sweep's grid
+skips, is computed from the per-image `ml/results/finetuned_yolo26s_e26l_nmsfree.json`):
 
 | t | Metal recall | False metal flags |
 |---|---|---|
@@ -181,11 +182,11 @@ copy `ml/weights/yolo26s_e26l.onnx` here under this name, then `ml/eval_decoder.
   (`config.DEFAULT_DETECTOR_HARD_CONF` / `DEFAULT_DETECTOR_LIGHT_CONF`); leave the variables
   unset so a model update brings its own thresholds.
 * `DETECTOR_THREADS` (default 2): onnxruntime intra-op threads per run; at most two runs at
-  once, and a run waits up to 30 s for a slot (scripted demo requests take only an idle slot, so
-  they never delay a live inspection). Only JPEG (including phone MPO) and PNG are decoded.
+  once, and a run waits up to 30 s for a slot (scripted demo requests never wait and hold at most
+  one of the two, so a live inspection always keeps one). Only JPEG (including phone MPO) and PNG are decoded.
   Photos over 40 MP (PNG: 16 MP, which has no reduced-scale decode) are refused before decoding,
-  JPEGs are decoded at a reduced scale (no smaller than 1280 px a side), and a Pillow
-  decompression-bomb warning is an error.
+  JPEGs are decoded at a reduced scale (no smaller than 1280 px a side), and Pillow's own
+  decompression-bomb error is a refusal (the 40 MP cap sits below Pillow's warning limit).
 * The detector runs on the CPU (`CPUExecutionProvider`); the container image ships CPU
   onnxruntime. The result's `runtime` names the provider actually used
   (`onnxruntime-cpu`); startup logs it.

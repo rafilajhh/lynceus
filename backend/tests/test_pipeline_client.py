@@ -504,6 +504,45 @@ def test_model_specific_failure_classification():
     assert not pipeline._model_specific_failure(httpx.ReadTimeout("slow"))
 
 
+def test_a_chain_ending_failure_wins_over_a_model_failure_among_votes(monkeypatch):
+    # Both reads have failed when the vote looks: a refused key must end the
+    # chain even though the other read's 503 alone would move on to vlm-b.
+    import concurrent.futures
+
+    monkeypatch.setenv("VLM_VOTES", "2")
+    monkeypatch.setenv("VLM_MODEL", "vlm-a")
+    monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    monkeypatch.setattr(pipeline, "wait", lambda fs, return_when=None: concurrent.futures.wait(
+        fs, return_when=concurrent.futures.ALL_COMPLETED))
+    lock = threading.Lock()
+    calls: list[str] = []
+
+    def _fake(self, base_url, model, messages, max_tokens=512):
+        with lock:
+            calls.append(model)
+            status = 401 if calls.count(model) == 1 else 503
+        raise _status_error(status)
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
+    for _ in range(5):  # the set order of finished futures must not matter
+        calls.clear()
+        with pytest.raises(httpx.HTTPStatusError) as info:
+            VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
+        assert info.value.response.status_code == 401
+        assert calls == ["vlm-a", "vlm-a"]
+
+
+def test_votes_from_code_built_settings_never_exceed_the_read_slots(monkeypatch):
+    import dataclasses
+
+    seen = []
+    monkeypatch.setattr(VLLMClient, "_chat_once",
+                        lambda self, *a, **k: seen.append(1) or _VLM_JSON)
+    settings = dataclasses.replace(get_settings(), vlm_votes=9)
+    VLLMClient(settings=settings).vlm("aGVsbG8=")
+    assert len(seen) == pipeline._VLM_READ_SLOT_COUNT
+
+
 def test_vote_counts_each_read_once_and_ignores_malformed_entries():
     # One read naming metal twice is still one vote: no majority.
     merged = pipeline._vote_majority(

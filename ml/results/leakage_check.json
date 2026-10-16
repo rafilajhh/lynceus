@@ -87,6 +87,7 @@
  ],
  "taco_test": {
   "images": 150,
+  "batch_neighbours": "computed",
   "pool_images": {
    "train": 1200,
    "val": 150

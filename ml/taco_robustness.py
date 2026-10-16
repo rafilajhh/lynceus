@@ -41,13 +41,9 @@ ADJACENT_MAX = 2
 ADJACENT_HAMMING_MAX = 16
 SENSITIVITY_CUTS = (12, 20)
 
-#: (name, decoder file key, hard, light). The previous model ships 0.25/0.25; its
-#: own val pick (eval_val.py, same rule) was hard 0.15 / light 0.30.
-COMPARATORS = (
-    ("new@0.35/0.05", "new", 0.35, 0.05),
-    ("previous@0.25/0.25 (shipped)", "old", 0.25, 0.25),
-    ("previous@0.15/0.30 (its val pick)", "old", 0.15, 0.30),
-)
+#: The previous model's own val pick (ml/results/val_prod_yolo26s.json, same rule).
+#: The shipped thresholds of both models come from their decoder files.
+PREVIOUS_VAL_PICK = (0.15, 0.30)
 
 
 def wilson(k: int, n: int, z: float = 1.959964) -> list[float] | None:
@@ -132,16 +128,24 @@ def main() -> None:
 
     decoders = {k: json.loads(Path(p).read_text(encoding="utf-8")) for k, p in (("new", a.new), ("old", a.old))}
     rows = {k: d["taco_test_rows"] for k, d in decoders.items()}
-    if {r["image"] for r in rows["new"]} != {r["image"] for r in rows["old"]}:
-        raise SystemExit("the two decoder files cover different TACO test images")
-    test_names = {r["image"] for r in rows["new"]}
+    truth = {k: {r["image"]: (r["metal"], r["light"]) for r in v} for k, v in rows.items()}
+    if truth["new"] != truth["old"]:
+        raise SystemExit("the two decoder files disagree on the TACO test images or their labels")
+    test_names = set(truth["new"])
+    shipped = {k: (d["thresholds"]["hard"], d["thresholds"]["light"]) for k, d in decoders.items()}
+    # (name, decoder key, hard, light); the first is the new model.
+    comparators = (
+        ("new@{:g}/{:g}".format(*shipped["new"]), "new", *shipped["new"]),
+        ("previous@{:g}/{:g} (shipped)".format(*shipped["old"]), "old", *shipped["old"]),
+        ("previous@{:g}/{:g} (its val pick)".format(*PREVIOUS_VAL_PICK), "old", *PREVIOUS_VAL_PICK),
+    )
 
     leak = json.loads(Path(a.leakage).read_text(encoding="utf-8"))["taco_test"]
     if {r["image"] for r in leak["rows"]} != test_names:
         raise SystemExit("leakage_check.json covers different TACO test images; rerun check_leakage.py")
     near_dup = {r["image"] for r in leak["rows"] if r["hamming"] <= NEAR_DUP_MAX}
-    if any(r.get("neighbour_hamming", "missing") == "missing" for r in leak["rows"]):
-        raise SystemExit("leakage_check.json has no neighbour_hamming; rerun check_leakage.py")
+    if leak.get("batch_neighbours") != "computed":
+        raise SystemExit("leakage_check.json has no batch neighbours; run fetch_taco.py, then check_leakage.py")
 
     def same_scene(cut: int) -> set[str]:
         return {r["image"] for r in leak["rows"]
@@ -156,8 +160,8 @@ def main() -> None:
         # Sensitivity of the strict subset to the same-scene cut (not a second pick).
         **{f"strict_cut{cut}": test_names - near_dup - same_scene(cut) for cut in SENSITIVITY_CUTS},
     }
-    per = {name: hits(rows[key], hard, light) for name, key, hard, light in COMPARATORS}
-    new_name = COMPARATORS[0][0]
+    per = {name: hits(rows[key], hard, light) for name, key, hard, light in comparators}
+    new_name = comparators[0][0]
 
     hams = sorted(r["neighbour_hamming"] for r in leak["rows"] if r["neighbour_hamming"] is not None)
     report: dict = {
@@ -167,7 +171,8 @@ def main() -> None:
                  "pool": leak.get("pool_images")},
         "neighbour_hamming": {"test_images_with_batch_neighbours": len(hams),
                               "min": hams[0] if hams else None,
-                              "median": hams[len(hams) // 2] if hams else None,
+                              "median": ((hams[(len(hams) - 1) // 2] + hams[len(hams) // 2]) / 2
+                                         if hams else None),
                               "cumulative": {f"<={k}": sum(h <= k for h in hams) for k in (8, 10, 12, 16, 20, 24)}},
         "excluded": {"near_dup": len(near_dup), "adjacent": len(adjacent),
                      "either": len(near_dup | adjacent)},
@@ -179,12 +184,12 @@ def main() -> None:
         block: dict = {"images": len(keep)}
         for metric in per[new_name]:
             mblock: dict = {}
-            for name, *_ in COMPARATORS:
+            for name, *_ in comparators:
                 vals = [v for img, v in per[name][metric].items() if img in keep]
                 k, n = sum(vals), len(vals)
                 mblock[name] = {"count": f"{k}/{n}", "rate": round(k / n, 4) if n else None,
                                 "wilson95": wilson(k, n)}
-            for name, *_ in COMPARATORS[1:]:
+            for name, *_ in comparators[1:]:
                 imgs = sorted(img for img in per[new_name][metric] if img in keep)
                 x = [per[new_name][metric][i] for i in imgs]
                 y = [per[name][metric][i] for i in imgs]

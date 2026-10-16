@@ -726,7 +726,7 @@ def test_png_has_a_lower_pixel_cap_than_jpeg(monkeypatch):
 def test_only_jpeg_and_png_are_decoded():
     buf = io.BytesIO()
     Image.new("RGB", (20, 20), (90, 90, 90)).save(buf, format="GIF")
-    with pytest.raises(Exception):
+    with pytest.raises(detector.DetectorImageError, match="image refused"):
         detector._decode(buf.getvalue())
     assert pipeline.safe_detect(buf.getvalue(), get_settings()) is None
 
@@ -742,6 +742,7 @@ def test_phone_mpo_photo_is_decoded_at_a_reduced_scale(monkeypatch):
 
 
 def test_a_busy_detector_refuses_a_no_wait_run_at_once():
+    assert detector._settings_model(get_settings()) is not None  # model load not timed
     held = [detector._RUN_SLOTS.acquire(timeout=1) for _ in range(detector.MAX_CONCURRENT_RUNS)]
     try:
         assert all(held)
@@ -750,8 +751,22 @@ def test_a_busy_detector_refuses_a_no_wait_run_at_once():
             detector.detect(_png((64, 48)), slot_wait_s=0.0)
         assert time.perf_counter() - started < 1.0
     finally:
-        for _ in held:
-            detector._RUN_SLOTS.release()
+        for ok in held:
+            if ok:
+                detector._RUN_SLOTS.release()
+
+
+def test_no_wait_runs_never_take_the_last_live_slot():
+    # One no-wait (demo) run in flight: a second is refused while a run slot
+    # is still free, and that slot stays usable by a live run.
+    assert detector._NO_WAIT_SLOT.acquire(timeout=1)
+    try:
+        with pytest.raises(RuntimeError, match="no-wait run is already in flight"):
+            detector.detect(_png((64, 48)), slot_wait_s=0.0)
+        assert detector.detect(_png((64, 48)), min_conf=0.99)["boxes"] == []
+    finally:
+        detector._NO_WAIT_SLOT.release()
+    assert detector.detect(_png((64, 48)), min_conf=0.99, slot_wait_s=0.0)["boxes"] == []
 
 
 def test_scripted_demo_photo_never_waits_for_a_detector_slot(monkeypatch):

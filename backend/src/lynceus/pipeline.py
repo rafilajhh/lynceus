@@ -94,9 +94,10 @@ _DEFAULT_RETRY_AFTER_S = 1.0
 #: headroom for teammates under Token Factory's eight-concurrent shared-key cap.
 _OUTBOUND_SLOTS = threading.BoundedSemaphore(4)
 #: VLM vote reads in flight process-wide.  One fewer than the outbound slots,
-#: so a waybill, assist or shift call always finds a slot even while two
-#: inspections vote at once (they would otherwise queue behind six reads).
-_VLM_READ_SLOTS = threading.BoundedSemaphore(3)
+#: so in steady state a waybill, assist or shift call finds a slot even while
+#: two inspections vote at once (they would otherwise queue behind six reads).
+_VLM_READ_SLOT_COUNT = 3
+_VLM_READ_SLOTS = threading.BoundedSemaphore(_VLM_READ_SLOT_COUNT)
 #: Floor for the per-request httpx timeout passed as the budget left.
 _MIN_REQUEST_TIMEOUT_S = 0.05
 
@@ -565,13 +566,17 @@ class VLLMClient:
         at once, as a single read would: the chain does not wait for the
         other reads (they end at the deadline and their answers are dropped).
         """
-        votes = max(1, self._settings.vlm_votes)
+        # Settings built in code skip the env clamp: never more reads than slots.
+        votes = min(max(1, self._settings.vlm_votes), _VLM_READ_SLOT_COUNT)
         url = self._settings.vllm_vlm_url
+        abandoned = threading.Event()
 
         def read() -> Dict[str, Any]:
             if not _VLM_READ_SLOTS.acquire(timeout=max(deadline - time.monotonic(), 0.0)):
                 raise _deadline_error(self._timeout_s)
             try:
+                if abandoned.is_set():  # the model already failed: spend nothing
+                    raise _deadline_error(self._timeout_s)
                 return self._remaining(deadline)._chat_json(url, model, messages)
             finally:
                 _VLM_READ_SLOTS.release()
@@ -582,11 +587,14 @@ class VLLMClient:
         try:
             reads = [pool.submit(read) for _ in range(votes)]
             done, _ = wait(reads, return_when=FIRST_EXCEPTION)
-            for future in done:
-                if future.exception() is not None:
-                    raise future.exception()
+            errors = [f.exception() for f in done if f.exception() is not None]
+            if errors:
+                # A failure that ends the chain (refused key, spent 429s,
+                # timeout) wins over one that would move to the next model.
+                raise next((e for e in errors if not _model_specific_failure(e)), errors[0])
             return _vote_majority([future.result() for future in reads])
         finally:
+            abandoned.set()
             pool.shutdown(wait=False, cancel_futures=True)
 
     def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
@@ -1147,8 +1155,8 @@ def run_inspection(
         # The detector runs beside the model calls (~150 ms on CPU, no network).
         detector_future = None
         if precomputed_detector is _DETECTOR_NOT_SUPPLIED and photo_bytes:
-            # Scripted demo requests skip the detector when it is busy, so
-            # unauthenticated demo traffic cannot hold up a live inspection.
+            # Scripted demo requests never queue for the detector and use at
+            # most one of its run slots, so live inspections always keep one.
             detector_future = (
                 pool.submit(safe_detect, photo_bytes, settings, wait_for_slot=False)
                 if payload.get("demo_case")

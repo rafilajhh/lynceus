@@ -27,8 +27,8 @@ what the review of the combined code found.
      model memakai key yang sama, jadi mencoba model lain hanya membuang budget 90 detik.
    * `_vote_majority`: satu read yang menyebut "metal" dua kali tetap dihitung satu suara; entri
      yang bukan string diabaikan, tidak bikin crash.
-   * Request demo (`demo_case`) hanya memakai slot detektor yang sedang kosong, jadi traffic demo
-     tanpa login tidak bisa membuat inspeksi sungguhan menunggu.
+   * Request demo (`demo_case`) tidak pernah menunggu slot detektor dan paling banyak memakai satu
+     dari dua slot, jadi inspeksi sungguhan selalu kebagian satu slot walau traffic demo ramai.
 
 Detektor tetap **hanya bisa menahan truk untuk dicek manusia**, tidak pernah accept atau reject
 sendiri. Tidak ada perubahan skema database atau API; record lama tetap terbaca dan tetap
@@ -71,8 +71,8 @@ sedikit tahanan: naikkan `DETECTOR_LIGHT_CONF` atau set `DETECTOR_ESCALATE_LIGHT
   dilatih" benar, tapi val bukan data yang sama sekali tak tersentuh.
 * **YOLO26m** dari run Colab yang sama masih training. Ia hanya menggantikan model ini kalau
   menang di val dengan aturan yang sama dan lolos cek yang sama (bagian 6).
-* Catatan lama yang masih berlaku: read vote yang ditinggal saat chain gagal tetap memegang slot
-  sampai deadline; fallback ke stub bisa accept (perilaku lama); model VLM utama tidak dicek
+* Catatan lama yang masih berlaku: read vote yang sudah terlanjur jalan saat modelnya gagal tetap
+  selesai dan memegang slot sampai selesai (read yang belum mulai sekarang dibatalkan); fallback ke stub bisa accept (perilaku lama); model VLM utama tidak dicek
   terhadap `VLM_BENCHMARKED_MODELS`. Semua sudah ada sebelum branch ini.
 
 **Rollback cepat:** bagian 7.
@@ -95,7 +95,7 @@ weights' `model_sha256` and the `thresholds` used, so records from the two model
 | | |
 |---|---|
 | File | `backend/models/lynceus-yolo26s-realwaste-taco.onnx`, sha256 `c84f795a…20bf5405` |
-| Trained | Colab GPU, `ml/colab_train.sh`: YOLO26s from `yolo26s.pt`; early stop (patience 25) after 66 epochs, best epoch 41; cosine LR, seed 0, deterministic, Ultralytics 8.4.177 |
+| Trained | Colab GPU, `ml/colab_train.sh`: YOLO26s from `yolo26s.pt`; early stop (patience 25) after 66 epochs, best epoch 41; cosine LR; seed 0 and deterministic by Ultralytics 8.4.177 defaults |
 | Data | RealWaste train (YOLOE-26l pseudo-boxes) + TACO train, 1,200 images (human boxes) |
 | Not trained on | RealWaste val (416), TACO val (150), TACO test (150), the 80 benchmark images. val was used for early stopping and checkpoint choice |
 | Thresholds | hard 0.35, light 0.05: the rule in `ml/eval_val.py`, committed before this model was trained |
@@ -145,18 +145,19 @@ What was fixed:
 | Area | Change | Files |
 |---|---|---|
 | Outbound slots | Vote reads share `_VLM_READ_SLOTS` (3) under the 4 outbound slots; `VLM_VOTES` clamped 1..3 | `pipeline.py`, `config.py` |
-| Fail fast | A failed vote read fails the model at once (`FIRST_EXCEPTION`); the others end at the deadline and are dropped | `pipeline.py` |
-| Chain stops | `RateLimitSpentError` (all 429 retries spent) and 401/403 end the fallback chain | `pipeline.py` |
+| Fail fast | A failed vote read fails the model at once (`FIRST_EXCEPTION`); reads still queued for a slot never start, the others end at the deadline and are dropped | `pipeline.py` |
+| Chain stops | `RateLimitSpentError` (all 429 retries spent) and 401/403 end the fallback chain, also when another vote read failed with a 503 at the same time; code-built settings cannot exceed 3 votes | `pipeline.py` |
 | Vote input | Each read's contaminants counted once; non-string entries ignored | `pipeline.py` |
-| Demo traffic | `demo_case` requests take only an idle detector slot, in `run_inspection` and the API's early degraded probe | `pipeline.py`, `api.py`, `detector.py` |
-| Image input | Pillow opens JPEG/PNG only; PNG capped at 16 MP; phone MPO photos decoded at reduced scale like JPEG | `detector.py` |
+| Demo traffic | `demo_case` requests never wait for a detector slot and hold at most one of the two, so live inspections always keep one | `pipeline.py`, `detector.py` |
+| Image input | Pillow opens JPEG/PNG only (anything else is a refusal); PNG capped at 16 MP; phone MPO photos decoded at reduced scale like JPEG | `detector.py` |
 | One source of truth | Threshold defaults in `config`, imported by `decision`; deploy env leaves them commented | `config.py`, `decision.py`, `deploy/lynceus.env.example` |
 | Replay | Sweep always includes the shipped default; resolved-path compare; wording | `benchmark/rescore.py` |
 | TACO fetch | https only, host allowlist, 40 MB cap; `meta.json` maps names to TACO files | `ml/fetch_taco.py` |
 | Reproducibility | `ultralytics==8.4.177` pinned | `ml/setup_env.py` |
 
-Known and left as is (all predate this branch): an abandoned vote read keeps its slot until the
-deadline; the stub fallback can accept; the primary VLM is not checked against
+Known and left as is (all predate this branch): a vote read already in flight when its model
+fails still runs to the end (its JSON retry or 429 wait included) and holds its slot meanwhile;
+the stub fallback can accept; the primary VLM is not checked against
 `VLM_BENCHMARKED_MODELS`; error texts can include the endpoint URL; the UI has no AGPL §13 source
 link.
 
