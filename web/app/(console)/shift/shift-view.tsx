@@ -154,12 +154,15 @@ export function ShiftView() {
   }
 
   const model = report.value_model ?? null;
+  const scriptedMeta =
+    report.sample_records > 0
+      ? `${windowLabel(report)} · ${report.sample_records}/${report.trucks} scripted`
+      : windowLabel(report);
 
   return (
     <div className="flex flex-col gap-4">
-      <SampleNote report={report} />
       <Panel aria-labelledby="shift-headline">
-        <PanelHead title="Shift report" meta={windowLabel(report)} />
+        <PanelHead title="Shift report" meta={scriptedMeta} />
         <h1 id="shift-headline" className="sr-only">
           Shift report
         </h1>
@@ -223,18 +226,6 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
       label: "Hard-contaminant loads that get through",
       without: formatCount(base.without.escaped_hard_loads),
       with: formatCount(base.with.escaped_hard_loads),
-    },
-    {
-      key: "hand",
-      label: "Trucks checked by hand",
-      without: formatCount(base.without.trucks_checked_by_hand, 0),
-      with: formatCount(base.with.trucks_checked_by_hand, 0),
-    },
-    {
-      key: "time",
-      label: "Gate staff time",
-      without: hours(base.without.operator_minutes),
-      with: hours(base.with.operator_minutes),
     },
     {
       key: "false",
@@ -344,29 +335,6 @@ function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
         </p>
       </details>
     </Panel>
-  );
-}
-
-/** Honesty label: scripted data is always named as such. */
-function SampleNote({ report }: { report: ShiftReport }) {
-  if (report.sample_records === 0) return null;
-  return (
-    <div
-      role="note"
-      className="flex items-center gap-2.5 rounded-[10px] border border-seam-strong bg-raised px-4 py-2 text-[12.5px] text-muted"
-    >
-      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-dot-warn" />
-      {report.sample ? (
-        <p className="m-0">
-          <strong className="font-semibold text-ink">Sample shift</strong> — scripted demo data
-        </p>
-      ) : (
-        <p className="m-0">
-          <span className="figure text-ink">{report.sample_records}</span> of{" "}
-          <span className="figure">{report.trucks}</span> trucks are scripted
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -507,7 +475,7 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
         </TableHeader>
         <TableBody>
           {report.suppliers.map((row) => (
-            <SupplierTableRows key={row.supplier} row={row} report={report} />
+            <SupplierTableRows key={row.supplier} row={row} />
           ))}
         </TableBody>
       </Table>
@@ -531,8 +499,8 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
             <div className="mt-2">
               <RiskBar row={row} wide />
             </div>
-            {row.explanation ? (
-              <Explanation row={row} report={report} className="mt-3 border-t border-seam pt-3" />
+            {row.flagged && row.explanation ? (
+              <Explanation row={row} className="mt-3 border-t border-seam pt-3" />
             ) : null}
           </li>
         ))}
@@ -542,10 +510,10 @@ function SupplierPanel({ report }: { report: ShiftReport }) {
   );
 }
 
-function SupplierTableRows({ row, report }: { row: SupplierRow; report: ShiftReport }) {
+function SupplierTableRows({ row }: { row: SupplierRow }) {
   return (
     <>
-      <TableRow className={cn("hover:bg-transparent", row.explanation && "border-b-0")}>
+      <TableRow className={cn("hover:bg-transparent", row.flagged && row.explanation && "border-b-0")}>
         <TableCell className="whitespace-nowrap font-semibold text-ink">
           <SupplierLink name={row.supplier} />
         </TableCell>
@@ -559,10 +527,10 @@ function SupplierTableRows({ row, report }: { row: SupplierRow; report: ShiftRep
           <StatusMark row={row} />
         </TableCell>
       </TableRow>
-      {row.explanation ? (
+      {row.flagged && row.explanation ? (
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={6} className="pt-0 pb-4">
-            <Explanation row={row} report={report} className="max-w-[78ch]" />
+            <Explanation row={row} className="max-w-[78ch]" />
           </TableCell>
         </TableRow>
       ) : null}
@@ -605,18 +573,17 @@ function StatusMark({ row }: { row: SupplierRow }) {
   );
 }
 
-/** The actionable sentence for a flagged supplier. */
+/** The actionable sentence for a flagged supplier — kept quiet and short. */
 function Explanation({
   row,
   className,
 }: {
   row: SupplierRow;
-  report: ShiftReport;
   className?: string;
 }) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <p className="m-0 max-w-[78ch] text-[13.5px] leading-relaxed text-ink">
+      <p className="m-0 max-w-[78ch] text-[12.5px] leading-snug text-muted">
         {row.explanation}
       </p>
     </div>
