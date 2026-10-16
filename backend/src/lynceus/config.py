@@ -148,7 +148,7 @@ def provider_for_url(url: str) -> str:
 
     ``"amd-token-factory"`` when the host is ``amd.com`` / ``amd.com.cn`` (or a
     subdomain of either); anything else is a generic ``"openai-compatible"``
-    server (e.g. self-hosted vLLM).
+    server.
     """
     host = (urlparse(url).hostname or "").lower()
     for domain in ("amd.com.cn", "amd.com"):

@@ -131,8 +131,8 @@ def client(tmp_path, monkeypatch):
     (auto-cleaned) and the AI layer pinned to the offline stub.
 
     ``_vlm_reachable`` is forced False so ``resolve_clients`` can never pick
-    the live vLLM client: no test attempts a network call, and a stray
-    vLLM server on localhost:8000 cannot make results non-deterministic.
+    the live client: no test attempts a network call, and a stray
+    AI server on localhost:8000 cannot make results non-deterministic.
     Demo cases resolve to StubAIClients regardless; manual-mode tests rely
     on this patch for their stub fallback.
     """
