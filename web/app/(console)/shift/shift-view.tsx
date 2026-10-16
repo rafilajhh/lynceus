@@ -10,7 +10,6 @@ import {
   fetchShiftReport,
   type ShiftReport,
   type SupplierRow,
-  type ValueModel,
 } from "@/lib/shift-api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -169,7 +168,6 @@ export function ShiftView() {
         <HeadlineRun report={report} money={money} />
         <HandoverLine report={report} />
       </Panel>
-      {model ? <ValuePanel model={model} money={money} /> : null}
       <SupplierPanel report={report} />
     </div>
   );
@@ -178,90 +176,6 @@ export function ShiftView() {
 /** "50 h" from minutes. */
 function hours(minutes: number): string {
   return `${formatCount(minutes / 60)} h`;
-}
-
-/** One parameter value in its unit: share → %, money → display currency. */
-
-/**
- * Expected value per 1,000 trucks, with vs without Lynceus (impact.value_model).
- * With/without lead; every assumption sits one click away, never hidden.
- */
-function ValuePanel({ model, money }: { model: ValueModel; money: Money }) {
-  const { low, base, high } = model.scenarios;
-  const fee = base.subscription_cost_idr ?? null;
-  const net = base.net_after_subscription_idr ?? base.net_value_idr;
-  const lowNet = low.net_after_subscription_idr ?? low.net_value_idr;
-  const highNet = high.net_after_subscription_idr ?? high.net_value_idr;
-  const rows: { key: string; label: string; without: string; with: string }[] = [
-    {
-      key: "damage",
-      label: "Expected damage from escaped hard items",
-      without: money(base.without.expected_damage_idr),
-      with: money(base.with.expected_damage_idr),
-    },
-    {
-      key: "escaped",
-      label: "Hard-contaminant loads that get through",
-      without: formatCount(base.without.escaped_hard_loads),
-      with: formatCount(base.with.escaped_hard_loads),
-    },
-    {
-      key: "false",
-      label: "Clean loads wrongly rejected",
-      without: formatCount(base.without.false_rejects, 0),
-      with: `${formatCount(base.with.false_rejects, 0)} · ${money(base.with.false_reject_cost_idr)}`,
-    },
-  ];
-
-  return (
-    <Panel aria-labelledby="value-head">
-      <PanelHead title={`Value per ${formatCount(model.trucks, 0)} trucks`} meta="expected value · base case" />
-      <h2 id="value-head" className="sr-only">
-        Value per {model.trucks} trucks
-      </h2>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-raised">
-            <TableHead />
-            <TableHead className="text-right">Without Lynceus</TableHead>
-            <TableHead className="text-right">With Lynceus</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.key} className="hover:bg-transparent">
-              <TableCell className="text-[12.5px] text-muted">{row.label}</TableCell>
-              <TableCell className="figure whitespace-nowrap text-right text-[12.5px] text-ink">
-                {row.without}
-              </TableCell>
-              <TableCell className="figure whitespace-nowrap text-right text-[12.5px] text-ink">
-                {row.with}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-seam px-4 py-3">
-        <p className="m-0 text-[13.5px] text-ink">
-          Net expected value{fee !== null ? " after subscription" : ""}{" "}
-          <strong
-            title={money(net, { full: true })}
-            className={cn(
-              "figure font-semibold",
-              net > 0 ? "text-verdict-green" : net < 0 ? "text-verdict-red" : undefined,
-            )}
-          >
-            {money(net)}
-          </strong>{" "}
-          per {formatCount(model.trucks, 0)} trucks
-        </p>
-        <p className="figure m-0 text-[12px] text-muted">
-          range {money(lowNet)} – {money(highNet)}
-        </p>
-      </div>
-    </Panel>
-  );
 }
 
 /** The headline figures: trucks, rejected, worst-case loss exposure avoided. */

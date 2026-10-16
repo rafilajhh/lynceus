@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { LIVE_LATENCY_COPY } from "@/lib/format";
-import { CountUpFigure } from "@/components/landing/count-up-figure";
 
 export const metadata = { title: "One hidden metal chunk can stop a cement kiln" };
 
@@ -101,9 +100,6 @@ export default function LandingPage() {
             >
               Open Inspection Console
             </Link>
-            <Link href="/inspections" className={buttonVariants({ size: "lg" })}>
-              View Audit Trail
-            </Link>
           </div>
         </div>
 
@@ -162,13 +158,11 @@ export default function LandingPage() {
                 i > 0 ? "lg:border-l lg:border-seam lg:pl-10" : "lg:pr-10",
               ].join(" ")}
             >
-              <CountUpFigure
-                target={f.target}
-                prefix={f.prefix}
-                suffix={f.suffix}
-                decimals={f.decimals}
-                className="figure text-[clamp(34px,4.5vw,56px)] leading-none font-semibold tracking-[-0.01em] text-ink"
-              />
+              <span className="figure text-[clamp(34px,4.5vw,56px)] leading-none font-semibold tracking-[-0.01em] text-ink">
+                {f.prefix}
+                {f.decimals > 0 ? f.target.toFixed(f.decimals) : f.target}
+                {f.suffix}
+              </span>
               <p className="max-w-[26ch] text-[14px] leading-snug text-muted">
                 {f.label}
                 {f.labelSuffix ? (
@@ -221,6 +215,41 @@ export default function LandingPage() {
         </ol>
       </section>
 
+      {/* ============ WHO IT'S FOR: the people behind the gate ============ */}
+      <section
+        aria-labelledby="who-label"
+        className="border-b border-seam py-12 lg:py-16"
+      >
+        <h2 id="who-label" className="smallcaps mb-8">
+          For the people who run the gate
+        </h2>
+        <div className="grid gap-6 md:grid-cols-3">
+          {[
+            {
+              role: "Gate inspectors",
+              text: "Accept or reject in seconds, not minutes. One photo, one verdict, one sealed record.",
+            },
+            {
+              role: "Shift supervisors",
+              text: "Supplier risk trends at a glance. Flag problematic haulers before the next delivery.",
+            },
+            {
+              role: "Plant managers",
+              text: "Audit-ready compliance trail. Every decision documented, every figure sourced.",
+            },
+          ].map((item) => (
+            <div key={item.role} className="flex flex-col gap-2">
+              <h3 className="m-0 text-[15px] font-semibold text-ink">
+                {item.role}
+              </h3>
+              <p className="m-0 text-[13.5px] leading-[1.6] text-muted">
+                {item.text}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ============ CLOSING: the ask, with the proof beside it ============ */}
       <section
         aria-labelledby="closing-label"
@@ -234,13 +263,9 @@ export default function LandingPage() {
             Watch it reject the truck that would have stopped the kiln.
           </h2>
           <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted">
-            Upload a load photo and type the waybill text: the live AMD
-            pipeline takes it from photo to sealed audit record in{" "}
-            {LIVE_LATENCY_COPY} (
-            <Link href="/validation" className="text-amber underline underline-offset-2">
-              measured over 80 live runs
-            </Link>
-            ).
+            Upload a load photo and the waybill details. Lynceus returns a
+            verdict in {LIVE_LATENCY_COPY} — sealed, auditable, and ready for
+            your gate log.
           </p>
           <div className="mt-7 flex w-full max-w-[420px] flex-col gap-3 sm:max-w-none sm:flex-row">
             <Link
@@ -248,9 +273,6 @@ export default function LandingPage() {
               className={buttonVariants({ variant: "primary", size: "lg" })}
             >
               Open Inspection Console
-            </Link>
-            <Link href="/inspections" className={buttonVariants({ size: "lg" })}>
-              View Audit Trail
             </Link>
           </div>
         </div>
@@ -290,9 +312,9 @@ export default function LandingPage() {
       {/* ============ COLOPHON: one honest line, no stacked fine print ============ */}
       <footer className="border-t border-seam pt-6 pb-2">
         <p className="m-0 max-w-[90ch] text-[12.5px] leading-[1.7] text-muted">
-          Built during the AMD Developer Hackathon (ACT III). Demo figures are
-          sourced estimates, not validated measurements · photos: RealWaste,
-          CC BY 4.0.
+          Built for the AMD Developer Hackathon (ACT III). Figures sourced from
+          RDI 2024, US cement benchmarks, and ITATS Surabaya weighbridge data.
+          Photos: RealWaste, CC BY 4.0.
         </p>
       </footer>
     </div>

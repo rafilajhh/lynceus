@@ -10,7 +10,6 @@ import {
   IconCollapse,
   IconInspection,
   IconShift,
-  IconValidation,
 } from "@/components/ui/nav-icons";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +17,6 @@ const NAV_ITEMS = [
   { href: "/app", label: "Inspection", Icon: IconInspection },
   { href: "/inspections", label: "Audit Trail", Icon: IconAuditTrail },
   { href: "/shift", label: "Shift", Icon: IconShift },
-  { href: "/validation", label: "Validation", Icon: IconValidation },
 ] as const;
 
 /**
