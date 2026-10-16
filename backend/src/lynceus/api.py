@@ -769,6 +769,11 @@ def create_app() -> FastAPI:
         """True when auth is on and the request carries no valid session."""
         return auth.get_auth_settings().enabled and auth.current_user(request) is None
 
+    @app.get("/login", include_in_schema=False)
+    def redirect_login() -> RedirectResponse:
+        """Canonical /login redirects to the static login page."""
+        return RedirectResponse("/login.html", status_code=308)
+
     @app.get("/login.html", include_in_schema=False)
     def serve_login_page() -> FileResponse:
         """Public sign-in page (the one page the console guard never gates)."""
