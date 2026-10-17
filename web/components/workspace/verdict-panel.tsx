@@ -42,9 +42,7 @@ export interface ResultError {
 
 const EVALUATING_COPY: Record<RunMode, string> = {
   scripted: "Running the scripted sample through the decision engine.",
-  live:
-    `Live run requested on AMD Token Factory: a full inspection takes ${LIVE_LATENCY_COPY} ` +
-    "(measured on the Validation page). The photo evidence states what actually ran.",
+  live: `Inspecting on AMD Token Factory — ${LIVE_LATENCY_COPY}.`,
   other: "Running the inspection…",
 };
 
