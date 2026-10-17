@@ -2,9 +2,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Table: shadcn/ui table primitive on the Lynceus foundation:
- * hairline seam row separators instead of zebra/shadow, small-caps
- * header band on the raised surface.
+ * Table: shadcn/ui table primitive (pen.dev redesign): 40px header band
+ * on surface-subtle, 52px rows split by hairlines, no zebra.
  */
 
 const Table = React.forwardRef<
@@ -15,7 +14,7 @@ const Table = React.forwardRef<
     <div className="w-full overflow-x-auto">
       <table
         ref={ref}
-        className={cn("w-full caption-bottom text-[13.5px]", className)}
+        className={cn("w-full caption-bottom text-[14px]", className)}
         {...props}
       />
     </div>
@@ -50,7 +49,7 @@ const TableRow = React.forwardRef<
     <tr
       ref={ref}
       className={cn(
-        "border-b border-seam transition-colors duration-100 hover:bg-raised",
+        "border-b border-line transition-colors duration-100 hover:bg-surface-subtle/60",
         className,
       )}
       {...props}
@@ -67,7 +66,7 @@ const TableHead = React.forwardRef<
       ref={ref}
       scope={scope}
       className={cn(
-        "bg-raised px-4 py-2.5 text-left align-middle text-[12px] font-bold tracking-[1.2px] whitespace-nowrap text-muted uppercase",
+        "h-10 border-b border-line bg-surface-subtle px-4 text-left align-middle text-[12px] font-medium whitespace-nowrap text-fg-muted",
         className,
       )}
       {...props}
@@ -82,7 +81,7 @@ const TableCell = React.forwardRef<
   return (
     <td
       ref={ref}
-      className={cn("px-4 py-2.5 align-middle", className)}
+      className={cn("h-[52px] px-4 align-middle", className)}
       {...props}
     />
   );

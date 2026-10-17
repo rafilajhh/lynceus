@@ -1,8 +1,10 @@
 /**
  * PhotoEvidence: the load photo with the contaminant regions the vision
  * model reported, outlined in place. Hard contaminants (they damage the
- * shredder or kiln) are outlined in verdict red, everything else in
- * amber; each region carries its label chip.
+ * shredder or kiln) are outlined in danger red with a light tint,
+ * everything else in warning orange; each region carries its label tag
+ * in its top-left corner. `annotated={false}` shows the original photo
+ * (no overlay).
  *
  * Boxes are normalised 0..1 from the top-left corner, so the overlay sits
  * on a wrapper that shrink-wraps the image at its natural aspect ratio
@@ -73,7 +75,7 @@ function captionFor({
     return localisation ? "No contaminant regions marked" : "No contaminant regions recorded";
   }
   if (localisation === "zone") return "Zone marking (3×3 grid)";
-  return `Located by ${model || "the vision model"}`;
+  return `Boxes located by ${model || "the vision model"}`;
 }
 
 /** "yolo26m-realwaste-taco" → "YOLO26m" (older records: "YOLO26s"); unknown ids are shown as sent. */
@@ -92,9 +94,10 @@ export function PhotoEvidence({
   detector = null,
   sourceNote = null,
   pending = false,
+  annotated = true,
   className,
 }: {
-  /** Photo URL (public demo asset or data: URL); null = no photo on file. */
+  /** Photo URL (public sample asset or data: URL); null = no photo on file. */
   src: string | null;
   /** What the photo shows, for the accessible name. */
   alt: string;
@@ -109,6 +112,8 @@ export function PhotoEvidence({
   sourceNote?: string | null;
   /** Inspection still running: show the photo, hold the regions back. */
   pending?: boolean;
+  /** false = the original photo, regions not drawn (caption unchanged). */
+  annotated?: boolean;
   className?: string;
 }) {
   const shown = pending ? [] : boxes;
@@ -116,6 +121,8 @@ export function PhotoEvidence({
     pending || !detector
       ? []
       : detector.boxes.filter((b) => detectorFlags(b, detector));
+  const drawn = annotated ? shown : [];
+  const detectorDrawn = annotated ? detectorShown : [];
   const yolo = detectorName(detector?.model);
   const items = [
     ...shown.map(
@@ -130,7 +137,9 @@ export function PhotoEvidence({
     (pending
       ? "Inspection in progress."
       : items.length > 0
-        ? `${items.length} marked region${items.length === 1 ? "" : "s"}: ${items.join(", ")}.`
+        ? `${items.length} marked region${items.length === 1 ? "" : "s"}${
+            annotated ? "" : " (not drawn in this view)"
+          }: ${items.join(", ")}.`
         : "No contaminant regions marked.");
   const vlmCaption = captionFor({ pending, boxes: shown, localisation, model });
   // Both models named: the VLM's regions are solid, the detector's dashed.
@@ -149,46 +158,45 @@ export function PhotoEvidence({
     detectorShown.some((b) => !isHardContaminant(b.label));
 
   return (
-    <figure className={cn("m-0 flex flex-col gap-2", className)}>
-      <div className="flex justify-center overflow-hidden rounded-[10px] border border-seam bg-ground">
+    <figure className={cn("m-0 flex flex-col gap-3.5", className)}>
+      <div className="flex justify-center overflow-hidden rounded-[10px] bg-surface-subtle">
         {src ? (
           <div role="img" aria-label={ariaLabel} className="relative inline-block max-w-full">
-            {/* eslint-disable-next-line @next/next/no-img-element -- local demo asset or data: URL; static export has no image optimizer */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- local sample asset or data: URL; static export has no image optimizer */}
             <img
               src={src}
               alt=""
               className={cn(
-                "block h-auto max-h-[380px] w-auto max-w-full transition-opacity duration-200",
+                "block h-auto max-h-[520px] w-auto max-w-full transition-opacity duration-200",
                 pending && "opacity-60",
               )}
             />
-            {!pending && localisation === "zone" && shown.length > 0
+            {!pending && annotated && localisation === "zone" && shown.length > 0
               ? ZONE_GUIDES.map((at) => (
                   <span key={at} aria-hidden="true">
                     <span
-                      className="absolute inset-y-0 border-l border-dashed border-ink/25"
+                      className="absolute inset-y-0 border-l border-dashed border-fg/25"
                       style={{ left: at }}
                     />
                     <span
-                      className="absolute inset-x-0 border-t border-dashed border-ink/25"
+                      className="absolute inset-x-0 border-t border-dashed border-fg/25"
                       style={{ top: at }}
                     />
                   </span>
                 ))
               : null}
-            {shown.map((b, i) => {
+            {drawn.map((b, i) => {
               const hard = isHardContaminant(b.label);
-              // Chip sits above the box; inside it when the box touches the
-              // top edge, right-anchored when the box hugs the right edge.
-              const chipInside = b.y0 < 0.08;
-              const chipRight = b.x0 > 0.7;
+              // Tag sits inside the box's top corner; right-anchored when
+              // the box hugs the right edge.
+              const tagRight = b.x0 > 0.7;
               return (
                 <span
                   key={`${b.label}-${i}`}
                   aria-hidden="true"
                   className={cn(
-                    "absolute rounded-[3px] border-2 outline outline-1 outline-[rgba(10,12,16,0.55)]",
-                    hard ? "border-verdict-red" : "border-amber",
+                    "absolute rounded-[6px] border-solid",
+                    hard ? "border-[2.5px] border-danger bg-danger/8" : "border-2 border-warning",
                   )}
                   style={{
                     left: `${b.x0 * 100}%`,
@@ -199,10 +207,9 @@ export function PhotoEvidence({
                 >
                   <span
                     className={cn(
-                      "figure absolute rounded-[3px] px-1.5 py-px text-[11px] font-semibold tracking-[0.4px] whitespace-nowrap text-ground uppercase",
-                      hard ? "bg-verdict-red" : "bg-amber",
-                      chipInside ? "top-0" : "bottom-full mb-0.5",
-                      chipRight ? "right-0" : "left-0",
+                      "absolute top-1 rounded-[4px] px-1.5 py-0.5 font-mono text-[11px] font-medium tracking-[0.4px] whitespace-nowrap text-white uppercase",
+                      hard ? "bg-danger" : "bg-warning",
+                      tagRight ? "right-1" : "left-1",
                     )}
                   >
                     {b.label}
@@ -210,11 +217,11 @@ export function PhotoEvidence({
                 </span>
               );
             })}
-            {detectorShown.map((d, i) => {
+            {detectorDrawn.map((d, i) => {
               const [x0, y0, x1, y1] = d.box;
               const hard = isHardContaminant(d.label);
-              // The YOLO tag hangs under the box (VLM chips sit above), inside
-              // it when the box reaches the bottom edge.
+              // The YOLO tag hangs under the box (VLM tags sit inside its
+              // top), inside it when the box reaches the bottom edge.
               const tagInside = y1 > 0.92;
               const tagRight = x0 > 0.7;
               return (
@@ -222,8 +229,8 @@ export function PhotoEvidence({
                   key={`yolo-${d.label}-${i}`}
                   aria-hidden="true"
                   className={cn(
-                    "absolute rounded-[3px] border-2 border-dashed",
-                    hard ? "border-verdict-red" : "border-amber",
+                    "absolute rounded-[6px] border-2 border-dashed",
+                    hard ? "border-danger" : "border-warning",
                   )}
                   style={{
                     left: `${x0 * 100}%`,
@@ -234,10 +241,8 @@ export function PhotoEvidence({
                 >
                   <span
                     className={cn(
-                      "figure absolute rounded-[3px] border bg-ground/85 px-1 py-px text-[10px] font-semibold tracking-[0.4px] whitespace-nowrap uppercase",
-                      hard
-                        ? "border-verdict-red text-verdict-red"
-                        : "border-amber text-amber",
+                      "absolute rounded-[4px] border bg-surface/90 px-1 py-px font-mono text-[10px] font-medium tracking-[0.4px] whitespace-nowrap uppercase",
+                      hard ? "border-danger text-danger" : "border-warning text-warning",
                       tagInside ? "bottom-0" : "top-full mt-0.5",
                       tagRight ? "right-0" : "left-0",
                     )}
@@ -249,7 +254,7 @@ export function PhotoEvidence({
             })}
           </div>
         ) : (
-          <p className="m-0 flex min-h-[120px] w-full items-center justify-center px-4 py-6 text-center text-[13px] text-muted">
+          <p className="m-0 flex min-h-[120px] w-full items-center justify-center px-4 py-6 text-center text-[13px] text-fg-muted">
             {items.length > 0
               ? `No load photo on file. Recorded regions: ${items.join(", ")}.`
               : "No load photo on file for this inspection."}
@@ -257,26 +262,35 @@ export function PhotoEvidence({
         )}
       </div>
 
-      <figcaption className="figure flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-relaxed text-muted">
-        <span>{sourceNote && !pending ? `${sourceNote} · ${caption}` : caption}</span>
-        {hasHard ? (
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-verdict-red" />
-            hard contaminant
+      <figcaption className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[12px] text-fg-muted">
+        {hasHard || hasLight || detectorShown.length > 0 ? (
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {hasHard ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-danger" />
+                Hard contaminant
+              </span>
+            ) : null}
+            {hasLight ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-warning" />
+                Other contaminant
+              </span>
+            ) : null}
+            {detectorShown.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 rounded-[2px] border-2 border-dashed border-fg-muted"
+                />
+                {`${yolo} detector`}
+              </span>
+            ) : null}
           </span>
         ) : null}
-        {hasLight ? (
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-amber" />
-            other contaminant
-          </span>
-        ) : null}
-        {detectorShown.length > 0 ? (
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-dashed border-muted" />
-            {`${yolo} detector`}
-          </span>
-        ) : null}
+        <span className="text-fg-subtle">
+          {sourceNote && !pending ? `${sourceNote} · ${caption}` : caption}
+        </span>
       </figcaption>
     </figure>
   );

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** Foundation container: graphite panel with hairline seam + card radius. */
+/** Foundation container: white card, line-strong border, 14px radius. */
 export function Panel({
   className,
   children,
@@ -14,7 +14,7 @@ export function Panel({
 }
 
 /**
- * Small-caps panel header band: the industrial register.
+ * Card title row (15px medium) with optional mono meta on the right.
  * Usage: <Panel><PanelHead title="Workspace" meta="route: /app" />…</Panel>
  */
 export function PanelHead({

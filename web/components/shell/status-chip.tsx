@@ -74,30 +74,30 @@ export function StatusChip({ intervalMs = 15000 }: { intervalMs?: number }) {
   const backendDown = state.kind === "down";
   const engineOk = state.kind === "ok" && state.engineAvailable;
 
-  const tone = backendDown
-    ? "text-verdict-red border-[rgba(231,76,60,0.4)]"
+  const tone = backendDown || (state.kind === "ok" && !engineOk)
+    ? "bg-danger-tint text-danger"
     : state.kind === "checking"
-      ? "text-muted"
-      : "text-verdict-green border-[rgba(46,204,113,0.4)]";
+      ? "bg-surface-subtle text-fg-muted"
+      : "bg-success-tint text-success";
 
   const engineDot = backendDown
-    ? "bg-dot-down"
+    ? "bg-danger"
     : state.kind === "checking"
-      ? "bg-dot-warn"
+      ? "bg-warning"
       : engineOk
-        ? "bg-dot-ok shadow-[0_0_6px_rgba(46,204,113,0.6)]"
-        : "bg-dot-down";
+        ? "bg-success"
+        : "bg-danger";
 
   return (
     <span
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-raised px-3 py-1.5 text-[12px] font-bold tracking-[0.8px] uppercase ${tone}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[11px] font-medium tracking-[0.8px] whitespace-nowrap uppercase ${tone}`}
     >
       <span
         aria-hidden="true"
-        className={`h-2 w-2 shrink-0 rounded-full ${engineDot}`}
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${engineDot}`}
       />
       <span>{engineLabel}</span>
     </span>

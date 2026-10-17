@@ -202,6 +202,15 @@ def test_list_inspections_returns_seeded_records_sorted_desc(client):
     assert escalate_row["prevented_loss_idr"] > 0
     assert escalate_row["admitted_value_idr"] == 0
 
+    # Ledger reason + seal: a short why-line and the record's own digest.
+    assert accept_row["reason"] == "Clean RDF fraction", accept_row
+    assert reject_row["reason"], reject_row
+    assert escalate_row["reason"], escalate_row
+    for row in inspections:
+        assert audit.SHA256_FIELD_RE.match(row["record_sha256"]), row
+        detail = client.get(f"/inspections/{row['record_id']}").json()
+        assert row["record_sha256"] == detail["digest"]["record_sha256"], row
+
 
 #: demo_case → position in _DEMO_PAYLOADS (seeding order).
 _DEMO_INDEX = {case: i for i, (case, _, _, _) in enumerate(_DEMO_PAYLOADS)}

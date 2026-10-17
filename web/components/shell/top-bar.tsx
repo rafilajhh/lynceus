@@ -1,58 +1,56 @@
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { LogoMark } from "@/components/ui/logo-mark";
-import { StatusChip } from "./status-chip";
+import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/app", label: "Console" },
+  { href: "/#how", label: "How it works" },
+  { href: "/#who", label: "Who it's for" },
+  { href: "/#verdicts", label: "Verdicts" },
+  { href: "/validation", label: "Validation" },
 ] as const;
 
 /**
- * Persistent top bar: LYNCEUS wordmark + subtitle, nav links, live
- * status chip. Sticky with a hairline seam: no shadow.
- *
- * @param showNav — when false, renders wordmark + status chip only (no nav links).
- * Used by console layout where navigation lives in the side navbar.
- * @param showWordmark — when false, renders status chip only (no brand).
- * Used by console layout where brand lives in the side navbar.
- * @param showStatus — when false, drops the status chip (landing: the demo
- * backend's health is not the visitor's task status — critique finding).
+ * Landing navbar (pen.dev redesign): logo + section links on the left,
+ * Sign in / Open console on the right. 64px tall, white, hairline bottom.
+ * Section links collapse below md; the two actions always stay visible.
  */
-export function TopBar({ showNav = true, showWordmark = true, showStatus = true }: { showNav?: boolean; showWordmark?: boolean; showStatus?: boolean }) {
+export function TopBar() {
   return (
-    <header className="sticky top-0 z-50 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-seam bg-panel px-6 py-3 backdrop-blur">
-      {showWordmark ? (
-        <div className="flex shrink-0 items-baseline gap-3">
-          <Link href="/" className="line-through-none">
-            <h1 className="m-0 inline-flex items-center gap-2 text-[22px] leading-none font-bold tracking-[3px] text-ink">
-              <LogoMark size={22} />
-              LYNCEUS
-            </h1>
+    <header className="sticky top-0 z-50 border-b border-line bg-surface">
+      <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-8 lg:px-12">
+        <div className="flex items-center gap-10">
+          <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Lynceus home">
+            <LogoMark size={28} />
+            <span className="font-display text-[19px] font-medium text-fg">Lynceus</span>
           </Link>
-          <span className="text-[12px] font-semibold tracking-[1px] text-muted uppercase">
-            AI Gate Inspector
-          </span>
+          <nav aria-label="Primary" className="hidden items-center gap-7 md:flex">
+            {NAV.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-[14px] font-medium whitespace-nowrap text-fg-muted transition-colors duration-100 hover:text-fg"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
         </div>
-      ) : null}
-
-      {showNav ? (
-        <nav aria-label="Primary" className="ml-auto flex items-center gap-1">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-[6px] px-3 py-2 text-[13px] font-semibold tracking-[0.6px] text-muted uppercase transition-colors duration-100 hover:bg-seam hover:text-ink"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      ) : null}
-
-      {showStatus ? (
-        <div className={showNav ? "" : "ml-auto"}>
-          <StatusChip />
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/login"
+            className={cn(buttonVariants({ variant: "ghost" }), "h-[34px] text-fg")}
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/app"
+            className={cn(buttonVariants({ variant: "primary" }), "h-[34px]")}
+          >
+            Open console
+          </Link>
         </div>
-      ) : null}
+      </div>
     </header>
   );
 }

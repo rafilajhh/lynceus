@@ -1,18 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const plexSans = IBM_Plex_Sans({
+const geistSans = Geist({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-plex-sans",
+  variable: "--font-geist-sans",
   display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-mono",
+  variable: "--font-geist-mono",
   display: "swap",
 });
 
@@ -31,16 +29,16 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  colorScheme: "dark",
-  themeColor: "#0a0c10",
+  colorScheme: "light",
+  themeColor: "#fcfcfc",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
-      <body className="flex min-h-screen flex-col bg-ground font-sans text-ink">
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className="flex min-h-screen flex-col bg-background font-sans text-fg">
         {children}
       </body>
     </html>

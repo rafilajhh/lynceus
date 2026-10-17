@@ -1,145 +1,184 @@
 /* ============================================================
    globals.css: Lynceus design tokens + Tailwind v4 theme
 
-   Single source of truth for the visual language (direction
-   contract: .impeccable/surface-briefs/web-app.md):
-   - graphite-dark ground, hairline 1px seams instead of shadows,
-     one-step elevation
-   - one amber accent (#f5a623) reserved for state + signature
-   - verdict green/amber/red ONLY where they carry meaning
-   - IBM Plex Sans/Mono (loaded via next/font in app/layout.tsx)
-   - small-caps panel headers, mono figures
+   Source of truth: the pen.dev redesign (cosmos.pen, "Lynceus —
+   * (redesign)" frames). Light console:
+   - near-white ground (#FCFCFC), white cards, hairline borders
+   - one brand blue (#2563EB) for the mark, links and focus
+   - verdict green/orange/red ONLY where they carry meaning
+   - Geist / Geist Mono (loaded via next/font in app/layout.tsx)
 
    Tailwind v4 is CSS-first: tokens are declared as @theme vars and
-   are usable as utilities (bg-panel, text-ink, border-seam, ...).
+   are usable as utilities (bg-surface, text-fg, border-line, ...).
+   The legacy names (ground, panel, ink, amber, ...) are kept as
+   aliases onto the new palette so older markup stays coherent.
    ============================================================ */
 
 @import "tailwindcss";
 
 @theme {
-  /* ---- Ground (graphite): ordered dark scale ---------------- */
-  --color-ground: #0a0c10;         /* page background, deepest tier  */
-  --color-panel: #0e1116;          /* panels / cards / top bar       */
-  --color-raised: #161b23;         /* raised surface inside a panel  */
-  --color-seam: #1c2128;           /* 1px hairline borders           */
-  --color-seam-strong: #2a323d;    /* hovered seams, control borders */
+  /* ---- Surfaces --------------------------------------------- */
+  --color-background: #fcfcfc;     /* page ground                    */
+  --color-surface: #ffffff;        /* cards, sidebar, inputs         */
+  --color-surface-subtle: #f4f4f5; /* chips, table head, wells       */
+  --color-surface-muted: #f1f1f4;  /* avatar, segmented control      */
+  --color-surface-hover: #ebebf1;
 
-  /* ---- Ink (text) -------------------------------------------- */
-  --color-ink: #e8eaed;            /* primary text                   */
-  --color-muted: #9aa3ad;          /* secondary text, labels         */
-  --color-faint: #7d8899;          /* tertiary, source lines (>=4.5:1 on panel/raised) */
+  /* ---- Lines -------------------------------------------------- */
+  --color-line: #5f5f6821;         /* hairline separators            */
+  --color-line-strong: #e2e2e8;    /* card + control borders         */
 
-  /* ---- Accent (amber): the ONE brand accent ------------------ */
-  --color-amber: #f5a623;
-  --color-amber-soft: rgba(245, 166, 35, 0.16);   /* tint bgs       */
-  --color-amber-line: rgba(245, 166, 35, 0.45);   /* ring outer     */
+  /* ---- Text ---------------------------------------------------- */
+  --color-fg: #18191b;
+  --color-fg-muted: #5f5f68;
+  --color-fg-subtle: #9a9aa4;
+  --color-fg-faint: #b7b7bf;
 
-  /* ---- Verdict states: meaning-only colors ------------------- */
-  --color-verdict-green: #2ecc71;
-  --color-verdict-amber: #f5a623;
-  --color-verdict-red: #e74c3c;
-  --color-green-dim: rgba(46, 204, 113, 0.14);
-  --color-amber-dim: rgba(245, 166, 35, 0.14);
-  --color-red-dim: rgba(231, 76, 60, 0.14);
+  /* ---- Brand ----------------------------------------------------- */
+  --color-brand: #2563eb;
+  --color-brand-deep: #1d4ed8;
+  --color-brand-soft: #93b4f5;
 
-  /* ---- Status dots -------------------------------------------- */
-  --color-dot-ok: #2ecc71;
-  --color-dot-warn: #f5a623;
-  --color-dot-down: #e74c3c;
-  --color-dot-idle: #7d8899;
+  /* ---- Verdict / semantic (meaning-only) ------------------------- */
+  --color-success: #00ab38;
+  --color-warning: #e57100;
+  --color-danger: #ea2630;
+  --color-success-tint: #00ab3814;
+  --color-warning-tint: #e5710014;
+  --color-danger-tint: #ea263014;
 
-  /* ---- Radius --------------------------------------------------
-     Cards 12–16px; controls 6px for a crisper machine feel.      */
+  /* ---- Legacy aliases (pre-redesign class names) ----------------- */
+  --color-ground: var(--color-background);
+  --color-panel: var(--color-surface);
+  --color-raised: var(--color-surface-subtle);
+  --color-seam: var(--color-line);
+  --color-seam-strong: var(--color-line-strong);
+  --color-ink: var(--color-fg);
+  --color-muted: var(--color-fg-muted);
+  --color-faint: var(--color-fg-subtle);
+  --color-amber: var(--color-brand);
+  --color-amber-soft: #2563eb14;
+  --color-amber-line: #2563eb55;
+  --color-verdict-green: var(--color-success);
+  --color-verdict-amber: var(--color-warning);
+  --color-verdict-red: var(--color-danger);
+  --color-green-dim: var(--color-success-tint);
+  --color-amber-dim: var(--color-warning-tint);
+  --color-red-dim: var(--color-danger-tint);
+  --color-dot-ok: var(--color-success);
+  --color-dot-warn: var(--color-warning);
+  --color-dot-down: var(--color-danger);
+  --color-dot-idle: var(--color-fg-subtle);
+
+  /* ---- Radius ----------------------------------------------------- */
   --radius-card: 14px;
   --radius-card-lg: 16px;
-  --radius-control: 6px;
+  --radius-control: 8px;
 
-  /* ---- Typography ----------------------------------------------
-     IBM Plex via next/font exposes --font-plex-sans/--font-plex-mono
-     variable class names; Tailwind maps them to font-sans/font-mono. */
-  --font-sans: var(--font-plex-sans), "Segoe UI", system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, Consolas, monospace;
+  /* ---- Shadow (cards lift 1px; buttons 1-3px) --------------------- */
+  --shadow-card: 0 1px 1.5px #18191b0d;
+  --shadow-control: 0 1px 3px #18191b1f;
 
-  /* ---- Motion -------------------------------------------------- */
+  /* ---- Typography --------------------------------------------------
+     Geist via next/font exposes --font-geist-sans/--font-geist-mono.
+     Display (Gellix in the design) falls back to Geist medium. */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-display: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, Consolas, monospace;
+
+  /* ---- Motion ------------------------------------------------------ */
   --ease-smooth: cubic-bezier(0.2, 0.6, 0.2, 1);
 
-  /* ---- Workspace: interlock gate strip ------------------------- */
-  --stagger: 120ms; /* sequential gate-light snap */
+  /* ---- Workspace: interlock gate strip ------------------------------ */
+  --stagger: 120ms;
 }
-
-/* ---- Base / browser surfaces (themed) ------------------------ */
 
 /* In the base layer, not unlayered: an unlayered rule beats every
    Tailwind utility, which silently turned each border-{color} class
-   (verdict banner, evidence boxes, demo buttons) back into seam grey. */
+   back into the default line color. */
 @layer base {
   * {
-    border-color: var(--color-seam);
+    border-color: var(--color-line);
   }
 }
 
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
-  /* Sticky top bar (py-3 + content ≈ 60px) must never occlude anchor /
-     scroll targets: headings were clipped mid-glyph (critique P3). */
-  scroll-padding-top: 72px;
+  scroll-padding-top: 88px;
 }
 
 body {
-  background: var(--color-ground);
-  color: var(--color-ink);
+  background: var(--color-background);
+  color: var(--color-fg);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-synthesis: none;
 }
 
-/* ::selection: amber tint: highlighted text reads as "flagged". */
 ::selection {
-  background: var(--color-amber-soft);
-  color: var(--color-ink);
+  background: #2563eb24;
+  color: var(--color-fg);
 }
 
-/* Thin graphite scrollbar: never stealing attention. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: var(--color-ground); }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-seam-strong);
+  background: var(--color-line-strong);
   border-radius: 999px;
-  border: 2px solid var(--color-ground);
+  border: 2px solid var(--color-background);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-fg-faint); }
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-seam-strong) var(--color-ground);
+  scrollbar-color: var(--color-line-strong) transparent;
 }
 
-/* :focus-visible: amber ring, keyboard only. */
 :focus-visible {
-  outline: 2px solid var(--color-amber);
+  outline: 2px solid var(--color-brand);
   outline-offset: 2px;
   border-radius: var(--radius-control);
 }
 
-/* Caret echoes the accent. */
-input, textarea, [contenteditable] { caret-color: var(--color-amber); }
+input, textarea, [contenteditable] { caret-color: var(--color-brand); }
 
-/* ---- Component tokens (documented for other agents) -----------
-   .panel   : bg-panel, 1px seam border, radius-card
-   .panel-head: small-caps uppercase label band, bg-raised
-   .btn     : 6px radius control (shadcn/ui Button wraps this language)
-   .input   : bg-raised field, seam border, amber focus
-   Utility classes live in @utility blocks below so Tailwind v4
-   treats them as first-class utilities. */
+/* ---- Component utilities ----------------------------------------
+   .card      : white surface, line-strong border, 14px radius
+   .card-head : title row inside a card (16px/20px padding, hairline)
+   .eyebrow   : mono uppercase label (Geist Mono 11px, tracked)
+   .figure    : tabular mono numbers
+   .input     : 40px field, line-strong border, brand focus ring */
 
-@utility panel {
-  background: var(--color-panel);
-  border: 1px solid var(--color-seam);
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
+}
+
+/* Legacy name: older views still compose `panel`. */
+@utility panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+@utility card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-line);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-fg);
 }
 
 @utility panel-head {
@@ -147,45 +186,50 @@ input, textarea, [contenteditable] { caret-color: var(--color-amber); }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
-  background: var(--color-raised);
-  border-bottom: 1px solid var(--color-seam);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  color: var(--color-muted);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-line);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-fg);
 }
 
-/* Small-caps label pattern used across panels + section eyebrows. */
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--color-fg-subtle);
+}
+
 @utility smallcaps {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: var(--color-fg-subtle);
 }
 
-/* Mono figures: industrial-control register for all measurements. */
 @utility figure {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Field controls: bg-raised, seam border, amber focus.
-   Foundation: use class="input" on all form fields. */
 @utility input {
   width: 100%;
-  background: var(--color-raised);
-  border: 1px solid var(--color-seam-strong);
+  height: 40px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-control);
-  padding: 8px 10px;
-  color: var(--color-ink);
-  font-size: 13.5px;
+  padding: 0 12px;
+  color: var(--color-fg);
+  font-size: 14px;
+  transition: border-color 120ms, box-shadow 120ms;
+  &::placeholder { color: var(--color-fg-subtle); }
+  &:focus { outline: none; border-color: var(--color-brand); box-shadow: 0 0 0 3px #2563eb24; }
 }
 
-/* ---- Workspace: interlock gate pulse (loading state) ------------
-   Amber breathing on the gate strip while the interlock evaluates. */
 @keyframes gate-pulse {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }

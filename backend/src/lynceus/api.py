@@ -290,6 +290,48 @@ def _load_record_or_http(record_id: str) -> audit.AuditRecord:
         ) from exc
 
 
+_LEDGER_GATE_LABEL = {
+    "vlm_confidence": "Low vision confidence",
+    "ocr_confidence": "Unreadable waybill",
+    "manifest_crosscheck": "Waybill mismatch",
+    "gas_plausibility": "Gas reading implausible",
+    "weight_plausibility": "Waybill weight mismatch",
+    "detector_second_opinion": "Detector flagged contaminant",
+}
+
+
+def _ledger_reason(record: audit.AuditRecord) -> str:
+    """One short ledger line for why the verdict landed where it did.
+
+    Order: hard contaminant the VLM saw, then the first failed gate, then
+    light contaminants; an accept with none of those is a clean fraction.
+    Built only from fields already sealed in the record.
+    """
+    decision = record.verdict.decision
+    if decision == audit.Decision.REFUSE_INSUFFICIENT_INPUT:
+        return "Insufficient input"
+    vlm = record.ai_outputs.vlm
+    detected = vlm.detected if isinstance(vlm.detected, dict) else {}
+    hard = detected.get("hard_contaminants")
+    hard = hard if isinstance(hard, list) else []
+    light = detected.get("light_contaminants")
+    light = light if isinstance(light, list) else []
+    if hard and decision != audit.Decision.ACCEPT:
+        label = str(hard[0]).replace("_", " ").capitalize()
+        return f"{label} contaminant · {vlm.confidence:.2f}"
+    for gate in (*audit.GATE_NAMES, *audit.OPTIONAL_GATE_NAMES):
+        result = getattr(record.gates, gate, None)
+        if result is not None and result.state == audit.GateState.FAILED:
+            return _LEDGER_GATE_LABEL.get(gate, gate.replace("_", " ").capitalize())
+    if light and decision != audit.Decision.ACCEPT:
+        return "Light contaminants: " + ", ".join(
+            str(x).replace("_", " ") for x in light[:2]
+        )
+    if decision == audit.Decision.ACCEPT:
+        return "Clean RDF fraction"
+    return "Needs human review"
+
+
 #: Process-wide cap on concurrent LIVE inspections (non-demo ``/inspect``).
 #: The AMD endpoint is a shared, rate-limited key and the public URL is open:
 #: a third concurrent live request gets a fast 503 instead of queueing behind
@@ -1032,6 +1074,8 @@ def create_app() -> FastAPI:
                     "prevented_loss_idr": 0 if admitted else estimate_idr,
                     "admitted_value_idr": estimate_idr if admitted else 0,
                     "gate_states": states,
+                    "reason": _ledger_reason(record),
+                    "record_sha256": record.digest.record_sha256,
                 }
             )
         # Newest inspection first: record_id is zero-padded, so a plain

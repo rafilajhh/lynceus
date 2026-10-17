@@ -1,29 +1,48 @@
 "use client";
 
 /**
- * WorkspaceClient: route /app (Operate). The whole demo stage:
+ * WorkspaceClient: route /app (Operate), two views of one gate:
  *
- * LEFT  "Incoming Load": demo-case buttons, photo hero (rounded 16px,
- *       mono caption), intake form.
- * BELOW "Inspection Verdict": banner + provenance, headline, gate
- *       strip, photo evidence with outlined contaminants beside the
- *       SOP-cited next steps, impact counter, reasons, caveats, Pythia,
- *       audit modal.
+ * IDLE (frame rxd5f) "New inspection": 01 Incoming load (photo presets,
+ *       drop/upload zone), 02 Waybill & register (IntakeForm), 03 Verdict
+ *       (pipeline placeholder; request errors land here).
+ * RESULT (frame HX9C5) "Inspection result": VerdictPanel (banner, gate
+ *       checks, evidence, reasons, next steps, submitted load, Pythia);
+ *       the header carries the audit record and Next truck.
  *
  * Logic ported from legacy web/app.js: same API contract
- * (POST /inspect), same demo-case data, same race-guarded photo
- * base64 fetching.
+ * (POST /inspect), same race-guarded photo base64 encoding.
  */
 
 import { cn } from "@/lib/utils";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Panel, PanelHead } from "@/components/ui/panel";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  Camera,
+  ImageUp,
+  Info,
+  ScanSearch,
+  Sparkles,
+  Stamp,
+  Truck,
+  Upload,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageBody, PageHeader } from "@/components/shell/page-header";
 import {
   IntakeForm,
   type IntakeValues,
   type UploadSlot,
 } from "./intake-form";
-import { VerdictPanel, type ResultError, type RunMode } from "./verdict-panel";
+import {
+  VerdictPanel,
+  type ResultError,
+  type RunMode,
+  type SubmittedLoad,
+} from "./verdict-panel";
+import { AuditModal } from "./audit-modal";
+import { Segmented } from "./segmented";
 import { normalizeGates, type GateDisplay, type GatePhase } from "./gate-strip";
 import {
   inspectLoad,
@@ -104,7 +123,7 @@ const QUICK_LOADS: { label: string; file: string }[] = [
 ];
 const QUICK_WAYBILL = "waybill-1.jpg";
 
-/** Fetch a public /demo asset as a File (browser-cached JPEG bytes). */
+/** Fetch a public sample asset as a File (browser-cached JPEG bytes). */
 async function demoFile(name: string): Promise<File> {
   const res = await fetch(`/demo/${name}`);
   if (!res.ok) throw new Error(`Cannot read ${name}`);
@@ -137,7 +156,7 @@ export function WorkspaceClient() {
   const [data, setData] = useState<InspectResponse | null>(null);
   const [phase, setPhase] = useState<GatePhase>("idle");
   const [bannerLit, setBannerLit] = useState(false);
-  const verdictRef = useRef<HTMLDivElement | null>(null);
+  const resultRef = useRef<HTMLDivElement | null>(null);
 
   // ---- Uploads: an uploaded load photo is the evidence; an uploaded
   // waybill photo rides along as extra evidence bytes (backend accepts
@@ -150,13 +169,15 @@ export function WorkspaceClient() {
   const waybillBase64 = useRef<string | null>(null);
 
   // The photo the current verdict is about, frozen at submit: the intake
-  // side may change (new upload, next demo case) while the verdict and
+  // side may change (new upload, next preset) while the verdict and
   // its outlined contaminants are still on screen.
   const [evidence, setEvidence] = useState<{ src: string | null; alt: string }>({
     src: null,
     alt: "Load photo",
   });
   const [runMode, setRunMode] = useState<RunMode>("other");
+  // The register as submitted, frozen with the evidence photo.
+  const [submitted, setSubmitted] = useState<SubmittedLoad | null>(null);
 
   // Encodes in flight, per slot: submit awaits them, and only the latest
   // pick may store its bytes (a slow older encode must not overwrite it).
@@ -212,19 +233,40 @@ export function WorkspaceClient() {
   // Quick-pick: site photo assets piped through the upload handlers above,
   // so a picked preset is indistinguishable from a camera upload.
   const [quickBusy, setQuickBusy] = useState<string | null>(null);
+  // The preset whose photo is on the stage (pressed in the segmented
+  // control); null once the operator uploads their own photo.
+  const [activePreset, setActivePreset] = useState<string | null>(null);
   const pickDemo = useCallback(
     async (name: string, kind: "load" | "waybill") => {
       setQuickBusy(name);
       try {
         const file = await demoFile(name);
-        if (kind === "load") onLoadPhoto(file);
-        else onWaybillPhoto(file);
+        if (kind === "load") {
+          onLoadPhoto(file);
+          setActivePreset(name);
+        } else onWaybillPhoto(file);
       } finally {
         setQuickBusy(null);
       }
     },
     [onLoadPhoto, onWaybillPhoto],
   );
+
+  /** An operator-chosen load photo (file picker or drop), or a clear. */
+  const onOwnLoadPhoto = useCallback(
+    (file: File | null) => {
+      setActivePreset(null);
+      onLoadPhoto(file);
+    },
+    [onLoadPhoto],
+  );
+
+  // Header "Load sample": the pressed (else first) photo preset plus the
+  // sample waybill, through the same quick-pick loaders.
+  const loadSample = useCallback(async () => {
+    await pickDemo(activePreset ?? QUICK_LOADS[0].file, "load");
+    await pickDemo(QUICK_WAYBILL, "waybill");
+  }, [pickDemo, activePreset]);
 
   // Memoised: GateStrip restarts its lighting stagger whenever the array
   // identity changes, so a fresh array per render (typing in the form, say)
@@ -282,6 +324,15 @@ export function WorkspaceClient() {
         ? `Uploaded load photo ${loadUpload.filename}`
         : "Load photo",
     });
+    setSubmitted({
+      truck_id: values.truck_id.trim(),
+      supplier: values.supplier.trim(),
+      weight_kg: weight,
+      moisture_pct: moisture,
+      age_h: age,
+      loadFilename: loadUpload.filename,
+      waybillFilename: waybillUpload.filename,
+    });
     // Wait copy only: whether a live model actually ran is stated by the
     // result's provenance badge, never assumed here.
     setRunMode("live");
@@ -292,12 +343,8 @@ export function WorkspaceClient() {
     // the old impact note/gates never sit beneath the pending strip while
     // the new run evaluates.
     setData(null);
-    // User direction: pressing Inspect takes the operator straight to the
-    // verdict panel (the gate strip is the show while it evaluates).
-    // Scroll so the panel sits flush under the sticky topbar (scroll-mt
-    // on the wrapper clears the ~60px bar) — the whole verdict, from its
-    // head down, is the new viewport.
-    verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Pressing Inspect switches to the result view (the gate checks are
+    // the show while it evaluates); the effect below scrolls it to top.
 
     try {
       const resp = await inspectLoad({
@@ -334,7 +381,7 @@ export function WorkspaceClient() {
     } finally {
       setLoading(false);
     }
-  }, [values, loadUpload]);
+  }, [values, loadUpload, waybillUpload.filename]);
 
   const onSubmit = useCallback(() => runInspection(), [runInspection]);
 
@@ -343,9 +390,10 @@ export function WorkspaceClient() {
   }, []);
 
   // Gate flow is truck-by-truck. Reset clears EVERYTHING (user
-  // direction): verdict stage, form, demo selection, uploads, photo —
+  // direction): verdict stage, form, preset selection, uploads, photo —
   // the gate stands empty for the next truck.
   const onReset = useCallback(() => {
+    setActivePreset(null);
     setData(null);
     setPhase("idle");
     setBannerLit(false);
@@ -365,155 +413,334 @@ export function WorkspaceClient() {
     encoding.current.clear(); // an encode still in flight must not refill them
   }, []);
 
-  const hasPhoto = Boolean(loadUpload.previewUrl);
+  // Back to the intake with the register and photos kept: fix an input,
+  // then inspect again.
+  const onEdit = useCallback(() => {
+    setData(null);
+    setPhase("idle");
+    setBannerLit(false);
+  }, []);
 
-  const photoSlot = (
-    <figure className="m-0 flex h-full flex-col px-4 py-4">
-      {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
-      {/* Click-to-upload (user direction): the photo itself is the upload
-          target — hover reveals a hint, picking a file replaces the image.
-          aspect-[4/3] crop kills the dead space under the caption. */}
-      <input
-        id="load-photo-upload"
-        type="file"
-        accept="image/jpeg,image/png"
-        className="sr-only"
-        disabled={loading}
-        onChange={(e) => onLoadPhoto(e.target.files?.[0] ?? null)}
-      />
-      <label
-        htmlFor="load-photo-upload"
-        className={cn(
-          "group relative block cursor-pointer overflow-hidden rounded-[16px] border transition-colors duration-100",
-          hasPhoto
-            ? "border-seam hover:border-amber-line"
-            : "border-dashed border-seam-strong hover:border-amber-line",
-          loading && "pointer-events-none opacity-50",
-        )}
-        title={loadUpload.filename ? "Replace photo" : "Upload photo"}
-      >
-        {hasPhoto ? (
-          <>
-            <img
-              src={loadUpload.previewUrl!}
-              alt={loadUpload.filename ?? "Load photo"}
-              className="aspect-[4/3] w-full object-cover transition-opacity duration-150 group-hover:opacity-60"
-            />
-            {/* Hover veil: the only affordance for click-to-upload */}
-            <span
-              aria-hidden="true"
-              className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-[0.6px] text-ink uppercase opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-            >
-              Replace photo
-            </span>
-          </>
-        ) : (
-          /* Empty stage: no truck at the gate until a photo is uploaded. */
-          <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted transition-colors duration-100 group-hover:text-ink">
-            <span className="text-[22px] leading-none" aria-hidden="true">
-              ◉
-            </span>
-            <span className="text-[13px] font-semibold tracking-[0.6px] uppercase">
-              Upload load photo
-            </span>
-            <span className="text-[12px]">JPEG or PNG from the gate camera</span>
-          </span>
-        )}
-      </label>
-      {loadUpload.filename ? (
-        <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
-          {`Uploaded photo · ${loadUpload.filename}`}
-        </figcaption>
-      ) : null}
-      {loadUpload.filename ? (
-        <button
-          type="button"
-          onClick={() => onLoadPhoto(null)}
-          disabled={loading}
-          className="mt-1 self-start cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
+  const showResult = phase !== "idle";
+
+  // Switching views starts at the top. Entering the result also moves
+  // focus onto it (the Inspect button that had focus is gone with the
+  // intake view). The first render is not a switch.
+  const viewMounted = useRef(false);
+  const resultErrorRef = useRef(resultError);
+  resultErrorRef.current = resultError;
+  useEffect(() => {
+    if (!viewMounted.current) {
+      viewMounted.current = true;
+      return;
+    }
+    // Back to intake because the request failed: the error effect below
+    // scrolls to the alert instead of the top.
+    if (!showResult && resultErrorRef.current) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (showResult) resultRef.current?.focus({ preventScroll: true });
+  }, [showResult]);
+
+  // A failed request drops back to the intake view; its alert lives in the
+  // 03 Verdict card, which sits far below the fold on narrow screens.
+  // Bring it into view and focus it so the failure is never silent.
+  useEffect(() => {
+    if (!resultError || showResult) return;
+    const id = window.setTimeout(() => {
+      const alert = document.getElementById("inspect-error");
+      alert?.scrollIntoView({ behavior: "smooth", block: "center" });
+      alert?.focus({ preventScroll: true });
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [resultError, showResult]);
+
+  const hasPhoto = Boolean(loadUpload.previewUrl);
+  const [dragOver, setDragOver] = useState(false);
+
+  const onDrop = (e: DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (loading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file && /^image\/(jpeg|png)$/.test(file.type)) onOwnLoadPhoto(file);
+  };
+
+  if (showResult && submitted) {
+    const recordId = phase === "resolved" ? data?.record_id : undefined;
+    return (
+      <>
+        <PageHeader
+          crumb={`Console / Weighbridge Gate A${recordId ? ` / ${recordId}` : ""}`}
+          title={phase === "resolved" ? "Inspection result" : "Inspecting load"}
         >
-          Clear upload
-        </button>
-      ) : null}
-      {/* Quick-pick row: one tap loads a site photo through the normal
-          upload pipeline — faster than browsing for a file. */}
-      <div className="mt-2 flex items-center gap-1.5">
-        <span className="smallcaps shrink-0 text-[10px]">Photo presets</span>
-        {QUICK_LOADS.map((p) => (
-          <button
-            key={p.file}
-            type="button"
-            disabled={loading || quickBusy !== null}
-            onClick={() => pickDemo(p.file, "load")}
-            className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam disabled:pointer-events-none disabled:opacity-50"
-          >
-            {quickBusy === p.file ? "…" : p.label}
-          </button>
-        ))}
-      </div>
-    </figure>
-  );
+          {phase === "resolved" && data && recordId ? (
+            <AuditModal recordId={recordId} data={data} />
+          ) : null}
+          {phase === "resolved" ? (
+            <Button type="button" variant="primary" onClick={onReset}>
+              <Truck aria-hidden="true" className="h-3.5 w-3.5" />
+              Next truck
+            </Button>
+          ) : null}
+        </PageHeader>
+        <PageBody>
+          <div ref={resultRef} tabIndex={-1} className="outline-none">
+            <VerdictPanel
+              phase={phase}
+              gates={gates}
+              data={data}
+              decision={decision}
+              bannerLit={bannerLit}
+              onAllResolved={onAllResolved}
+              onEdit={onEdit}
+              evidence={evidence}
+              submitted={submitted}
+              runMode={runMode}
+            />
+          </div>
+        </PageBody>
+      </>
+    );
+  }
 
   return (
-    /* Vertical gate flow: intake on top, verdict below (user direction,
-       2026-10-13). The previous 5/7 split caused a scroll-jump on resolve
-       (verdict column outgrew the form) and ~500px of dead space in the
-       shorter column; stacking removes both and matches truck-by-truck
-       reading order: register first, decision second. */
-    <div className="flex flex-col gap-5">
-      {/* ============ Incoming Load ============ */}
-      <Panel>
-        <PanelHead title="Incoming load" meta="weighbridge gate A" />
-        <div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
-          {/* Photo column: hero + uploads stay beside the register on wide
-              screens so the form never stretches full-width unreadably. */}
-          <div className="flex flex-col border-b border-seam lg:border-b-0 lg:border-r">
-            {photoSlot}
-          </div>
-          <IntakeForm
-            values={values}
-            onChange={onChange}
-            onSubmit={onSubmit}
-            onReset={onReset}
-            onWaybillPhoto={onWaybillPhoto}
-            onQuickWaybill={() => pickDemo(QUICK_WAYBILL, "waybill")}
-            quickWaybillBusy={quickBusy === QUICK_WAYBILL}
-            waybillPhoto={waybillUpload}
-            loading={loading}
-            formError={formError}
-          />
-        </div>
-      </Panel>
-
-      {/* ============ Inspection Verdict ============ */}
-      {/* Progressive disclosure: the verdict stage only exists once an
-          inspection is running or resolved. Idle shows a quiet directive
-          line instead of empty panels. */}
-      {phase !== "idle" ? (
-        <div
-          ref={verdictRef}
-          className="flex scroll-mt-[72px] flex-col"
+    <>
+      <PageHeader crumb="Console / Weighbridge Gate A" title="New inspection">
+        <Button
+          type="button"
+          onClick={() => void loadSample()}
+          disabled={loading || quickBusy !== null}
         >
-          <VerdictPanel
-            phase={phase}
-            gates={gates}
-            data={data}
-            decision={decision}
-            bannerLit={bannerLit}
-            onAllResolved={onAllResolved}
-            onReset={onReset}
-            error={resultError}
-            evidence={evidence}
-            runMode={runMode}
-          />
+          <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+          {quickBusy !== null ? "Loading…" : "Load sample"}
+        </Button>
+      </PageHeader>
+
+      <PageBody>
+        <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
+          {/* ============ 01 Incoming load ============ */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <section aria-labelledby="load-title" className="card flex flex-1 flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono text-[12px] text-brand-deep" aria-hidden="true">
+                    01
+                  </span>
+                  <h2 id="load-title" className="m-0 font-display text-[17px] font-medium text-fg">
+                    Incoming load
+                  </h2>
+                </div>
+                {/* Quick-pick presets: one tap loads a site photo through the
+                    normal upload pipeline — faster than browsing for a file. */}
+                <Segmented
+                  label="Photo presets"
+                  options={QUICK_LOADS.map((p) => ({ value: p.file, label: p.label }))}
+                  value={activePreset}
+                  onSelect={(file) => void pickDemo(file, "load")}
+                  disabled={loading || quickBusy !== null}
+                  busy={quickBusy}
+                />
+              </div>
+
+              <div className="flex flex-1 flex-col gap-3 p-5">
+                {/* Click-or-drop upload: the zone is the label of the hidden
+                    file input; keyboard users reach the input, and its focus
+                    ring is drawn on the zone. */}
+                <input
+                  id="load-photo-upload"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="peer sr-only"
+                  disabled={loading}
+                  onChange={(e) => onOwnLoadPhoto(e.target.files?.[0] ?? null)}
+                />
+                <label
+                  htmlFor="load-photo-upload"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!loading) setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={onDrop}
+                  title={loadUpload.filename ? "Replace photo" : "Upload photo"}
+                  className={cn(
+                    "group relative flex min-h-[280px] flex-1 cursor-pointer flex-col items-center justify-center gap-3.5 overflow-hidden rounded-[10px] border bg-surface-subtle transition-colors duration-100 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand lg:min-h-[420px]",
+                    dragOver ? "border-brand bg-brand/5" : "border-line-strong hover:border-brand-soft",
+                    loading && "pointer-events-none opacity-50",
+                  )}
+                >
+                  {hasPhoto ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local object URL; static export has no image optimizer */}
+                      <img
+                        src={loadUpload.previewUrl!}
+                        alt={loadUpload.filename ?? "Load photo"}
+                        className="absolute inset-0 h-full w-full object-contain transition-opacity duration-150 group-hover:opacity-60"
+                      />
+                      {/* Hover veil: the replace affordance */}
+                      <span
+                        aria-hidden="true"
+                        className="relative inline-flex h-[34px] items-center gap-1.5 rounded-[8px] border border-line-strong bg-surface px-3.5 text-[14px] font-medium text-fg opacity-0 shadow-control transition-opacity duration-150 group-hover:opacity-100"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        Replace photo
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="flex h-[52px] w-[52px] items-center justify-center rounded-[14px] border border-line-strong bg-surface text-fg shadow-[0_2px_6px_#18191B0F]"
+                      >
+                        <ImageUp className="h-[22px] w-[22px]" />
+                      </span>
+                      <span className="flex flex-col items-center gap-1 px-4 text-center">
+                        <span className="text-[15px] font-medium text-fg">Drop the load photo here</span>
+                        <span className="text-[13px] text-fg-muted">JPEG or PNG from the gate camera</span>
+                      </span>
+                      <span className="inline-flex h-[34px] items-center gap-1.5 rounded-[8px] border border-line-strong bg-surface px-3.5 text-[14px] font-medium text-fg shadow-control group-hover:bg-surface-subtle">
+                        <Upload aria-hidden="true" className="h-3.5 w-3.5" />
+                        Upload photo
+                      </span>
+                    </>
+                  )}
+                </label>
+                {loadUpload.filename ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-[12px] text-fg-muted">
+                      Uploaded photo · <span className="font-mono">{loadUpload.filename}</span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onOwnLoadPhoto(null)}
+                      disabled={loading}
+                    >
+                      <X aria-hidden="true" className="h-3.5 w-3.5" />
+                      Clear upload
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <p className="m-0 flex items-center gap-2.5 rounded-[10px] bg-brand/7 px-4 py-3 text-[13px] text-fg">
+              <Info aria-hidden="true" className="h-4 w-4 shrink-0 text-brand" />
+              Upload the load photo and the waybill photo, fill in the register, then press Inspect load.
+            </p>
+          </div>
+
+          {/* ============ 02 Waybill & register, 03 Verdict ============ */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <IntakeForm
+              values={values}
+              onChange={onChange}
+              onSubmit={onSubmit}
+              onReset={onReset}
+              onWaybillPhoto={onWaybillPhoto}
+              onQuickWaybill={() => void pickDemo(QUICK_WAYBILL, "waybill")}
+              quickWaybillBusy={quickBusy === QUICK_WAYBILL}
+              waybillPhoto={waybillUpload}
+              loading={loading}
+              formError={formError}
+            />
+
+            <IdleVerdictCard
+              hasPhoto={hasPhoto}
+              hasWaybill={Boolean(waybillUpload.filename)}
+              error={resultError}
+            />
+          </div>
         </div>
-      ) : (
-        <div ref={verdictRef} className="scroll-mt-[72px]">
-          <p className="m-0 text-[13px] text-muted">
-            Upload a load photo, fill the register, then press Inspect Load.
+      </PageBody>
+    </>
+  );
+}
+
+const PIPELINE: { key: string; icon: LucideIcon; title: string; desc: string }[] = [
+  { key: "capture", icon: Camera, title: "Capture", desc: "Photo, waybill and weight" },
+  { key: "analyze", icon: ScanSearch, title: "Analyze", desc: "VLM + waybill check + digital twin" },
+  { key: "seal", icon: Stamp, title: "Decide & seal", desc: "Verdict sealed with SHA-256" },
+];
+
+/** "03 Verdict" before a run: the three pipeline stages, idle, with the
+    capture stage reflecting what is on the stage. A failed request is
+    reported here (the result view only exists while a run is live). */
+function IdleVerdictCard({
+  hasPhoto,
+  hasWaybill,
+  error,
+}: {
+  hasPhoto: boolean;
+  hasWaybill: boolean;
+  error: ResultError | null;
+}) {
+  const captureState =
+    hasPhoto && hasWaybill ? "ready" : hasPhoto || hasWaybill ? "partial" : "idle";
+  return (
+    <section aria-labelledby="verdict-title" className="card flex flex-1 flex-col">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+        <div className="flex items-center gap-2.5">
+          <span className="font-mono text-[12px] text-brand-deep" aria-hidden="true">
+            03
+          </span>
+          <h2 id="verdict-title" className="m-0 font-display text-[17px] font-medium text-fg">
+            Verdict
+          </h2>
+        </div>
+        <span className="rounded-full bg-surface-subtle px-2.5 py-[3px] text-[12px] font-medium text-fg-muted">
+          {hasPhoto ? "Ready to inspect" : "Waiting for load"}
+        </span>
+      </div>
+
+      {error ? (
+        <div
+          id="inspect-error"
+          role="alert"
+          tabIndex={-1}
+          className="mx-5 mt-4 rounded-[10px] border border-danger/25 bg-danger-tint px-4 py-3 focus-visible:outline-none"
+        >
+          <p className="m-0 text-[13.5px] font-medium text-danger">
+            {error.kind === "network"
+              ? "Backend unreachable: is the server running?"
+              : "Inspection could not run"}
+          </p>
+          <p className="figure m-0 mt-1 text-[13px] leading-relaxed break-words text-fg-muted">
+            {error.message}
+          </p>
+          <p className="m-0 mt-1.5 text-[12px] text-fg-muted">
+            {error.kind === "network"
+              ? "Start the FastAPI backend (it serves this app as static files), then press Inspect load again."
+              : "Fix the input above if needed, then press Inspect load again."}
           </p>
         </div>
-      )}
-    </div>
+      ) : null}
+
+      <ol className="m-0 flex flex-1 list-none flex-col justify-center px-5 pt-1 pb-3">
+        {PIPELINE.map(({ key, icon: Icon, title, desc }) => (
+          <li key={key} className="flex items-center gap-3 py-2">
+            <span
+              aria-hidden="true"
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-surface-subtle text-fg-muted"
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-px">
+              <span className="text-[13px] font-medium text-fg">{title}</span>
+              <span className="text-[12px] text-fg-muted">{desc}</span>
+            </span>
+            <span
+              className={cn(
+                "font-mono text-[11px]",
+                key === "capture" && captureState === "ready" ? "text-success" : "text-fg-subtle",
+              )}
+            >
+              {key === "capture" ? captureState : "idle"}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

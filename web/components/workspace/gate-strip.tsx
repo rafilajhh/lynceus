@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * GateStrip: the signature move: six industrial indicator lights
- * (VLM, MANIFEST, XCHECK, GAS, WEIGHT, YOLO) on a horizontal strip that
- * light up sequentially with a 120ms stagger when a verdict arrives,
- * like a machine startup interlock. Green = passed, red = failed,
- * graphite = not_run/not_evaluated.
+ * GateStrip: the six interlock checks (VLM, Manifest, X-check, Gas,
+ * Weight, YOLO) as the check row under the verdict banner. Each cell
+ * names its gate and what it checks; the icons light one by one with a
+ * 120ms stagger when a verdict arrives, like a machine startup
+ * interlock. Green check = passed, red cross = failed, dash = not run /
+ * N/A; dashed circles pulse while the inspection evaluates.
  *
- * The verdict banner may only light after every gate resolves:
- * the parent reads `allResolved`.
+ * The verdict banner may only light after every gate resolves: the
+ * strip calls onAllResolved after the last stagger step.
  */
 
 import { useEffect, useState } from "react";
+import { CircleCheck, CircleDashed, CircleMinus, CircleX } from "lucide-react";
 import { GATE_ORDER } from "@/lib/demo-cases";
 import type { GateResult } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -63,11 +65,16 @@ export function normalizeGates(
 
 type InspectGates = Record<string, GateResult | GateResult["state"]>;
 
-const DOT_TONE: Record<GateDisplay["state"], string> = {
-  passed: "bg-dot-ok shadow-[0_0_8px_rgba(46,204,113,0.7)]",
-  failed: "bg-dot-down shadow-[0_0_8px_rgba(231,76,60,0.7)]",
-  not_run: "bg-dot-idle",
-  not_evaluated: "bg-dot-idle",
+
+/** Operator names + one-line meaning of each gate (the redesign's check row
+    replaces the old legend paragraph: every cell explains itself). */
+const GATE_COPY: Record<string, { name: string; desc: string }> = {
+  vlm_confidence: { name: "VLM", desc: "Visual contaminants" },
+  ocr_confidence: { name: "Manifest", desc: "Manual waybill text" },
+  manifest_crosscheck: { name: "X-check", desc: "Waybill vs observed load" },
+  gas_plausibility: { name: "Gas", desc: "Gate sensors" },
+  weight_plausibility: { name: "Weight", desc: "Weighbridge vs declared" },
+  detector_second_opinion: { name: "YOLO", desc: "CPU detector, 2nd opinion" },
 };
 
 const STATE_LABEL: Record<GateDisplay["state"], string> = {
@@ -77,21 +84,48 @@ const STATE_LABEL: Record<GateDisplay["state"], string> = {
   not_evaluated: "N/A",
 };
 
+function GateIcon({
+  state,
+  lit,
+  evaluating,
+  delayMs,
+}: {
+  state: GateDisplay["state"];
+  lit: boolean;
+  evaluating: boolean;
+  delayMs: number;
+}) {
+  const cls = "h-3.5 w-3.5 shrink-0 transition-colors duration-150";
+  if (!lit) {
+    return (
+      <CircleDashed
+        aria-hidden="true"
+        className={cn(cls, evaluating ? "animate-[gate-pulse_1.1s_ease-in-out_infinite] text-brand" : "text-fg-subtle")}
+        style={evaluating ? { animationDelay: `${delayMs}ms` } : undefined}
+      />
+    );
+  }
+  if (state === "passed") return <CircleCheck aria-hidden="true" className={cn(cls, "text-success")} />;
+  if (state === "failed") return <CircleX aria-hidden="true" className={cn(cls, "text-danger")} />;
+  return <CircleMinus aria-hidden="true" className={cn(cls, "text-fg-subtle")} />;
+}
+
 export function GateStrip({
   gates,
   phase,
   onAllResolved,
   staggerMs = 120,
+  className,
 }: {
   gates: GateDisplay[];
-  /** idle = pre-submit graphite; evaluating = amber pulsing; resolved = run */
+  /** idle = pre-submit; evaluating = pulsing; resolved = interlock run */
   phase: GatePhase;
   onAllResolved?: () => void;
   staggerMs?: number;
+  className?: string;
 }) {
   const [litCount, setLitCount] = useState(0);
   const gateCount = gates.length;
-  const allResolved = phase === "resolved" && litCount >= gateCount;
 
   useEffect(() => {
     if (phase !== "resolved") {
@@ -116,92 +150,47 @@ export function GateStrip({
   const evaluating = phase === "evaluating";
 
   return (
-    <div>
-      <div
-        className="flex items-stretch gap-0 overflow-hidden rounded-[10px] border border-seam"
-        role="group"
-        aria-label="Interlock gate strip"
-      >
-        {gates.map((gate, i) => {
-          const lit = phase === "resolved" && i < litCount;
-          const tone = lit ? DOT_TONE[gate.state] : "bg-dot-idle";
-          const textTone = !lit
-            ? "text-muted"
-            : gate.state === "passed"
-              ? "text-verdict-green"
-              : gate.state === "failed"
-                ? "text-verdict-red"
-                : "text-muted";
-          return (
-            <div
-              key={gate.key}
-              className={cn(
-                // min-w-0 + tight phone padding: six cells must fit a
-                // 390px screen (WEIGHT was clipped at px-2.5 with five).
-                "flex min-w-0 flex-1 flex-col items-center gap-1.5 border-r border-seam bg-raised px-0.5 py-3 last:border-r-0 transition-colors duration-150 sm:px-2.5",
-                evaluating && "animate-[gate-pulse_1.1s_ease-in-out_infinite]",
-                evaluating && "bg-amber-soft",
-                lit && gate.state === "failed" && "bg-red-dim",
-                lit && gate.state === "passed" && "bg-green-dim",
-              )}
-              style={
-                evaluating
-                  ? { animationDelay: `${i * staggerMs}ms` }
-                  : undefined
-              }
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "h-3 w-3 rounded-full transition-all duration-150",
-                  tone,
-                )}
-              />
+    <div
+      role="group"
+      aria-label="Interlock gate strip"
+      className={cn(
+        "grid grid-cols-2 gap-px bg-line sm:grid-cols-3 xl:grid-cols-6",
+        className,
+      )}
+    >
+      {gates.map((gate, i) => {
+        const lit = phase === "resolved" && i < litCount;
+        const copy = GATE_COPY[gate.key] ?? { name: gate.label, desc: "" };
+        return (
+          <div
+            key={gate.key}
+            title={lit && gate.reason ? gate.reason : undefined}
+            className={cn(
+              "flex min-w-0 flex-col gap-1.5 bg-surface px-5 py-4 transition-colors duration-150",
+              lit && gate.state === "failed" && "bg-[color-mix(in_srgb,var(--color-danger)_5%,white)]",
+            )}
+          >
+            <span className="flex items-center gap-1.5">
+              <GateIcon state={gate.state} lit={lit} evaluating={evaluating} delayMs={i * staggerMs} />
               <span
                 className={cn(
-                  "figure text-[11px] font-semibold tracking-[0.3px] sm:text-[12px] sm:tracking-[0.8px]",
-                  textTone,
-                )}
-              >
-                {gate.label}
-              </span>
-              <span
-                className={cn(
-                  "text-[11px] font-semibold tracking-wide sm:text-[12px]",
-                  textTone,
+                  "truncate text-[13px] font-medium",
+                  lit && gate.state === "failed" ? "text-danger" : "text-fg",
                 )}
                 aria-hidden="true"
               >
-                {lit ? STATE_LABEL[gate.state] : "—"}
+                {copy.name}
               </span>
               <span className="sr-only">
-                {`gate ${gate.label}: ${
-                  lit ? STATE_LABEL[gate.state] : "pending"
-                }`}
+                {`gate ${gate.label}: ${lit ? STATE_LABEL[gate.state] : "pending"}`}
               </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {evaluating ? (
-        <div className="mt-2 text-center" aria-live="polite">
-          <span className="figure text-[12px] tracking-[0.5px] text-amber">
-            Evaluating interlock…
-          </span>
-        </div>
-      ) : null}
-
-      {/* Gate legend (critique P2): the signature move must explain
-          itself — XCHECK/GAS are meaningless without it. Rendered once
-          the gates resolve, when the judge's eye is on the strip. */}
-      {allResolved ? (
-        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-faint">
-          VLM visual contaminants · MANIFEST manual waybill text · XCHECK waybill vs
-          observed load · GAS gate sensors · WEIGHT weighbridge vs declared ·
-          YOLO CPU detector second opinion
-        </p>
-      ) : null}
+            </span>
+            <span className="truncate text-[12px] text-fg-muted">
+              {lit && gate.state !== "passed" ? `${STATE_LABEL[gate.state]} · ${copy.desc}` : copy.desc}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

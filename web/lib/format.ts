@@ -47,15 +47,16 @@ export function formatUsdCompact(idr: number): string {
   return `${sign}US$${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(usd)}`;
 }
 
-/** "5.200 kg" / "5,2 t": weighbridge register. */
+/** "5,200 kg" / "5.2 t": weighbridge register, in the console's English
+    number style (matches the inspection result's "15,500 kg"). */
 export function formatWeight(kg: number): string {
   if (!Number.isFinite(kg) || kg <= 0) return "—";
   if (kg >= 1000) {
-    return `${new Intl.NumberFormat("id-ID", {
+    return `${new Intl.NumberFormat("en-US", {
       maximumFractionDigits: 1,
     }).format(kg / 1000)} t`;
   }
-  return `${new Intl.NumberFormat("id-ID", {
+  return `${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(kg)} kg`;
 }

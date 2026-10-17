@@ -3,160 +3,141 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  ClipboardList,
+  FlaskConical,
+  LogOut,
+  ScanLine,
+  ScrollText,
+} from "lucide-react";
 import { fetchSession, logout } from "@/lib/auth-api";
 import { LogoMark } from "@/components/ui/logo-mark";
-import {
-  IconAuditTrail,
-  IconCollapse,
-  IconInspection,
-  IconShift,
-} from "@/components/ui/nav-icons";
+import { StatusChip } from "@/components/shell/status-chip";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/app", label: "Inspection", Icon: IconInspection },
-  { href: "/inspections", label: "Audit Trail", Icon: IconAuditTrail },
-  { href: "/shift", label: "Shift", Icon: IconShift },
+  { href: "/app", label: "Inspection", Icon: ScanLine },
+  { href: "/inspections", label: "Audit trail", Icon: ScrollText },
+  { href: "/shift", label: "Shift report", Icon: ClipboardList },
+  { href: "/validation", label: "Validation", Icon: FlaskConical },
 ] as const;
 
 /**
- * SideNavbar — persistent left navigation for the console dashboard.
- * 240px expanded, 64px icon-only collapsed. Amber left border for active route.
- * Collapses to bottom bar on mobile (md breakpoint).
+ * SideNavbar — persistent 248px left rail (pen.dev "Lynceus/Sidebar"):
+ * brand, "Console" group, four routes, operator block with sign-out.
+ * Collapses to a bottom bar below md.
  */
-export function SideNavbar({ onCollapseChange }: { onCollapseChange?: (collapsed: boolean) => void }) {
+export function SideNavbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
-  const [authOn, setAuthOn] = useState(false);
+  const [user, setUser] = useState<string | null>(null);
 
-  // The sign-out control only exists when the backend actually enforces
-  // auth; in demo mode (no admin credentials) it would be a dead button.
+  // Sign-out only exists when the backend enforces auth; in demo mode
+  // (no admin credentials) the session has no user.
   useEffect(() => {
     const controller = new AbortController();
     fetchSession(controller.signal)
-      .then((s) => setAuthOn(s.user != null))
+      .then((s) => setUser(s.user ?? null))
       .catch(() => {});
     return () => controller.abort();
   }, []);
-
-  const toggle = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    onCollapseChange?.(next);
-  };
 
   const signOut = async () => {
     await logout();
     router.replace("/login");
   };
 
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
   return (
     <>
-      {/* Desktop: side navbar */}
       <nav
         aria-label="Primary"
-        className={cn(
-          "fixed left-0 top-0 z-40 hidden h-screen flex-col border-r border-seam bg-panel transition-[width] duration-200 md:flex",
-          collapsed ? "w-16" : "w-60"
-        )}
+        className="fixed left-0 top-0 z-40 hidden h-screen print:hidden w-[248px] flex-col justify-between border-r border-line bg-surface px-3.5 py-5 md:flex"
       >
-        {/* Brand: wordmark with amber glyph, links to landing. No hover
-            treatment: it is identity, not an interactive control. */}
-        <Link href="/" className="flex h-14 items-center gap-3 border-b border-seam px-4">
-          <LogoMark size={22} className="shrink-0" />
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-[15px] font-bold tracking-[2px] text-ink">LYNCEUS</span>
-              <span className="text-[10px] font-semibold tracking-[1px] text-muted uppercase">AI Gate Inspector</span>
-            </div>
-          )}
-          {collapsed && (
-            <span className="sr-only">Lynceus home</span>
-          )}
-        </Link>
+        <div className="flex flex-col gap-7">
+          <Link href="/" className="flex items-center gap-2.5 px-1.5">
+            <LogoMark size={30} />
+            <span className="flex flex-col gap-px">
+              <span className="font-display text-[17px] leading-tight font-medium text-fg">Lynceus</span>
+              <span className="font-mono text-[10px] tracking-[0.8px] text-fg-subtle">AI GATE INSPECTOR</span>
+            </span>
+          </Link>
 
-        {/* Nav items: decision-focused, no filler. Active state uses amber left border
-            as the single deliberate accent (core Part 3). */}
-        <div className="flex flex-1 flex-col gap-1 p-3">
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-[6px] px-3 py-2.5 text-[13px] font-semibold transition-colors duration-100",
-                  isActive
-                    ? "border-l-2 border-amber bg-raised text-ink"
-                    : "text-muted hover:bg-seam hover:text-ink"
-                )}
-                aria-current={isActive ? "page" : undefined}
-                title={collapsed ? item.label : undefined}
-              >
-                <item.Icon size={18} />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
+          <div className="flex flex-col gap-0.5">
+            <span className="px-2.5 pb-2 text-[12px] font-medium text-fg-subtle">Console</span>
+            {NAV_ITEMS.map(({ href, label, Icon }) => {
+              const active = isActive(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex h-9 items-center gap-2.5 rounded-[8px] px-2.5 text-[14px] font-medium transition-colors duration-100",
+                    active
+                      ? "bg-surface-muted text-fg"
+                      : "text-fg-muted hover:bg-surface-subtle hover:text-fg",
+                  )}
+                >
+                  <Icon aria-hidden="true" size={16} strokeWidth={2} />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Sign out (only when auth is enforced) + collapse toggle */}
-        {authOn ? (
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            aria-label="Sign out"
-            title="Sign out"
-            className="flex h-11 items-center justify-center gap-2 border-t border-seam text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            {!collapsed && <span className="text-[12px] font-semibold tracking-[0.6px] uppercase">Sign out</span>}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={toggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex h-12 items-center justify-center border-t border-seam text-muted hover:bg-seam hover:text-ink transition-colors duration-100"
-        >
-          <IconCollapse collapsed={collapsed} size={18} />
-        </button>
+        <div className="flex flex-col gap-3">
+          {/* Live /health poll: never a fake green when the engine is down. */}
+          <div className="px-1.5">
+            <StatusChip />
+          </div>
+          <div className="flex items-center gap-2.5 border-t border-line px-1.5 pt-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-surface-muted text-[13px] font-medium text-fg">
+              OP
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-px">
+              <span className="truncate text-[13px] font-medium text-fg">Gate operator</span>
+              <span className="truncate text-[12px] text-fg-subtle">
+                {user ? `${user} · Gate A` : "Open access · Gate A"}
+              </span>
+            </span>
+            {user ? (
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                aria-label="Sign out"
+                title="Sign out"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-100 hover:bg-surface-subtle hover:text-fg"
+              >
+                <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+              </button>
+            ) : null}
+          </div>
+        </div>
       </nav>
 
       {/* Mobile: bottom bar */}
       <nav
         aria-label="Primary mobile"
-        className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-seam bg-panel md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-40 flex print:hidden border-t border-line bg-surface md:hidden"
       >
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+        {NAV_ITEMS.map(({ href, label, Icon }) => {
+          const active = isActive(href);
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={href}
+              href={href}
+              aria-current={active ? "page" : undefined}
               className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-3 text-[11px] font-semibold",
-                isActive ? "text-amber" : "text-muted"
+                "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
+                active ? "text-fg" : "text-fg-subtle",
               )}
-              aria-current={isActive ? "page" : undefined}
             >
-              <item.Icon size={20} />
-              <span>{item.label}</span>
+              <Icon aria-hidden="true" size={18} strokeWidth={2} />
+              <span>{label}</span>
             </Link>
           );
         })}

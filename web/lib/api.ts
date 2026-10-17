@@ -6,7 +6,7 @@
  *   GET /inspections →
  *     { inspections: [{ record_id, truck_id, decision, decided_at_utc,
  *                        prevented_loss_idr, admitted_value_idr,
- *                        gate_states }] }
+ *                        gate_states, reason, record_sha256 }] }
  *   (prevented_loss_idr: reject/escalate only; admitted_value_idr: accept only)
  *
  *   GET /inspections/{record_id} → the full audit record (shape of
@@ -52,6 +52,10 @@ const inspectionSummarySchema = z.object({
   /** Market value of an accepted load (NOT a prevented loss); 0 otherwise. */
   admitted_value_idr: z.coerce.number().catch(0),
   gate_states: z.record(z.string(), gateStateSchema).catch({}),
+  /** Short "why" line built by the backend from the sealed record. */
+  reason: z.string().nullish().catch(null),
+  /** The record's own digest, `sha256:<64 hex>`. */
+  record_sha256: z.string().nullish().catch(null),
 });
 
 const inspectionsResponseSchema = z.object({
