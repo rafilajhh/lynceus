@@ -93,7 +93,7 @@ GAS_CH4_ANAEROBIC_THRESHOLD_PPM = 100.0
 DETECTOR_HARD_CONFIDENCE = DEFAULT_DETECTOR_HARD_CONF
 DETECTOR_LIGHT_CONFIDENCE = DEFAULT_DETECTOR_LIGHT_CONF
 #: How reasons name the detector.
-DETECTOR_NAME = "Detector (YOLO26s)"
+DETECTOR_NAME = "Detector (YOLO26m)"
 #: Vision models with a benchmark run behind them (``config.Settings``
 #: overrides this per call): a fallback model outside it cannot decide alone.
 BENCHMARKED_VLM_MODELS: Tuple[str, ...] = ("MiniCPM-V-4.7-35B-A3B",)

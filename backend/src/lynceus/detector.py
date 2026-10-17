@@ -1,4 +1,4 @@
-"""CPU object-detector second opinion (fine-tuned YOLO26s, ONNX).
+"""CPU object-detector second opinion (fine-tuned YOLO26m, ONNX).
 
 One photo in, contaminant boxes out, in ~150 ms on a laptop CPU, with no
 network: the detector keeps working when the shared AMD endpoint does not.
@@ -57,7 +57,7 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
-MODEL_NAME = "yolo26s-realwaste-taco"
+MODEL_NAME = "yolo26m-realwaste-taco"
 #: The runtime of the CPU provider (the only provider).
 RUNTIME = "onnxruntime-cpu"
 CPU_PROVIDER = "CPUExecutionProvider"
@@ -92,7 +92,7 @@ class DetectorImageError(ValueError):
 
 def model_name(path: str) -> str:
     """The reported model name: the ONNX file stem without the ``lynceus-``
-    prefix (``yolo26s-realwaste-taco`` for the bundled file)."""
+    prefix (``yolo26m-realwaste-taco`` for the bundled file)."""
     stem = Path(path).stem
     return stem.removeprefix("lynceus-") or stem
 

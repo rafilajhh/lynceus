@@ -100,13 +100,13 @@ _DEFAULT_AUDIT_FORMAT_VERSION = 1
 #: site-packages install cannot see it; the container sets
 #: ``DETECTOR_MODEL_PATH`` instead.
 BUNDLED_DETECTOR_MODEL = (
-    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26s-realwaste-taco.onnx"
+    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26m-realwaste-taco.onnx"
 )
 #: The detector defaults (decision.py uses these too).  Picked on the val split
 #: (RealWaste val + TACO val: not trained on, but used for checkpoint selection)
 #: by the rule in ml/eval_val.py: the lowest threshold whose false-metal rate is
 #: <= 2% (RealWaste) and <= 5% (TACO); light likewise with false escalations on
-#: clean images <= 5% / 10%.  ml/results/val_yolo26s_e26l.json.
+#: clean images <= 5% / 10%.  ml/results/val_yolo26m_e26l.json.
 DEFAULT_DETECTOR_HARD_CONF = 0.35
 DEFAULT_DETECTOR_LIGHT_CONF = 0.05
 _DEFAULT_DETECTOR_THREADS = 2

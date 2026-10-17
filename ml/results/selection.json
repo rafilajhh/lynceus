@@ -1,0 +1,52 @@
+{
+ "rule": "rank by val metal recall @ hard t, then val light recall @ light t, then val mAP50-95",
+ "ranking": [
+  {
+   "tag": "yolo26m_e26l",
+   "metal_recall": 0.8148,
+   "metal_false_rate": 0.0197,
+   "light_recall": 0.9624,
+   "light_false_rate_clean": 0.0578,
+   "map50_95": 0.6357,
+   "hard_threshold": 0.35,
+   "light_threshold": 0.05,
+   "metal_recall_by_source": {
+    "realwaste": 0.8961,
+    "taco": 0.6129
+   }
+  },
+  {
+   "tag": "yolo26m_e26l_last",
+   "metal_recall": 0.7593,
+   "metal_false_rate": 0.0087,
+   "light_recall": 0.9173,
+   "light_false_rate_clean": 0.0334,
+   "map50_95": 0.6306,
+   "hard_threshold": 0.5,
+   "light_threshold": 0.2,
+   "metal_recall_by_source": {
+    "realwaste": 0.8571,
+    "taco": 0.5161
+   }
+  },
+  {
+   "tag": "yolo26s_e26l",
+   "metal_recall": 0.7222,
+   "metal_false_rate": 0.0153,
+   "light_recall": 0.9474,
+   "light_false_rate_clean": 0.0365,
+   "map50_95": 0.6421,
+   "hard_threshold": 0.35,
+   "light_threshold": 0.05,
+   "metal_recall_by_source": {
+    "realwaste": 0.8831,
+    "taco": 0.3226
+   }
+  }
+ ],
+ "winner": "yolo26m_e26l",
+ "thresholds": {
+  "hard": 0.35,
+  "light": 0.05
+ }
+}

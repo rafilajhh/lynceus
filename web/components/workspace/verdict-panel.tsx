@@ -116,7 +116,7 @@ const REFUSE_EXPLANATION =
   "the truck is held at the gate until the missing input is supplied and " +
   "the inspection is re-run. No impact figure is invented for a refusal.";
 
-/** "Second opinion (YOLO26s, CPU, 154 ms): flagged metal, not confirmed by
+/** "Second opinion (YOLO26m, CPU, 640 ms): flagged metal, not confirmed by
     the vision model; held for a manual check." (the hold clause only on an
     escalate verdict). Null when the backend sent neither a detector block
     nor its gate (an older backend). */
