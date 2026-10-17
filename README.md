@@ -15,8 +15,8 @@ Developer Hackathon: ACT III (Intelligent Industry track).**
   <a href="https://github.com/rafilajhh/lynceus">Source on GitHub</a>
 </p>
 
-> The console asks for a sign-in; the judges' credentials are in the lablab.ai
-> submission.
+> The console asks for a sign-in: use **Demo access** on the sign-in page
+> (`admin` / `admin123`).
 
 Lynceus inspects a waste truck's load at the weighbridge, before it is tipped
 into the plant. The load photo, the waybill, the weighed mass and the gate gas
