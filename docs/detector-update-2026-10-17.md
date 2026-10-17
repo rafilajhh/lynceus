@@ -6,46 +6,7 @@ table is `backend/models/README.md`. The hybrid gate itself (detector as second 
 degraded mode, VLM fallback chain) is already on `main`; this branch replaces the model and fixes
 what the review of the combined code found.
 
-**Later the same day (branch `feat/detector-yolo26m`, stacked on this one):** the YOLO26m from
-the same Colab run replaced the YOLO26s below, because it won on val by the model rule written
-before training. The YOLO26m section right below says what that changes; everything after it
-describes the YOLO26s step and still holds for it.
-
-## Update: YOLO26m menggantikan YOLO26s
-
-**Ringkasan untuk Rafi.** Model YOLO26m (data sama, model lebih besar) sekarang jadi detektor
-bawaan: `backend/models/lynceus-yolo26m-realwaste-taco.onnx`. Threshold tetap 0,35 / 0,05 (aturan
-val memilih nilai yang sama). Kode tidak berubah selain nama model dan label "YOLO26m".
-
-* **Kenapa diganti.** Aturan pilih model (`ml/select_model.py`, ditulis sebelum training) memakai
-  data val saja: recall logam di val, lalu recall glass/organic, lalu mAP. YOLO26m menang jelas di
-  foto TACO val: logam 19/31 vs 10/31. Test set baru dibaca setelah pilihan ini, dan tidak boleh
-  mengubahnya; kalau kita memilih berdasarkan test, test-nya tidak lagi jujur.
-* **Apa kata test set.** Dibanding YOLO26s, **tidak ada beda yang signifikan**: TACO test logam
-  14/29 vs 12/29 (p = 0,69), alarm logam palsu 4 vs 6, tahanan palsu glass/organic di foto bersih
-  14/112 vs 8/112 (p = 0,21). Di 80 benchmark logam 20/20 vs 18/20, tapi ada 1 alarm palsu
-  (`plastic_645`). Replay hybrid: verdict benar 72/80 vs 71/80, metal lolos tetap 0, review
-  25/80 vs 26/80. Dibanding model pertama (RealWaste saja) keduanya jauh lebih baik: logam 14/29
-  vs 2/29, p = 0,0005.
-* **Harganya.** 3× lebih lambat di CPU (p50 635 ms vs 214 ms), tapi detektor jalan paralel dengan
-  panggilan VLM yang makan beberapa detik, jadi verdict tidak lebih lambat (kecuali mode
-  degraded: +0,4 detik). File 82 MB vs 38 MB.
-* **Training belum selesai.** Kuota GPU Colab habis di epoch 25 dari 41; `best.pt` = epoch 21.
-  Kalau training dilanjutkan dan selesai, model barunya harus lewat aturan dan cek yang sama
-  sebelum menggantikan ini.
-* **Pilihanmu.** PR ini ditumpuk di atas PR YOLO26s. Merge PR YOLO26s saja = tetap YOLO26s.
-  Merge keduanya = YOLO26m. Rollback ke YOLO26s cukup ganti file model dan `DETECTOR_MODEL_PATH`
-  (bagian 7).
-
-**Checks run, as for the YOLO26s:** the checkpoint's pickle imports only torch, ultralytics,
-collections and builtins; its training arguments match `colab_train.sh` (seed 0, deterministic,
-MuSGD, cosine LR, patience 25, Ultralytics 8.4.177; batch 16); the ONNX is opset 18, input
-1×3×640×640, NMS-free output (1, 300, 6); the production decoder and Ultralytics agree on 80/80
-benchmark verdicts; leakage and paired statistics as in section 3
-(`ml/results/taco_test_robustness_m_vs_s.json`, `..._m_vs_previous.json`). All tables: the model
-card, `backend/models/README.md`.
-
-## Ringkasan YOLO26s untuk Rafi (Bahasa Indonesia)
+## Ringkasan untuk Rafi (Bahasa Indonesia)
 
 **Apa yang berubah.**
 
@@ -108,8 +69,8 @@ sedikit tahanan: naikkan `DETECTOR_LIGHT_CONF` atau set `DETECTOR_ESCALATE_LIGHT
   mengambil lantai; hard 0,35 vs 0,30 ditentukan oleh satu foto TACO val. Dua-duanya rapuh.
 * **Data val juga dipakai saat training** (early stop, pilih epoch terbaik), jadi "tidak pernah
   dilatih" benar, tapi val bukan data yang sama sekali tak tersentuh.
-* **YOLO26m** dari run Colab yang sama sudah dievaluasi dengan aturan dan cek yang sama, menang di
-  val, dan menggantikan model ini (lihat bagian "Update: YOLO26m" di atas).
+* **YOLO26m** dari run Colab yang sama masih training. Ia hanya menggantikan model ini kalau
+  menang di val dengan aturan yang sama dan lolos cek yang sama (bagian 6).
 * Catatan lama yang masih berlaku: read vote yang sudah terlanjur jalan saat modelnya gagal tetap
   selesai dan memegang slot sampai selesai (read yang belum mulai sekarang dibatalkan); fallback ke stub bisa accept (perilaku lama); model VLM utama tidak dicek
   terhadap `VLM_BENCHMARKED_MODELS`. Semua sudah ada sebelum branch ini.
@@ -225,7 +186,7 @@ From the repo root, after `ml/fetch_taco.py` (train, val and test; the decoder n
 backend venv, the leakage check the `ml/` venv):
 
 ```bash
-backend/.venv/Scripts/python ml/eval_decoder.py --onnx <YOLO26s file, restored per section 7> --ultralytics ml/results/finetuned_yolo26s_e26l_nmsfree.json
+backend/.venv/Scripts/python ml/eval_decoder.py --ultralytics ml/results/finetuned_yolo26s_e26l_nmsfree.json
 ml/.venv/Scripts/python ml/check_leakage.py --taco-only
 backend/.venv/Scripts/python ml/taco_robustness.py
 ```
@@ -237,12 +198,7 @@ The previous model's rows come from the same `eval_decoder.py` with
 
 * Detector off: `DETECTOR_MODEL_PATH=` (empty). A vision-model outage then returns HTTP 503 again
   when `LYNCEUS_ALLOW_STUB_FALLBACK=0`.
-* Back to the YOLO26s (after the YOLO26m step): `git log --oneline -1 --
-  backend/models/lynceus-yolo26s-realwaste-taco.onnx` names the commit that removed it; restore
-  it from that commit's parent with `git restore --source=<commit>^ --
-  backend/models/lynceus-yolo26s-realwaste-taco.onnx` and set `DETECTOR_MODEL_PATH=<that file>`
-  (thresholds unchanged, 0.35 / 0.05).
-* First weights: `git restore --source=cc626fe -- backend/models/lynceus-yolo26s-realwaste.onnx`
+* Previous weights: `git restore --source=cc626fe -- backend/models/lynceus-yolo26s-realwaste.onnx`
   (binary-safe; PowerShell `>` redirection would corrupt the file), then
   `DETECTOR_MODEL_PATH=<that file> DETECTOR_HARD_CONF=0.25 DETECTOR_LIGHT_CONF=0.25`.
 * Fewer manual checks: raise `DETECTOR_LIGHT_CONF` or set `DETECTOR_ESCALATE_LIGHT=0`. On val,
@@ -257,9 +213,8 @@ The previous model's rows come from the same `eval_decoder.py` with
 * No result here comes from gate imagery. Calibrate on a few hundred labelled gate photos before
   relying on the thresholds.
 * 41 % TACO metal recall is a large gain over 7 %, not a solved problem.
-* YOLO26m: done with the same rule, decoder rows, leakage check and paired statistics; it won on
-  val and replaced this file (top of this note). A finished YOLO26m run, if it comes, goes through
-  the same steps before it replaces that one.
+* YOLO26m: evaluate with the same rule, the same decoder rows, the same leakage and paired
+  statistics, before it replaces this file.
 * Licences: the weights are AGPL-3.0-derived (Ultralytics) and trained on RealWaste
   (CC BY-NC-SA 4.0 treated as binding) and TACO (annotations CC BY 4.0): evaluation and
   non-commercial use only (`backend/models/NOTICE`).

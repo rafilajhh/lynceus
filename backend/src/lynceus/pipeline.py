@@ -1152,7 +1152,7 @@ def run_inspection(
     )
 
     with ThreadPoolExecutor(max_workers=3) as pool:
-        # The detector runs beside the model calls (~0.6 s on CPU, no network).
+        # The detector runs beside the model calls (~150 ms on CPU, no network).
         detector_future = None
         if precomputed_detector is _DETECTOR_NOT_SUPPLIED and photo_bytes:
             # Scripted demo requests never queue for the detector and use at

@@ -356,10 +356,10 @@ def build_summary(
 # ---------------------------------------------------------------------------
 
 #: Per-image detections of the fine-tuned detector (written by ml/eval_finetuned.py).
-DEFAULT_DETECTIONS = BACKEND_DIR.parent / "ml" / "results" / "finetuned_yolo26m_e26l_nmsfree.json"
+DEFAULT_DETECTIONS = BACKEND_DIR.parent / "ml" / "results" / "finetuned_yolo26s_e26l_nmsfree.json"
 HYBRID_FRAMING = (
     "What-if re-score: the recorded live VLM outputs of the {source_run} AMD Token Factory "
-    "run, fused with the CPU detector (YOLO26m fine-tuned on RealWaste + TACO) through the "
+    "run, fused with the CPU detector (YOLO26s fine-tuned on RealWaste + TACO) through the "
     "current decision rules. No new model calls."
 )
 HYBRID_DISCLOSURE = (

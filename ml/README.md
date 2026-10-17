@@ -9,26 +9,13 @@ git-ignored (`ml/.venv/`, `ml/.cache/`, `ml/data/`, `ml/runs/`, `ml/weights/`).
 photos. Each photo shows one item on the same concrete floor. A truck bed at a cement-plant gate is
 a different domain.
 
-## Update 2026-10-17 (later): YOLO26m from the same run replaces the YOLO26s
-
-`select_model.py yolo26s_e26l yolo26m_e26l yolo26m_e26l_last` picked the YOLO26m `best.pt`
-(epoch 21 of a run Colab's GPU quota stopped after epoch 25 of 41) on val: TACO val metal recall
-19/31 vs 10/31 at the same 0.35 / 0.05. It ships as
-`backend/models/lynceus-yolo26m-realwaste-taco.onnx`. The test sets, read afterwards, cannot tell
-it from the YOLO26s: TACO test metal 14/29 vs 12/29 (p = 0.69), false escalate on clean 14/112 vs
-8/112 (p = 0.21), false metal 4/121 vs 6/121; 80 benchmark metal 20/20 vs 18/20 with 1/60 vs 0/60
-false. It is about 3× slower on the CPU (p50 635 ms vs 214 ms) and 82 MB vs 38 MB. Files:
-`results/val_yolo26m_e26l*.json`, `results/selection.json`, `results/finetuned_*yolo26m_e26l_nmsfree.json`,
-`results/decoder_lynceus-yolo26m-realwaste-taco.json`, `results/taco_test_robustness_m_vs_s.json`,
-`results/taco_test_robustness_m_vs_previous.json`.
-
 ## Update 2026-10-17: the retrained detector is in production
 
 The Colab run (`colab_train.sh`, run `yolo26s_e26l`: YOLO26s on RealWaste pseudo-boxes + TACO
-human boxes) replaced the bundled model. It was `backend/models/lynceus-yolo26s-realwaste-taco.onnx`
-(since replaced by the YOLO26m above) with defaults hard 0.35 / light 0.05, both picked on val by
-the rule in `eval_val.py`. Full model card: `backend/models/README.md`; plain-language summary
-and rollback: `docs/detector-update-2026-10-17.md`.
+human boxes) replaced the bundled model. It is `backend/models/lynceus-yolo26s-realwaste-taco.onnx`
+with defaults hard 0.35 / light 0.05, both picked on val by the rule in `eval_val.py`.
+Full model card: `backend/models/README.md`; plain-language summary and rollback:
+`docs/detector-update-2026-10-17.md`.
 
 | | New (0.35 / 0.05) | Previous (0.25 / 0.25, its shipped defaults) |
 |---|---|---|
@@ -237,8 +224,7 @@ about 4.8 GB of GPU memory. The 1 h time cap stopped it at 28 epochs, about 2.1 
 | `results/val_<tag>.json`, `results/val_<tag>_tacotest*.json` | Val sweeps and selected thresholds; TACO test at those thresholds |
 | `taco_robustness.py` | TACO test re-scored without near-duplicate / same-scene images; Wilson intervals, paired bootstrap, exact McNemar; stdlib only |
 | `results/decoder_*.json` | `eval_decoder.py` output per ONNX model, with one row per TACO test image |
-| `results/taco_test_robustness*.json` | `taco_robustness.py` output: YOLO26s vs the RealWaste-only model (default), YOLO26m vs YOLO26s (`_m_vs_s`), YOLO26m vs the RealWaste-only model (`_m_vs_previous`) |
-| `results/selection.json` | `select_model.py` ranking of the RealWaste+TACO candidates on val |
+| `results/taco_test_robustness.json` | `taco_robustness.py` output |
 | `results/zeroshot_yoloe.json` | Per-image YOLOE-26s detections (contaminant prompts, conf >= 0.05, normalised xyxy) |
 | `results/zeroshot_yoloe_distractors.json`, `results/zeroshot_yoloe_26m-seg*.json` | Other prompt sets and the m model |
 | `results/finetuned_yolo26s_realwaste[_nmsfree].json` | Per-image fine-tuned detections |

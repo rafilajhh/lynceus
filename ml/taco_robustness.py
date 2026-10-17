@@ -122,18 +122,9 @@ def batch_neighbours(meta: dict[str, str], test_names: set[str]) -> dict[str, li
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--new", default=str(RESULTS / "decoder_lynceus-yolo26s-realwaste-taco.json"))
-    default_old = RESULTS / "decoder_lynceus-yolo26s-realwaste.json"
-    ap.add_argument("--old", default=str(default_old))
+    ap.add_argument("--old", default=str(RESULTS / "decoder_lynceus-yolo26s-realwaste.json"))
     ap.add_argument("--leakage", default=str(RESULTS / "leakage_check.json"))
-    ap.add_argument("--old-val-pick", type=float, nargs=2, default=None, metavar=("HARD", "LIGHT"),
-                    help="the --old model's own val pick (omitted when it equals its shipped "
-                         "thresholds); required with a non-default --old")
-    ap.add_argument("--out", default=str(RESULTS / "taco_test_robustness.json"))
     a = ap.parse_args()
-    if a.old_val_pick is None:
-        if Path(a.old).resolve() != default_old.resolve():
-            raise SystemExit("--old-val-pick HARD LIGHT is required with a non-default --old")
-        a.old_val_pick = PREVIOUS_VAL_PICK
 
     decoders = {k: json.loads(Path(p).read_text(encoding="utf-8")) for k, p in (("new", a.new), ("old", a.old))}
     rows = {k: d["taco_test_rows"] for k, d in decoders.items()}
@@ -143,12 +134,11 @@ def main() -> None:
     test_names = set(truth["new"])
     shipped = {k: (d["thresholds"]["hard"], d["thresholds"]["light"]) for k, d in decoders.items()}
     # (name, decoder key, hard, light); the first is the new model.
-    val_pick = tuple(a.old_val_pick)
     comparators = (
         ("new@{:.2f}/{:.2f}".format(*shipped["new"]), "new", *shipped["new"]),
         ("previous@{:.2f}/{:.2f} (shipped)".format(*shipped["old"]), "old", *shipped["old"]),
-    ) + ((("previous@{:.2f}/{:.2f} (its val pick)".format(*val_pick), "old", *val_pick),)
-         if val_pick != shipped["old"] else ())
+        ("previous@{:.2f}/{:.2f} (its val pick)".format(*PREVIOUS_VAL_PICK), "old", *PREVIOUS_VAL_PICK),
+    )
 
     leak = json.loads(Path(a.leakage).read_text(encoding="utf-8"))["taco_test"]
     if {r["image"] for r in leak["rows"]} != test_names:
@@ -214,7 +204,7 @@ def main() -> None:
             block[metric] = mblock
         report["subsets"][sname] = block
 
-    dest = Path(a.out)
+    dest = RESULTS / "taco_test_robustness.json"
     dest.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps({"excluded": report["excluded"],
                       **{s: {m: {k: v.get("count", v.get("diff")) for k, v in mv.items()}
