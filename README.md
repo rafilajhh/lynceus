@@ -7,6 +7,17 @@
 **AI gate inspector for alternative-fuel (RDF) facilities — built for the AMD
 Developer Hackathon: ACT III (Intelligent Industry track).**
 
+<p align="center">
+  <a href="https://lynceus.web.id"><b>Live demo → lynceus.web.id</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://lynceus.web.id/app">Inspection console</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/rafilajhh/lynceus">Source on GitHub</a>
+</p>
+
+> The console asks for a sign-in; the judges' credentials are in the lablab.ai
+> submission.
+
 Lynceus inspects a waste truck's load at the weighbridge, before it is tipped
 into the plant. The load photo, the waybill, the weighed mass and the gate gas
 readings are fused into one verdict — **ACCEPT / ESCALATE / REJECT** — by a
