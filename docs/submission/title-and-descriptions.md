@@ -19,7 +19,7 @@ Lynceus: AI Gate Inspector for RDF Fuel Trucks
 
 Lynceus checks every refuse-derived-fuel truck at the weighbridge before it tips. Vision AI on AMD Token Factory spots metal in the load and reads the waybill; a rule engine decides accept, escalate or reject and seals an audit record.
 
-## Long description (304 words)
+## Long description (312 words)
 
 Cement plants burn refuse-derived fuel (RDF) to replace coal, but every truck of
 shredded waste can hide metal, stone or tyres. One piece that reaches the
@@ -29,11 +29,12 @@ record.
 
 Lynceus moves that check to the weighbridge, before the load is tipped. The
 operator photographs the load and the paper waybill. A vision model on AMD
-Token Factory (DeepSeek-V4-Flash-Vision-Exp, with Gemma-4-31B-IT as the
+Token Factory (DeepSeek-V4-Flash-Vision-Exp, with Google's Gemma 4 as the
 fallback) names the contaminants and boxes them on the photo, and reads the
 waybill to fill the register automatically. DeepSeek-V4-Flash cross-checks the
 waybill against what the camera saw and the weighed mass, and a YOLO26m
-detector on the gate PC's CPU gives an independent second opinion. A rule-based
+detector, fine-tuned on Google Colab and run on the gate PC's CPU, gives an
+independent second opinion. A rule-based
 engine then decides ACCEPT, ESCALATE or REJECT, so every verdict is
 explainable and repeatable.
 
@@ -55,7 +56,7 @@ as a per-gate subscription. It is live at https://lynceus.web.id.
 
 ## Technology tags
 
-AMD Token Factory, DeepSeek, Gemma, Vision-Language Model, Computer Vision,
+AMD Token Factory, DeepSeek, Gemma 4, Google Colab, Vision-Language Model, Computer Vision,
 OCR, YOLO, ONNX Runtime, FastAPI, Python, Next.js, TypeScript, BM25 retrieval,
 Industrial AI, Waste-to-Energy
 

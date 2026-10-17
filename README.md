@@ -101,7 +101,13 @@ second opinion runs on an ordinary CPU.
 |---|---|---|
 | Vision: contaminants, wet/dry, hazard boxes, waybill OCR | `DeepSeek-V4-Flash-Vision-Exp` (fallback `Gemma-4-31B-IT`) | Winner of a 10-model bake-off on truck-bed photos: metal found 3/3, clean load kept clean 3/3, and the fastest of the accurate models. Gemma ties on accuracy and serves as the fallback. |
 | Waybill cross-check, Pythia, shift explanations | `DeepSeek-V4-Flash` | Passed the assistant citation contract 3/3 and the waybill JSON contract 3/3 on a deliberately contradictory waybill. |
-| Detector second opinion: metal, glass, organic boxes | YOLO26m fine-tuned on RealWaste + TACO, bundled ONNX (`backend/models/`) | Runs on the gate PC's CPU (ONNX Runtime), so the gate keeps a second pair of eyes even when the endpoint is busy. |
+| Detector second opinion: metal, glass, organic boxes | YOLO26m fine-tuned on RealWaste + TACO on **Google Colab**, bundled ONNX (`backend/models/`) | Runs on the gate PC's CPU (ONNX Runtime), so the gate keeps a second pair of eyes even when the endpoint is busy. |
+
+**Google technology in Lynceus.** **Gemma 4** (`Gemma-4-31B-IT`, served on AMD
+GPUs through AMD Token Factory) is the fallback vision model: when the primary
+model is busy, Gemma reads the load photo inside the same time budget. The
+YOLO26m detector was fine-tuned on a **Google Colab** GPU
+(`ml/colab_finetune.ipynb`, `ml/colab_train.sh`).
 
 Probe and bake-off data: `docs/research/token-factory-probe.md`,
 `docs/research/vlm-bakeoff-2026-10-17.json`,
@@ -145,8 +151,8 @@ Built to fail safe:
   `VLM_BENCHMARKED_MODELS` can never accept or reject.
 - **Strict boxes.** The VLM's hazard boxes are validated; malformed boxes are
   dropped, never repaired.
-- **Clear provenance.** Live results are labelled "Live AMD" with model and
-  latency. A stub answer after a live failure is labelled as a scripted
+- **Clear provenance.** Every live verdict shows the model that answered,
+  "AMD Token Factory" and the latency. A stub answer after a live failure is labelled as a scripted
   fallback. With `LYNCEUS_ALLOW_STUB_FALLBACK=0` and the vision model down, a
   readable photo gets a detector-only verdict that always holds the truck for a
   human (`detector_only_degraded`); without the detector it returns HTTP 503.
