@@ -69,7 +69,7 @@ const STEPS = [
     title: "Capture",
     Icon: Camera,
     iconBg: "bg-fg",
-    text: "At the weighbridge the operator submits the load photo, the waybill text, and the net weight: the same fields a PUPR gate form already records.",
+    text: "At the weighbridge the operator photographs the load and the paper waybill. AI reads the waybill into the register (plate, supplier, net weight): the same fields a PUPR gate form already records.",
     gate: "gate · intake complete",
   },
   {
