@@ -17,7 +17,7 @@ server steps were not, since nothing in this repository deploys anywhere for you
 ## 1. Get the code and write the env file
 
 ```bash
-git clone <your repo url> lynceus && cd lynceus
+git clone https://github.com/rafilajhh/lynceus.git lynceus && cd lynceus
 git checkout main                      # or the branch / tag you are deploying
 ```
 

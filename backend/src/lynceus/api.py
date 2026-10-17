@@ -6,7 +6,8 @@ Routes:
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
     POST /assist   — Pythia: cited answers over plant documents and an audit record.
     GET  /shift-report — shift aggregation with supplier risk and explanations.
-    GET  /benchmark/latest — newest committed validation summary (+ framing, + its replay).
+    GET  /benchmark/latest — newest committed validation summary (+ framing,
+                             + its replay, + its hybrid VLM + detector re-score).
     GET  /benchmark/replay — newest replay re-score of a recorded run (current rules).
 """
 
@@ -14,9 +15,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-import json
 import os
-import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -66,9 +65,15 @@ _BENCHMARK_DIR = _dir_from_env(
 BENCHMARK_FRAMING = (
     "component validation on public RealWaste images — not field data from a plant"
 )
-#: Summary file names that count without a ``kind`` field (written before it).
-_LEGACY_LIVE_NAME = re.compile(r"\d{4}-\d{2}-\d{2}\.summary\.json")
-_LEGACY_REPLAY_NAME = re.compile(r"\d{4}-\d{2}-\d{2}\.rescore\.summary\.json")
+
+#: Sent with every response.  No page of the app is meant to be framed, so
+#: framing is refused outright (clickjacking); MIME sniffing is off; other
+#: sites receive only the origin as referrer.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+}
 
 # No OCR is performed on the waybill; this is the fixed confidence attached
 # to operator-typed manifest text, not an OCR score.
@@ -800,6 +805,14 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next: Any) -> Any:
+        """Add :data:`SECURITY_HEADERS` to every response (route-set values win)."""
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
     # Session auth (demo-open when LYNCEUS_ADMIN_* are unset; see auth.py).
     auth.register_auth_routes(app)
 
@@ -1087,47 +1100,38 @@ def create_app() -> FastAPI:
             )
         return FileResponse(page, media_type="text/html")
 
-    def _benchmark_summaries(replay: bool) -> Iterator[dict[str, Any]]:
-        """Readable summaries, newest first: live runs, or offline replays.
-
-        Allow-listed by the summary's own ``kind`` (``"live"`` / ``"replay"``),
-        never by its file name, so a hybrid what-if (or any other kind) is
-        never served as a live run.  A live run that stopped early is still
-        a live run and may be served: its summary says ``complete: false``
-        and the validation page flags it as partial.  Summaries written
-        before ``kind`` existed count only under their exact legacy names
-        (``YYYY-MM-DD.summary.json`` live, ``YYYY-MM-DD.rescore.summary.json``
-        replay)."""
-        wanted = "replay" if replay else "live"
-        legacy = _LEGACY_REPLAY_NAME if replay else _LEGACY_LIVE_NAME
-        results = _BENCHMARK_DIR / "results"
-        for path in sorted(results.glob("*.summary.json"), reverse=True):
-            try:
-                summary = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if not isinstance(summary, dict):
-                continue
-            kind = summary.get("kind")
-            if kind == wanted or (kind is None and legacy.fullmatch(path.name)):
-                yield summary
+    def _benchmark_summaries(kind: str) -> Iterator[dict[str, Any]]:
+        """Readable summaries of ``kind``, newest first (allow-listed by the
+        summary's own ``kind``; see :func:`impact.benchmark_summaries`), so a
+        hybrid what-if is never served as a live run.  A live run that
+        stopped early is still served: its summary says ``complete: false``
+        and the validation page flags it as partial."""
+        for summary, _name in impact.benchmark_summaries(_BENCHMARK_DIR / "results", kind):
+            yield summary
 
     @app.get("/benchmark/latest")
     def benchmark_latest(
         _user: str | None = Depends(auth.require_auth),
     ) -> dict[str, Any]:
-        """Newest live ``*.summary.json``, plus framing and its replay.
+        """Newest live ``*.summary.json``, plus framing, its replay and its hybrid.
 
         ``replay`` is the newest re-score of *this* run (its ``source_run``
         equals the run's ``date``) through the current rules, else ``None``.
+        ``hybrid`` is the newest ``hybrid_replay`` of this run, else ``None``:
+        its recorded VLM outputs fused with the CPU detector, whose
+        ``hybrid_light_escalation_on`` variant is the gate that ships
+        (``DETECTOR_ESCALATE_LIGHT=1``).
         """
-        for summary in _benchmark_summaries(replay=False):
-            replay = next(
-                (r for r in _benchmark_summaries(replay=True)
-                 if r.get("source_run") == summary.get("date")),
-                None,
-            )
-            return {**summary, "framing": BENCHMARK_FRAMING, "replay": replay}
+        results = _BENCHMARK_DIR / "results"
+        for summary in _benchmark_summaries("live"):
+            replay = impact.matching_summary(results, "replay", summary)
+            hybrid = impact.matching_summary(results, "hybrid_replay", summary)
+            return {
+                **summary,
+                "framing": BENCHMARK_FRAMING,
+                "replay": replay[0] if replay else None,
+                "hybrid": hybrid[0] if hybrid else None,
+            }
         raise HTTPException(
             status_code=404,
             detail={
@@ -1141,7 +1145,7 @@ def create_app() -> FastAPI:
         _user: str | None = Depends(auth.require_auth),
     ) -> dict[str, Any]:
         """Newest offline replay re-score (recorded model outputs, current rules)."""
-        for summary in _benchmark_summaries(replay=True):
+        for summary in _benchmark_summaries("replay"):
             return summary
         raise HTTPException(
             status_code=404,

@@ -129,6 +129,17 @@ def test_current_rules_decide_each_recorded_output(replayed):
         assert "latency_ms" not in rows[name]  # nothing was re-measured
 
 
+def test_disclosure_names_the_run_the_rules_were_tuned_on():
+    # The tuning run gets the change list; a later run on the same images does not
+    # claim its own data motivated the rules.
+    assert rescore.disclosure_for("2026-10-13") == rescore.DISCLOSURE
+    later = rescore.disclosure_for("2026-10-17.deepseek-vision-exp")
+    assert "tuned on the 2026-10-13 run" in later and "not a held-out" in later
+    assert "plastic_277" not in later
+    assert "using that run's data" in rescore.hybrid_disclosure_for("2026-10-13")
+    assert "tuned on the 2026-10-13 run" in rescore.hybrid_disclosure_for("2026-10-17.x")
+
+
 def test_recorded_error_rows_stay_error_rows(replayed):
     food = replayed["rows"]["food_1.jpg"]
     assert food["predicted"] is None and food["error"] == "HTTP 503: ReadTimeout"

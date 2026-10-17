@@ -25,7 +25,7 @@ const PROOF_FIGURES = [
     prefix: "Rp ",
     suffix: " jt",
     decimals: 0,
-    label: "One industrial shredder destroyed by a single metal contaminant",
+    label: "One industrial shredder: the asset a single metal contaminant can wreck",
     labelSuffix: "≈ US$22k",
     source: "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost",
     grow: "lg:w-[1.25fr]",
@@ -56,7 +56,7 @@ const STEPS = [
   {
     no: "01",
     title: "Capture",
-    text: "At the weighbridge the operator submits the load photo, the waybill text, and the net weight: the same fields a PUPR gate form already records.",
+    text: "At the weighbridge the operator submits the load photo, the waste stream and the net weight (the same fields a PUPR gate form already records), and can attach the waybill photo as evidence.",
     gate: "gate · intake complete",
   },
   {
@@ -91,7 +91,8 @@ export default function LandingPage() {
           <p className="mt-5 max-w-[56ch] text-[15px] leading-[1.65] text-muted sm:text-[17px]">
             Lynceus inspects every RDF truck at the gate, before tipping:
             visual contaminant detection, waybill cross-check, and a route
-            verdict in under a minute, sealed to a tamper-evident audit record.
+            verdict typically in under 30 seconds, sealed to a tamper-evident
+            audit record.
           </p>
           <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <Link
@@ -108,7 +109,7 @@ export default function LandingPage() {
           <div className="relative">
             <Image
               src="/demo/t-metal-1.jpg"
-              alt="Rusted industrial steel bolt, the kind of metal contaminant that destroys an RDF shredder"
+              alt="AI-generated illustration: shredded RDF with a rusted steel pipe elbow and crumpled aluminium foil, the kind of metal contaminant that can wreck a shredder"
               width={524}
               height={524}
               className="block h-auto max-h-[340px] w-full object-cover lg:max-h-[420px]"
@@ -128,10 +129,10 @@ export default function LandingPage() {
           </div>
           <figcaption className="flex flex-col gap-1 border-t border-seam px-4 py-3">
             <span className="figure text-xs text-muted">
-              Metal contaminant, REJECT case: one bolt can kill a shredder
+              Metal contaminant, REJECT case: one steel pipe elbow can wreck a shredder
             </span>
             <span className="figure text-[11px] text-muted">
-              Truck-load photo at the weighbridge, refuse-derived fuel stream
+              Truck load at the weighbridge, refuse-derived fuel stream (AI-generated illustration)
             </span>
           </figcaption>
         </figure>

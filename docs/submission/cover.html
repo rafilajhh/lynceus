@@ -1,0 +1,75 @@
+<!doctype html>
+<!--
+  Source of docs/submission/cover.png (1920×1080 lablab cover image). Same tokens
+  as web/scripts/og.html. Re-render: serve docs/ over http, open this page at a
+  1920×1080 viewport and screenshot it.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lynceus cover</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --ground: #0a0c10; --raised: #161b23; --seam-strong: #2a323d;
+    --ink: #e8eaed; --muted: #9aa3ad; --faint: #7d8899;
+    --amber: #f5a623; --green: #2ecc71; --red: #e74c3c;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1920px; height: 1080px; background: var(--ground); overflow: hidden; }
+  body {
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); -webkit-font-smoothing: antialiased;
+    border-top: 10px solid var(--amber);
+    display: grid; grid-template-columns: 1fr 820px; gap: 72px;
+    padding: 96px 112px 88px;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; }
+  .left { display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 26px; }
+  .brand svg { width: 96px; height: 96px; }
+  .word { font-size: 52px; font-weight: 700; letter-spacing: 9px; text-transform: uppercase; }
+  .kicker { margin-top: 56px; font-size: 22px; letter-spacing: 2px; color: var(--amber); text-transform: uppercase; white-space: nowrap; }
+  h1 { margin-top: 18px; font-size: 88px; line-height: 1.05; font-weight: 700; letter-spacing: -0.015em; }
+  .sub { margin-top: 32px; font-size: 32px; line-height: 1.4; color: var(--muted); max-width: 30ch; }
+  .sub b { color: var(--ink); font-weight: 600; }
+  .foot { margin-top: auto; display: flex; align-items: center; gap: 18px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 12px; border-radius: 999px;
+    border: 2px solid; padding: 12px 26px; font-size: 26px; font-weight: 700; letter-spacing: 2px;
+  }
+  .pill i { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+  .accept { color: var(--green); border-color: rgba(46,204,113,.45); background: rgba(46,204,113,.14); }
+  .escalate { color: var(--amber); border-color: rgba(245,166,35,.45); background: rgba(245,166,35,.14); }
+  .reject { color: var(--red); border-color: rgba(231,76,60,.45); background: rgba(231,76,60,.14); }
+  .shot {
+    align-self: center; border: 2px solid var(--seam-strong); border-radius: 20px; overflow: hidden;
+    background: var(--raised); box-shadow: 0 30px 80px rgba(0,0,0,.55);
+  }
+  .shot img { display: block; width: 820px; height: 860px; object-fit: cover; object-position: top; }
+  .url { margin-top: 28px; font-size: 26px; color: var(--faint); }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand">
+      <svg viewBox="0 0 256 256" aria-hidden="true">
+        <path fill="none" stroke="#e8eaed" stroke-width="20" stroke-linecap="round"
+              d="M36 128C68 82 100 66 128 66s60 16 92 62c-32 46-60 62-92 62s-60-16-92-62z"/>
+        <rect x="104" y="104" width="48" height="48" fill="#f5a623"/>
+      </svg>
+      <span class="word">Lynceus</span>
+    </div>
+    <p class="kicker mono">AMD Hackathon ACT III · Intelligent Industry</p>
+    <h1>AI gate inspector for RDF fuel trucks</h1>
+    <p class="sub"><b>Decides before the load is tipped.</b> Vision model on <b>AMD Token Factory</b> + a CPU detector second opinion.</p>
+    <div class="foot">
+      <span class="pill accept"><i></i>ACCEPT</span>
+      <span class="pill escalate"><i></i>ESCALATE</span>
+      <span class="pill reject"><i></i>REJECT</span>
+    </div>
+    <span class="url mono">lynceus.web.id</span>
+  </div>
+  <div class="shot"><img src="../img/verdict-reject.png" alt=""></div>
+</body>
+</html>

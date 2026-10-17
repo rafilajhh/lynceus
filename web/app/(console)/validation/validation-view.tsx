@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { providerName } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   COLUMNS,
   LABELS,
@@ -9,6 +10,7 @@ import {
   fetchBenchmark,
   type BenchmarkSummary,
   type Confusion,
+  type HybridSummary,
 } from "@/lib/validation-api";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -130,18 +132,20 @@ export function ValidationView() {
   const { summary } = state;
   return (
     <div className="flex flex-col gap-4">
+      <h1 className="sr-only">Validation benchmark</h1>
+      {summary.hybrid ? <ShippedGatePanel hybrid={summary.hybrid} /> : null}
       <Panel aria-labelledby="validation-title">
         <PanelHead
-          title="Validation"
+          title="Vision model alone (live run)"
           meta={
             summary.complete
               ? summary.date ?? undefined
               : `partial · ${summary.n}/${summary.manifest_n}`
           }
         />
-        <h1 id="validation-title" className="sr-only">
-          Validation benchmark
-        </h1>
+        <h2 id="validation-title" className="sr-only">
+          Vision model alone (live run)
+        </h2>
         <HeadlineRun summary={summary} />
         <p className="m-0 border-t border-seam px-4 py-2.5 text-[13px] text-muted">
           {summary.framing}. Live on AMD Token Factory, {summary.date ?? "—"}.
@@ -158,15 +162,89 @@ export function ValidationView() {
   );
 }
 
-/** Headline: the verdict on the gate, in numbers and in words. */
+/**
+ * The shipped gate: the vision model's recorded live outputs fused with the
+ * CPU detector (light detections escalate). Leads with the safety number,
+ * metal accepted; non-rejected metal is held for an operator, not passed.
+ */
+function ShippedGatePanel({ hybrid }: { hybrid: HybridSummary }) {
+  const t = hybrid.table.hybrid_light_escalation_on;
+  const v = hybrid.variants.hybrid_light_escalation_on;
+  const metal = v.confusion.reject;
+  const metalN = metal.reject + metal.escalate + metal.accept + metal.error;
+  const ops = operatorCounts(v.confusion);
+  const accepted = t.metal_accepted ?? metal.accept;
+  const detector = hybrid.detector;
+  const figures: { key: string; value: string; of: string | null; label: string; tone?: string }[] = [
+    {
+      key: "accepted",
+      value: String(accepted),
+      of: `/ ${metalN}`,
+      label: "metal photos accepted",
+      tone: accepted === 0 ? "text-verdict-green" : "text-verdict-red",
+    },
+    { key: "rejected", value: String(metal.reject), of: `/ ${metalN}`, label: "metal rejected outright" },
+    { key: "held", value: String(metal.escalate), of: `/ ${metalN}`, label: "metal held for an operator" },
+    { key: "clean", value: String(ops.cleanPassed), of: `/ ${ops.cleanN}`, label: "clean loads passed" },
+    { key: "review", value: String(ops.escalated), of: `/ ${ops.graded}`, label: "trucks sent to an operator" },
+    { key: "accuracy", value: ratio(t.gate_accuracy), of: v.gate_correct ? `(${v.gate_correct})` : null, label: "gate accuracy" },
+  ];
+  return (
+    <Panel aria-labelledby="shipped-gate-title">
+      <PanelHead title="Shipped gate" meta={hybrid.source_run ?? "replay"} />
+      <div className="px-4 pt-4 pb-3">
+        <h2 id="shipped-gate-title" className="m-0 text-[15px] font-semibold text-ink">
+          Shipped gate: vision model + CPU detector (replay)
+        </h2>
+        <dl className="m-0 mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+          {figures.map((f) => (
+            <div key={f.key} className="flex min-w-0 flex-col gap-1">
+              <dd className="m-0 flex items-baseline gap-1.5 whitespace-nowrap">
+                <span
+                  className={cn(
+                    "figure text-[clamp(24px,3vw,34px)] leading-tight font-semibold text-ink",
+                    f.tone,
+                  )}
+                >
+                  {f.value}
+                </span>
+                {f.of ? <span className="figure text-[13px] text-faint">{f.of}</span> : null}
+              </dd>
+              <dt className="text-[13px] leading-snug font-semibold text-ink">{f.label}</dt>
+            </div>
+          ))}
+        </dl>
+        <p className="m-0 mt-4 text-[14px] font-medium text-ink">
+          {accepted === 0
+            ? `No metal photo passed the gate: ${metal.reject} of ${metalN} were rejected outright and ${metal.escalate} held for an operator.`
+            : `${accepted} of ${metalN} metal photos passed the gate unchecked; ${metal.reject} were rejected and ${metal.escalate} held for an operator.`}
+        </p>
+        <p className="figure m-0 mt-2 text-[12px] break-words text-faint">
+          graded {v.graded}/{v.n} · errors {v.errors}
+          {hybrid.vlm_model ? ` · ${hybrid.vlm_model}` : ""}
+          {detector?.model ? ` + ${detector.model}` : ""}
+          {detector?.runtime ? ` (${detector.runtime})` : ""}
+        </p>
+      </div>
+      <details className="group border-t border-seam px-4 py-3">
+        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
+          What this replay is, and is not
+        </summary>
+        <div className="flex flex-col gap-2 pt-2 text-[12px] leading-relaxed text-muted">
+          {hybrid.framing ? <p className="m-0">{hybrid.framing}</p> : null}
+          {hybrid.disclosure ? <p className="m-0">{hybrid.disclosure}</p> : null}
+          {hybrid.llm_note ? <p className="m-0">{hybrid.llm_note}</p> : null}
+        </div>
+      </details>
+    </Panel>
+  );
+}
+
+/** Headline: the vision model alone on the live run, in numbers and in words. */
 function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
-  // Use current-rules replay when available; it reflects the shipped rules.
-  const replay = summary.replay;
-  const r = replay ? replay.reject : summary.reject;
+  const r = summary.reject;
   const caught = `${r.tp} of ${r.tp + r.fn}`;
-  const precisionNote = replay
-    ? `${r.tp} of ${r.tp + r.fp} rejects were metal (current rules)`
-    : `${r.tp} of ${r.tp + r.fp} rejects were metal`;
+  const precisionNote = `${r.tp} of ${r.tp + r.fp} rejects were metal`;
   const parts = [
     {
       key: "recall",
@@ -198,9 +276,7 @@ function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
         ))}
       </dl>
       <p className="m-0 mt-3 text-[14px] font-medium text-ink">
-        {replay
-          ? `Under current rules, the gate rejects ${r.tp} of ${r.tp + r.fn} metal loads and passes ${r.tp} of ${r.tp + r.fp} clean loads.`
-          : `Out of every ${r.tp + r.fn} loads carrying metal, the gate rejected ${r.tp}.`}
+        {`Out of every ${r.tp + r.fn} loads carrying metal, the vision model alone rejected ${r.tp}.`}
       </p>
       <p className="figure m-0 mt-2 text-[12px] text-faint">
         n = {summary.n} · one run · 95% interval {wilson(r.tp, r.tp + r.fn)}

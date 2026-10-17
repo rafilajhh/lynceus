@@ -6,9 +6,11 @@ number is traceable to ``docs/research/realcase-indonesia.md`` and each
 basis entry carries its source URL — no invented figures.
 
 This module is deliberately pure and deterministic: same inputs → same
-outputs, no clock, no randomness, no I/O — except
-:func:`load_benchmark_summary`, which reads the validation benchmark's
-summary file for the expected-value model (:func:`value_model`).
+outputs, no clock, no randomness, no I/O — except the benchmark-file
+readers (:func:`benchmark_summaries`, :func:`matching_summary`,
+:func:`shipped_gate_summary`, :func:`load_benchmark_summary`), which read the
+validation benchmark's summary files for the expected-value model
+(:func:`value_model`) and for ``GET /benchmark/latest``.
 """
 
 from __future__ import annotations
@@ -16,8 +18,9 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 __all__ = [
     "estimate_prevented_loss",
@@ -25,8 +28,12 @@ __all__ = [
     "USD_IDR_RATE",
     "EUR_IDR_RATE",
     "benchmark_rates",
+    "benchmark_source",
+    "benchmark_summaries",
     "load_benchmark_summary",
+    "matching_summary",
     "scenario_value",
+    "shipped_gate_summary",
     "value_model",
     "value_model_from_benchmark",
 ]
@@ -366,8 +373,9 @@ OPERATOR_COST_IDR_PER_MINUTE = (
 #: The model's unit: results are per this many trucks.
 VALUE_MODEL_TRUCKS = 1_000
 
-#: Benchmark summaries, preferred first: the offline replay re-score, then the
-#: live run it replays.
+#: Fallback benchmark summaries when no shipped-gate re-score
+#: (:func:`shipped_gate_summary`) is usable, preferred first: the offline
+#: replay re-score, then the live run it replays.
 BENCHMARK_SUMMARY_FILES = (
     "2026-10-13.rescore.summary.json",
     "2026-10-13.summary.json",
@@ -397,6 +405,74 @@ DAMAGE_COST_IDR = SHREDDER_COST_IDR + (
 def _benchmark_dir() -> Path:
     value = os.environ.get("LYNCEUS_BENCHMARK_DIR", "").strip()
     return Path(value) if value else Path(__file__).resolve().parents[2] / "benchmark"
+
+
+#: Summary file names that count without a ``kind`` field (written before it).
+_LEGACY_SUMMARY_NAMES = {
+    "live": re.compile(r"\d{4}-\d{2}-\d{2}\.summary\.json"),
+    "replay": re.compile(r"\d{4}-\d{2}-\d{2}\.rescore\.summary\.json"),
+}
+
+#: The production gate's variant in a ``hybrid_replay`` summary: the VLM fused
+#: with the CPU detector, light detections escalating
+#: (``DETECTOR_ESCALATE_LIGHT=1``, the default).
+SHIPPED_HYBRID_VARIANT = "hybrid_light_escalation_on"
+
+
+def benchmark_summaries(
+    results_dir: Path, kind: str
+) -> Iterator[Tuple[Dict[str, Any], str]]:
+    """``(summary, file name)`` of each readable ``*.summary.json`` of ``kind``,
+    newest (by file name) first.
+
+    Allow-listed by the summary's own ``kind`` (``"live"``, ``"replay"``,
+    ``"hybrid_replay"``), never by its file name, so a hybrid what-if is never
+    served as a live run.  A live run that stopped early is still a live run:
+    its summary says ``complete: false``.  Summaries written before ``kind``
+    existed count only under their exact legacy names
+    (``YYYY-MM-DD.summary.json`` live, ``YYYY-MM-DD.rescore.summary.json``
+    replay)."""
+    legacy = _LEGACY_SUMMARY_NAMES.get(kind)
+    for path in sorted(Path(results_dir).glob("*.summary.json"), reverse=True):
+        try:
+            summary = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(summary, dict):
+            continue
+        found = summary.get("kind")
+        if found == kind or (
+            found is None and legacy is not None and legacy.fullmatch(path.name)
+        ):
+            yield summary, path.name
+
+
+def matching_summary(
+    results_dir: Path, kind: str, run: Dict[str, Any]
+) -> Optional[Tuple[Dict[str, Any], str]]:
+    """Newest ``kind`` summary that re-scores ``run`` (its ``source_run``
+    equals the run's ``date``), else ``None``.  A run without a date matches
+    nothing."""
+    date = run.get("date")
+    if not isinstance(date, str) or not date:
+        return None
+    return next(
+        (found for found in benchmark_summaries(results_dir, kind)
+         if found[0].get("source_run") == date),
+        None,
+    )
+
+
+def shipped_gate_summary(
+    results_dir: Path,
+) -> Optional[Tuple[Dict[str, Any], str]]:
+    """The shipped gate's numbers: the newest ``hybrid_replay`` summary of the
+    newest live run (that run's recorded VLM outputs fused offline with the
+    CPU detector), else ``None``.  Never an older run's hybrid: a re-score of
+    a retired model would misstate the gate that ships."""
+    for live, _name in benchmark_summaries(results_dir, "live"):
+        return matching_summary(results_dir, "hybrid_replay", live)
+    return None
 
 
 def _fraction(value: Any) -> Optional[float]:
@@ -437,9 +513,28 @@ def benchmark_rates(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     a class's errored share is added to its escalate rate whichever source
     that rate came from.  ``None`` when the summary cannot supply every
     rate.  Pure.
+
+    A ``hybrid_replay`` summary is read through its shipped variant
+    (:data:`SHIPPED_HYBRID_VARIANT`).  There, metal the gate does not reject
+    is held for an operator, not accepted: the only metal that passes the
+    gate unchecked is ``metal_accepted`` of the metal class, so the hard
+    escalate rate is ``1 - reject recall - metal_accepted / n_hard`` and the
+    unchecked escape rate :func:`scenario_value` derives is exactly
+    ``metal_accepted / n_hard`` (not ``1 - recall``).
     """
     if not isinstance(summary, dict):
         return None
+    hybrid = summary.get("kind") == "hybrid_replay"
+    if hybrid:
+        variants = summary.get("variants")
+        variant = variants.get(SHIPPED_HYBRID_VARIANT) if isinstance(variants, dict) else None
+        if not isinstance(variant, dict):
+            return None
+        summary = {
+            "confusion": variant.get("confusion"),
+            "reject": variant.get("metal_reject"),
+            "metal_accepted": variant.get("metal_accepted"),
+        }
     hard = _confusion_row(summary, "reject")
     clean = _confusion_row(summary, "accept")
     reject_block = summary.get("reject")
@@ -449,6 +544,13 @@ def benchmark_rates(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if hard_reject is None and hard is not None:
         hard_reject = hard[0]["reject"]
     hard_escalate = (hard[0]["escalate"] + hard[0]["error"]) if hard else 0.0
+    accepted = summary.get("metal_accepted")
+    if (
+        hybrid and hard is not None and hard_reject is not None
+        and isinstance(accepted, int) and not isinstance(accepted, bool)
+        and 0 <= accepted <= hard[1]
+    ):
+        hard_escalate = max(0.0, 1.0 - hard_reject - accepted / hard[1])
 
     clean_reject = _fraction(summary.get("clean_reject_rate"))
     clean_escalate = _fraction(summary.get("clean_escalate_rate"))
@@ -474,11 +576,17 @@ def benchmark_rates(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def load_benchmark_summary(
     results_dir: Optional[Path] = None,
 ) -> Optional[Tuple[Dict[str, Any], str]]:
-    """``(summary, file name)`` of the first usable file in
-    :data:`BENCHMARK_SUMMARY_FILES`, else ``None``.  The one I/O function."""
+    """``(summary, file name)`` the value model runs on, else ``None``.
+
+    The shipped gate first (:func:`shipped_gate_summary`: the newest live
+    run's hybrid re-score, VLM + CPU detector), when usable; otherwise the
+    first usable file in :data:`BENCHMARK_SUMMARY_FILES`."""
     directory = (
         Path(results_dir) if results_dir is not None else _benchmark_dir() / "results"
     )
+    shipped = shipped_gate_summary(directory)
+    if shipped is not None and benchmark_rates(shipped[0]) is not None:
+        return shipped
     for name in BENCHMARK_SUMMARY_FILES:
         try:
             summary = json.loads((directory / name).read_text(encoding="utf-8"))
@@ -537,7 +645,18 @@ def _parameters(
     hard_n = f" ({rates['n_hard']} images)" if rates.get("n_hard") else ""
     clean_n = f" ({rates['n_clean']} images)" if rates.get("n_clean") else ""
     bench_note = "Measured on public RealWaste photos, not plant data."
-    if summary.get("kind") == "replay" or summary_name.endswith(".rescore.summary.json"):
+    if summary.get("kind") == "hybrid_replay":
+        disclosure = summary.get("disclosure")
+        bench_note = (
+            f"The shipped gate ({benchmark_source(summary, summary_name)}): a "
+            "what-if re-score of the recorded live vision-model outputs fused "
+            "with the CPU detector under the current decision rules, light "
+            "detections escalating; not a held-out measurement. Metal the gate "
+            "does not reject is held for an operator, not accepted."
+            + (f" {disclosure}" if isinstance(disclosure, str) and disclosure else "")
+            + " " + bench_note
+        )
+    elif summary.get("kind") == "replay" or summary_name.endswith(".rescore.summary.json"):
         disclosure = summary.get("disclosure")
         bench_note = (
             "From a replay of the recorded live model outputs under the current "
@@ -713,7 +832,10 @@ def scenario_value(
     Without: every truck gets the manual check, which catches
     ``manual_catch_rate`` of hard items and (generously to the baseline)
     never rejects a clean load.  With: Lynceus screens every truck; rejects
-    stop the load, escalations get the manual check.  Pure.
+    stop the load, escalations get the manual check, and only the remaining
+    ``1 - hard_reject_rate - hard_escalate_rate`` of hard loads pass
+    unchecked (for the shipped hybrid gate that is ``metal_accepted / n``;
+    see :func:`benchmark_rates`).  Pure.
     """
     hard = trucks * p["hard_load_rate"]
     clean = trucks - hard
@@ -771,10 +893,30 @@ def scenario_value(
     }
 
 
+def benchmark_source(summary: Dict[str, Any], summary_name: str) -> str:
+    """Citation for the rates: the models measured and the file they came from,
+    e.g. ``"DeepSeek-V4-Flash-Vision-Exp + yolo26m-realwaste-taco CPU detector
+    (onnxruntime-cpu), <file>"``.  Pure."""
+    vlm = summary.get("vlm_model")
+    models = vlm if isinstance(vlm, str) and vlm else "vision model"
+    detector = summary.get("detector")
+    if summary.get("kind") == "hybrid_replay" and isinstance(detector, dict):
+        name = detector.get("model")
+        runtime = detector.get("runtime")
+        models += (
+            f" + {name if isinstance(name, str) and name else 'detector'} CPU detector"
+            + (f" ({runtime})" if isinstance(runtime, str) and runtime else "")
+        )
+    return f"{models}, {summary_name}"
+
+
 def value_model(summary: Dict[str, Any], summary_name: str) -> Optional[Dict[str, Any]]:
     """Expected value per :data:`VALUE_MODEL_TRUCKS` trucks: low / base / high.
 
-    ``None`` when the benchmark summary cannot supply Lynceus's rates.  Pure.
+    ``None`` when the benchmark summary cannot supply Lynceus's rates.  On a
+    ``hybrid_replay`` summary the rates are the shipped gate's (see
+    :func:`benchmark_rates`), and ``benchmark_source`` names both models.
+    Pure.
     """
     rates = benchmark_rates(summary)
     if rates is None:
@@ -790,6 +932,7 @@ def value_model(summary: Dict[str, Any], summary_name: str) -> Optional[Dict[str
         "parameters": params,
         "worst_case_per_incident_idr": round(DAMAGE_COST_IDR),
         "benchmark_file": summary_name,
+        "benchmark_source": benchmark_source(summary, summary_name),
         "benchmark_reject_precision": rates["reject_precision"],
         "eur_idr_rate": EUR_IDR_RATE,
         "eur_idr_rate_date": EUR_IDR_RATE_DATE,
@@ -810,7 +953,8 @@ def value_model(summary: Dict[str, Any], summary_name: str) -> Optional[Dict[str
 def value_model_from_benchmark(
     results_dir: Optional[Path] = None,
 ) -> Optional[Dict[str, Any]]:
-    """:func:`value_model` over the newest usable benchmark summary file."""
+    """:func:`value_model` over :func:`load_benchmark_summary`'s pick: the
+    shipped gate's hybrid re-score when one matches the newest live run."""
     loaded = load_benchmark_summary(results_dir)
     if loaded is None:
         return None

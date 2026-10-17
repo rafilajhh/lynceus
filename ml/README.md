@@ -1,7 +1,8 @@
 # Lynceus detector track (`ml/`)
 
-This folder holds an object detector that could run as a CPU-only first stage in front of the
-VLM gate. It flags metal (reject) and glass/organics (escalate) from one photo.
+This folder holds the training, evaluation and export source of the bundled CPU detector: a
+second opinion that reads the same photo as the VLM, in parallel, and can only hold a truck
+for a human (metal, glass, organics); it never accepts or rejects on its own.
 It contains scripts, small JSON results, and a Colab notebook. Weights, data, venv and caches are
 git-ignored (`ml/.venv/`, `ml/.cache/`, `ml/data/`, `ml/runs/`, `ml/weights/`).
 
@@ -9,13 +10,15 @@ git-ignored (`ml/.venv/`, `ml/.cache/`, `ml/data/`, `ml/runs/`, `ml/weights/`).
 photos. Each photo shows one item on the same concrete floor. A truck bed at a cement-plant gate is
 a different domain.
 
-## Update 2026-10-17: the retrained detector is in production
+## Update 2026-10-17: the retrained detectors
 
 The Colab run (`colab_train.sh`, run `yolo26s_e26l`: YOLO26s on RealWaste pseudo-boxes + TACO
-human boxes) replaced the bundled model. It is `backend/models/lynceus-yolo26s-realwaste-taco.onnx`
-with defaults hard 0.35 / light 0.05, both picked on val by the rule in `eval_val.py`.
-Full model card: `backend/models/README.md`; plain-language summary and rollback:
-`docs/detector-update-2026-10-17.md`.
+human boxes) replaced the first bundled model as `lynceus-yolo26s-realwaste-taco.onnx`, with
+defaults hard 0.35 / light 0.05, both picked on val by the rule in `eval_val.py`. Later the
+same day the YOLO26m run (`yolo26m_e26l`, same data) beat it on val by the model rule in
+`select_model.py` and replaced it in production as `lynceus-yolo26m-realwaste-taco.onnx`, at
+the same thresholds. The table below is the YOLO26s step; the YOLO26m numbers and the full
+model card are in `backend/models/README.md`.
 
 | | New (0.35 / 0.05) | Previous (0.25 / 0.25, its shipped defaults) |
 |---|---|---|
@@ -31,9 +34,8 @@ Paired over the 150 TACO test images (`taco_robustness.py`, exact McNemar): meta
 real regression. Dropping the 3 test images with a near-duplicate or same-scene shot in TACO
 train/val (`check_leakage.py`) leaves the metal gain at 10/27 vs 2/27, p = 0.022. The 80-image
 benchmark differences are noise. Better out of domain, the same in domain, with two extra manual
-checks on the 80 benchmark images from the low light threshold. YOLO26m from the same run is
-still training; it replaces this one only if it wins on val by the same rule and passes the same
-checks.
+checks on the 80 benchmark images from the low light threshold. (YOLO26m from the same run later
+won on val by the same rule, passed the same checks and replaced this model; see the update above.)
 
 ## Update 2026-10-16: val calibration, out-of-domain check
 
@@ -122,11 +124,12 @@ ONNX export (`ml/weights/yolo26s_realwaste.onnx`):
 * For comparison, the zero-shot YOLOE-26s exported with baked prompts
   (`yoloe26s_contaminants.onnx`, 41.8 MB) runs at a p50 of 421 ms.
 
-### Recommendation
+### Recommendation (historical, 2026-10-15; superseded by the YOLO26m model in production)
 
-Use the fine-tuned YOLO26s (`yolo26s_realwaste.onnx`) as the detector stage, with these limits:
+At the time: use the fine-tuned YOLO26s (`yolo26s_realwaste.onnx`) as the detector, with these
+limits (the shipped design keeps them: the detector runs beside the VLM and can only escalate):
 
-* Treat it as an in-domain metal/escalate pre-filter that sends cases to the VLM. It is not a
+* Treat it as an in-domain metal/escalate second opinion next to the VLM. It is not a
   standalone verdict.
 * Calibrate t on gate photos first. The 0.1 to 0.25 band above was read off the test set itself,
   so it is optimistic.

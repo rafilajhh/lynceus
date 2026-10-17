@@ -502,3 +502,26 @@ def test_untied_clean_load_still_accepts():
     engine = {"recommendation": {"tied": False, "actionable": True, "route": "rdf"}}
     verdict, _, _ = decision.decide(payload, vlm, llm, engine)
     assert verdict == audit.Decision.ACCEPT
+
+
+# ---------------------------------------------------------------------------
+# Security headers on every response
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("path", ["/health", "/no-such-route"])
+def test_every_response_carries_the_security_headers(client, path):
+    headers = client.get(path).headers
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert headers["x-frame-options"] == "DENY"
+
+
+def test_cors_preflight_still_answers_with_security_headers(client):
+    resp = client.options(
+        "/inspect",
+        headers={"Origin": "https://example.org", "Access-Control-Request-Method": "POST"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "*"
+    assert resp.headers["x-frame-options"] == "DENY"

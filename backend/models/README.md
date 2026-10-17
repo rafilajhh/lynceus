@@ -4,8 +4,9 @@
 second opinion next to the vision-language model, and the only AI left running when the
 shared AMD endpoint is down (detector-only degraded mode, which always holds the truck for a
 human). It replaced `lynceus-yolo26s-realwaste-taco.onnx` (same data, smaller model) on
-2026-10-17, which had replaced `lynceus-yolo26s-realwaste.onnx` the same day; see
-`docs/detector-update-2026-10-17.md` for why, and how to roll back to either.
+2026-10-17, which had replaced `lynceus-yolo26s-realwaste.onnx` the same day. The
+comparisons below say why; to roll back, point `DETECTOR_MODEL_PATH` (and the
+thresholds) at the earlier file.
 
 | | |
 |---|---|

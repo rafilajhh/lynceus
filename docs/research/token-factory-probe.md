@@ -1,5 +1,12 @@
 # Token Factory probe: localisation mode and assist model
 
+> **Superseded for the vision model (2026-10-17).** This probe picked
+> `MiniCPM-V-4.7-35B-A3B` on RealWaste close-ups. A later bake-off on the truck-bed
+> demo photos (`vlm-bakeoff-2026-10-17.json`) moved the primary vision model to
+> `DeepSeek-V4-Flash-Vision-Exp`, with `Gemma-4-31B-IT` (which answered badly in
+> this earlier probe) as the fallback; see the README's Validation section. The
+> localisation-mode and assist-model decisions below still stand.
+
 Date: 2026-10-13. Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (shared team key, calls spaced >= 2 s, zero 429s observed).
 Script: `backend/scripts/probe_token_factory.py`. Raw replies (each truncated to 2 KB): `docs/research/token-factory-probe.json`.
 

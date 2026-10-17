@@ -16,15 +16,40 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
+const SITE_TITLE = "Lynceus · AI Gate Inspector";
+const SITE_DESCRIPTION =
+  "AI gate inspector for RDF fuel trucks: a vision model on AMD Token Factory plus a CPU detector second opinion returns ACCEPT / ESCALATE / REJECT with reasons and a tamper-evident audit record.";
+/** Link-preview card (1200×630), rendered from web/scripts/og.html. */
+const OG_IMAGE = {
+  url: "/og.png",
+  width: 1200,
+  height: 630,
+  alt: "Lynceus: AI gate inspector for RDF fuel trucks",
+};
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://lynceus.web.id"),
   title: {
-    default: "Lynceus · AI Gate Inspector",
+    default: SITE_TITLE,
     template: "%s · Lynceus",
   },
-  description:
-    "Enterprise-grade AI gate inspection for Indonesian waste-to-energy plants. Verdicts with reasons, audit records, and honest degradation.",
+  description: SITE_DESCRIPTION,
   icons: {
     icon: "/favicon.svg",
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Lynceus",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE.url],
   },
 };
 

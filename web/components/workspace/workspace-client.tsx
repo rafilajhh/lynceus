@@ -97,11 +97,22 @@ function sentFilename(name: string | null, reencoded: boolean): string | null {
  * through the exact same upload pipeline (encode, preview, audit filename)
  * as a camera upload. Generic operator copy — no scenario name leaks into
  * the UI text. */
-const QUICK_LOADS: { label: string; file: string }[] = [
-  { label: "Metal", file: "t-metal-1.jpg" },
-  { label: "Clean", file: "t-clean-1.jpg" },
-  { label: "Wet", file: "t-ambiguous-1.jpg" },
+const QUICK_LOADS: { label: string; file: string; moisture_pct: string }[] = [
+  { label: "Metal", file: "t-metal-1.jpg", moisture_pct: "22" },
+  { label: "Clean", file: "t-clean-1.jpg", moisture_pct: "18" },
+  { label: "Wet", file: "t-ambiguous-1.jpg", moisture_pct: "48" },
 ];
+
+/** Register values a preset fills in when the operator left them blank (or a
+ * previous preset filled them), so a first-time visitor can press Inspect Load
+ * right after picking a preset. Truck, hauler and weight match the sample
+ * waybill (fictitious); moisture is per scenario. */
+const QUICK_REGISTER = {
+  truck_id: "B 9723 KXW",
+  supplier: "PT. Hijau Lestari Transport",
+  weight_kg: "16340",
+  age_h: "12",
+};
 const QUICK_WAYBILL = "waybill-1.jpg";
 
 /** Fetch a public /demo asset as a File (browser-cached JPEG bytes). */
@@ -212,6 +223,8 @@ export function WorkspaceClient() {
   // Quick-pick: site photo assets piped through the upload handlers above,
   // so a picked preset is indistinguishable from a camera upload.
   const [quickBusy, setQuickBusy] = useState<string | null>(null);
+  // Register values the last preset filled in (see QUICK_REGISTER).
+  const presetFilled = useRef<Partial<IntakeValues>>({});
   const pickDemo = useCallback(
     async (name: string, kind: "load" | "waybill") => {
       setQuickBusy(name);
@@ -444,7 +457,21 @@ export function WorkspaceClient() {
             key={p.file}
             type="button"
             disabled={loading || quickBusy !== null}
-            onClick={() => pickDemo(p.file, "load")}
+            onClick={() => {
+              // Fill a register field only when it is blank or still holds what
+              // the previous preset put there: never overwrite what the operator typed.
+              const fill = { ...QUICK_REGISTER, moisture_pct: p.moisture_pct };
+              const prev = presetFilled.current;
+              setValues((v) => {
+                const next = { ...v };
+                for (const key of Object.keys(fill) as (keyof typeof fill)[]) {
+                  if (!v[key] || v[key] === prev[key]) next[key] = fill[key];
+                }
+                return next;
+              });
+              presetFilled.current = fill;
+              void pickDemo(p.file, "load");
+            }}
             className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam disabled:pointer-events-none disabled:opacity-50"
           >
             {quickBusy === p.file ? "…" : p.label}

@@ -91,7 +91,7 @@ Going from 20.9% (2020 [2]) to the 47% target is a factor of about 2.2: at const
 | AMCS Weighbridge and Vision AI [14] | Scale-house tickets; cameras on collection vehicles | Weights and tickets; bin contamination and overfill | The weighbridge brochure names no load inspection; vision is on collection trucks | No |
 | 3rd Eye [18] | Truck hoppers, scale houses, tipping floors | Bags, film, tyres, batteries, propane tanks | Built for haulers and MRFs; no RDF, cement, waybill check or SOP steps named | Partly |
 | MOBA MAWIS.AI VIEW [19] | On the collection vehicle during tipping | Batteries, hazardous items, 30+ fractions | Municipal collection, not plant gates | No |
-| **Lynceus** | **Weighbridge, truck still on the scale** | **Metal (measured: 19 of 20 metal-waste photos); the rules also cover rock, concrete, tyres, e-waste, wet loads, waybill and weight mismatch and gate gas, not yet benchmarked** | **No physical sorting; needs a lab for calorific value and chlorine** | **Yes** |
+| **Lynceus** | **Weighbridge, truck still on the scale** | **Metal (80 public photos answered live, fused with the detector in an offline replay: 0 of 20 metal-waste photos accepted — 8 rejected, 12 held for an operator — with the vision model and the CPU detector fused); the rules also cover rock, concrete, tyres, e-waste, wet loads, waybill and weight mismatch and gate gas, not yet benchmarked** | **No physical sorting; needs a lab for calorific value and chlorine** | **Yes** |
 
 3rd Eye is the closest product: it already watches scale houses and tipping floors. Our answer is the RDF-specific layer (waybill check, rule engine, SOP-cited next steps, audit trail). A vision model on its own is not a moat.
 
@@ -137,6 +137,7 @@ How we set the prices:
 | Italian permits: only half the plants are authorised, partly because of local opposition [2] | Start with the plants already authorised [3] |
 | Indonesian overcapacity squeezes capital budgets [7] | Price as an operating cost, with no hardware margin |
 | AMCS or 3rd Eye adds an RDF gate feature | Go deep on RDF: SOP, CSS and EN 15359 knowledge, supplier history |
+| The bundled detector weights are non-commercial (Ultralytics AGPL-3.0, RealWaste CC BY-NC-SA 4.0 treated as binding) | Before any paid deployment: retrain on licensed or own gate photos under an Ultralytics Enterprise licence, or swap in a permissively licensed detector (`DETECTOR_MODEL_PATH`); the rest of the code is MIT |
 | Plates and drivers in photos (GDPR in Italy) | Store only the fields the gate SOP needs; masking faces in stored photos is not built yet and is on the roadmap |
 
 ## 10. Roadmap
