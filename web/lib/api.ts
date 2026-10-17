@@ -218,8 +218,9 @@ const auditRecordSchema = z
             captured_at_utc: z.string().optional(),
             provenance: z.string().optional(),
             // Relative path of the stored evidence file, when the backend
-            // persisted the photo bytes; absent on older records.
-            path: z.string().optional(),
+            // persisted the photo bytes; null on records without a stored
+            // file (the API model-dumps Optional fields as null).
+            path: z.string().nullish().catch(null),
           })
           .optional(),
         waybill_photo: z
@@ -228,7 +229,7 @@ const auditRecordSchema = z
             sha256: z.string().optional(),
             captured_at_utc: z.string().optional(),
             provenance: z.string().optional(),
-            path: z.string().optional(),
+            path: z.string().nullish().catch(null),
           })
           .nullish()
           .catch(null),
