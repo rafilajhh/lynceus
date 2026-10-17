@@ -1,5 +1,9 @@
 # Lynceus
 
+<p align="center">
+  <img src="docs/assets/lynceus-cover.jpg" alt="Lynceus AI gate inspector — a waste truck on the weighbridge with the vision model's contaminant overlay" width="840">
+</p>
+
 **AI gate inspector for alternative-fuel (RDF) facilities — built for the AMD Developer Hackathon: ACT III (Intelligent Industry track).**
 
 Lynceus inspects a waste truck's load at the weighbridge before it is tipped
