@@ -370,7 +370,7 @@ def _run_inspection_with_audit(
     payload = _inspect_payload(request)
 
     manifest_text = payload["manifest_text"] or ""
-    # Demo photos arrive as site URLs ("/demo/red-1.jpg"); the audit record
+    # Demo photos arrive as site URLs ("/demo/t-metal-1.jpg"); the audit record
     # stores a portable relative filename (invariant: no absolute paths),
     # so keep only the basename. Real uploads already send bare names.
     photo_filename = audit.safe_filename(

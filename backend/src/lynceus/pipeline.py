@@ -525,12 +525,15 @@ class VLLMClient:
         return self._scoped(remaining_s)
 
     def _chat_json(
-        self, base_url: str, model: str, messages: list, max_tokens: int = 512
+        self, base_url: str, model: str, messages: list, max_tokens: int = 1024
     ) -> Dict[str, Any]:
         """Chat round trip with robust JSON parsing and exactly one retry.
 
         The retry gets only what is left of ``self._timeout_s``: one budget
-        covers both round trips.
+        covers both round trips.  1024 tokens: the VLM prompt asks for
+        ``locations`` boxes, and a full answer (contaminants + moisture +
+        several boxes with zones) truncates at 512 — the truncated JSON is
+        unparseable and wastes the whole read.
         """
         deadline = time.monotonic() + self._timeout_s
         content = self._chat(base_url, model, messages, max_tokens)

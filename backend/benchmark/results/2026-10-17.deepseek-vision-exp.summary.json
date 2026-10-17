@@ -1,0 +1,117 @@
+{
+  "n": 80,
+  "confusion": {
+    "reject": {
+      "reject": 8,
+      "escalate": 0,
+      "accept": 10,
+      "error": 2
+    },
+    "escalate": {
+      "reject": 0,
+      "escalate": 6,
+      "accept": 12,
+      "error": 2
+    },
+    "accept": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 36,
+      "error": 4
+    }
+  },
+  "reject": {
+    "precision": 1.0,
+    "recall": 0.4,
+    "f1": 0.5714285714285715,
+    "tp": 8,
+    "fp": 0,
+    "fn": 12
+  },
+  "latency_ms": {
+    "p50": 10167.179800000667,
+    "p95": 15855.506600000808
+  },
+  "total_ms": {
+    "p50": 11934.5,
+    "p95": 25272.2
+  },
+  "errors": 8,
+  "clean_accept_rate": 0.9,
+  "clean_escalate_rate": 0.0,
+  "clean_reject_rate": 0.0,
+  "review_rate": 0.08333333333333333,
+  "escalate_recall": 0.3,
+  "kind": "live",
+  "framing": "component validation on public RealWaste images — not field data from a plant",
+  "date": "2026-10-17.deepseek-vision-exp",
+  "manifest_n": 80,
+  "complete": false,
+  "attempt_stats": {
+    "attempts": 80,
+    "retried": 0,
+    "total_ms": {
+      "p95": 46087.3,
+      "max": 46209.2
+    }
+  },
+  "vlm_model": "DeepSeek-V4-Flash-Vision-Exp",
+  "vlm_models": {
+    "DeepSeek-V4-Flash-Vision-Exp": 72
+  },
+  "llm_model": "DeepSeek-V4-Flash",
+  "provider": "amd-token-factory",
+  "provenance": [
+    "live"
+  ],
+  "per_category": {
+    "Metal": {
+      "reject": 8,
+      "escalate": 0,
+      "accept": 10,
+      "error": 2
+    },
+    "Glass": {
+      "reject": 0,
+      "escalate": 2,
+      "accept": 5,
+      "error": 0
+    },
+    "Food Organics": {
+      "reject": 0,
+      "escalate": 3,
+      "accept": 2,
+      "error": 2
+    },
+    "Vegetation": {
+      "reject": 0,
+      "escalate": 1,
+      "accept": 5,
+      "error": 0
+    },
+    "Paper": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 10,
+      "error": 0
+    },
+    "Cardboard": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 8,
+      "error": 2
+    },
+    "Plastic": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 8,
+      "error": 2
+    },
+    "Textile Trash": {
+      "reject": 0,
+      "escalate": 0,
+      "accept": 10,
+      "error": 0
+    }
+  }
+}

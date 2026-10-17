@@ -3,7 +3,8 @@
  *
  * Every field carries its research source in comments
  * (docs/research/realcase-indonesia.md). photo paths point at
- * public/demo/*.jpg (RealWaste photos: see public/demo/ATTRIBUTION.md).
+ * public/demo/*.jpg (AI-generated truck-bed photos; see
+ * docs/research for the RealWaste benchmark attribution).
  */
 
 export interface DemoCase {
@@ -33,7 +34,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     // Rp 300,000/t (SWITCH-Asia §5d). Plate 'B' = DKI per TNKB codes.
     truck_id: "B 9174 KT",
     supplier: "CV Sumber Bersih",
-    photo: "/demo/green-1.jpg",
+    photo: "/demo/t-clean-1.jpg",
     photo_caption:
       "Arm-roll B 9174 KT · RDF feedstock, dry & baled · Bantargebang to SBI Narogong line",
     manifest_text:
@@ -61,7 +62,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     // kiln feeding. Plate "B" = Bantargebang/Jakarta corridor.
     truck_id: "B 9282 AP",
     supplier: "PT Daur Ulang Jaya",
-    photo: "/demo/amber-1.jpg",
+    photo: "/demo/t-ambiguous-1.jpg",
     photo_caption:
       "Compactor B 9282 AP · wet organics from TPST · 57% moisture measured",
     manifest_text:
@@ -91,7 +92,7 @@ export const DEMO_CASES: Record<DemoCase["key"], DemoCase> = {
     // must catch at the gate. Plate "F" = Bogor (SBI Narogong corridor).
     truck_id: "F 7702 TS",
     supplier: "UD Sinar Abadi",
-    photo: "/demo/red-1.jpg",
+    photo: "/demo/t-metal-1.jpg",
     photo_caption:
       "Compactor F 7702 TS · crumpled metal containers in the load · weight mismatch",
     manifest_text:

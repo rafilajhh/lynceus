@@ -224,7 +224,7 @@ def sha256_field(data: bytes) -> str:
 def safe_filename(name: str) -> str:
     """Reduce any incoming photo path to a portable bare filename.
 
-    Demo clients may send site URLs ("/demo/red-1.jpg") or absolute paths;
+    Demo clients may send site URLs ("/demo/t-metal-1.jpg") or absolute paths;
     the audit record's portability invariant allows neither. Keep only the
     final path component and strip directory markers.
     """

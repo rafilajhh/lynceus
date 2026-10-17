@@ -35,9 +35,10 @@ TRUNC = 2048
 # this probe validated), so the probe sends it verbatim.
 LOCALISATION_PROMPT = _VLM_PROMPT
 
-# Hand-measured on red-1.jpg (524x524): crumpled foil tray spans roughly
-# x 32..505 px, y 50..440 px -> normalised box below.
-RED1_METAL_BOX = [0.06, 0.09, 0.96, 0.84]
+# Hand-measured on t-metal-1.jpg (1448x1086): the rusted steel pipe and
+# aluminium foil sit in the centre-right of the bed, spanning roughly
+# x 430..1250 px, y 330..760 px -> normalised box below.
+TMETAL1_METAL_BOX = [0.30, 0.30, 0.86, 0.70]
 
 ASSIST_SOURCES = {
     "SOP-RDF-5.3": (
@@ -169,10 +170,10 @@ def score_localisation(content: str, image: str) -> Dict[str, Any]:
         if not isinstance(loc, dict) or not valid_box(loc.get("box")):
             continue
         res["valid_boxes"] += 1
-        if image == "red-1.jpg" and str(loc.get("label", "")).lower() == "metal":
-            v = iou([float(x) for x in loc["box"]], RED1_METAL_BOX)
+        if image == "t-metal-1.jpg" and str(loc.get("label", "")).lower() == "metal":
+            v = iou([float(x) for x in loc["box"]], TMETAL1_METAL_BOX)
             best = v if best is None else max(best, v)
-    if image == "red-1.jpg":
+    if image == "t-metal-1.jpg":
         res["metal_best_iou"] = None if best is None else round(best, 3)
         res["overlaps_metal"] = bool(best is not None and best > 0)
     return res
@@ -199,7 +200,7 @@ def main() -> int:
     ap.add_argument("--out", default=str(REPO / "docs" / "research" / "token-factory-probe.json"))
     ap.add_argument("--vlm-models", default="DeepSeek-V4.1-Flash,DeepSeek-V4-Flash-Vision-Exp,MiniCPM-V-4.7-35B-A3B")
     ap.add_argument("--assist-models", default="Gemma-4-31B-IT,DeepSeek-V4-Flash")
-    ap.add_argument("--images", default="red-1.jpg,amber-1.jpg,green-1.jpg")
+    ap.add_argument("--images", default="t-metal-1.jpg,t-ambiguous-1.jpg,t-clean-1.jpg")
     ap.add_argument("--skip-vlm", action="store_true")
     ap.add_argument("--skip-assist", action="store_true")
     args = ap.parse_args()
@@ -207,7 +208,7 @@ def main() -> int:
     env = load_env(BACKEND / ".env")
     base, key = env["VLLM_VLM_URL"], env["VLLM_API_KEY"]
     result: Dict[str, Any] = {"base_url": base, "runs": args.runs,
-                              "red1_metal_box": RED1_METAL_BOX,
+                              "metal_box": TMETAL1_METAL_BOX,
                               "localisation_prompt": LOCALISATION_PROMPT,
                               "assist_system": ASSIST_SYSTEM,
                               "assist_question": ASSIST_QUESTION}
@@ -282,13 +283,13 @@ def main() -> int:
     for rec in result.get("localisation", []):
         if "skipped" in rec:
             continue
-        s = summ.setdefault("loc:" + rec["model"], {"lat": [], "red1_overlap": 0, "red1_runs": 0, "http429": 0})
+        s = summ.setdefault("loc:" + rec["model"], {"lat": [], "metal_overlap": 0, "metal_runs": 0, "http429": 0})
         if rec["latency_s"] is not None and rec["status"] == 200:
             s["lat"].append(rec["latency_s"])
         s["http429"] += rec["retries_429"]
-        if rec["image"] == "red-1.jpg":
-            s["red1_runs"] += 1
-            s["red1_overlap"] += bool(rec["score"]["overlaps_metal"])
+        if rec["image"] == "t-metal-1.jpg":
+            s["metal_runs"] += 1
+            s["metal_overlap"] += bool(rec["score"]["overlaps_metal"])
     for rec in result.get("assist", []):
         s = summ.setdefault("assist:" + rec["model"], {"lat": [], "pass": 0, "runs": 0, "http429": 0})
         if rec["latency_s"] is not None and rec["status"] == 200:

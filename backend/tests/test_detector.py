@@ -274,7 +274,7 @@ def test_detector_failure_never_fails_the_inspection(monkeypatch, caplog):
 
 def test_scripted_demo_without_photo_skips_the_detector(monkeypatch):
     monkeypatch.setattr(detector, "detect", lambda *a: pytest.fail("detector ran"))
-    out = pipeline.run_inspection({"demo_case": "red", "photo_filename": "red-1.jpg"},
+    out = pipeline.run_inspection({"demo_case": "red", "photo_filename": "t-metal-1.jpg"},
                                   pipeline.StubAIClients("red"), precomputed_gas=None)
     assert out["detector"] is None and out["provenance"] == "stub"
 
@@ -477,7 +477,10 @@ def test_summaries_are_allow_listed_by_kind_not_file_name(tmp_path, monkeypatch)
 
 def test_committed_live_summary_is_still_served():
     body = TestClient(create_app()).get("/benchmark/latest").json()
-    assert body["date"] == "2026-10-13" and body["replay"]["kind"] == "replay"
+    # The newest committed live run is the 2026-10-17 DeepSeek-Vision-Exp
+    # benchmark (see README "Vision-model bake-off"); its replay exists too.
+    assert body["date"] == "2026-10-17.deepseek-vision-exp"
+    assert body["replay"]["kind"] == "replay"
 
 
 # ---------------------------------------------------------------------------

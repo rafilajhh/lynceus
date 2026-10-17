@@ -370,14 +370,16 @@ def test_assist_returns_json_and_latency(monkeypatch):
 def test_vlm_llm_keep_default_max_tokens(monkeypatch):
     seen = []
 
-    def _fake(self, base_url, model, messages, max_tokens=512):
+    def _fake(self, base_url, model, messages, max_tokens=1024):
         seen.append(max_tokens)
         return _VLM_JSON
 
     monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
     VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
-    # vlm() votes over 3 reads; all keep the default 512 max_tokens.
-    assert seen == [512, 512, 512]
+    # vlm() votes over 3 reads; all keep the default 1024 max_tokens —
+    # 512 truncated the VLM's JSON (contaminants + several locations boxes)
+    # mid-answer and wasted the whole read on the retry path.
+    assert seen == [1024, 1024, 1024]
 
 
 @pytest.mark.parametrize(

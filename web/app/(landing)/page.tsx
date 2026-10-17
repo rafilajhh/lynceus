@@ -107,7 +107,7 @@ export default function LandingPage() {
         <figure className="panel m-0 flex flex-col self-start">
           <div className="relative">
             <Image
-              src="/demo/red-2.jpg"
+              src="/demo/t-metal-1.jpg"
               alt="Rusted industrial steel bolt, the kind of metal contaminant that destroys an RDF shredder"
               width={524}
               height={524}
