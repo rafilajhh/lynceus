@@ -1,0 +1,124 @@
+{
+  "DeepSeek-V4-Flash": [
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 16418
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 14641
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 9112
+    }
+  ],
+  "DeepSeek-V4.1-Flash": [
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 57365
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 8073
+    },
+    {
+      "error": "TimeoutError: The read operation timed out"
+    }
+  ],
+  "Gemma-4-31B-IT": [
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 11366
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 7313
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 8295
+    }
+  ],
+  "Qwen3.8-Flash-Next": [
+    {
+      "parseable": false,
+      "contract_keys": false,
+      "crosscheck_failed": null,
+      "weight": null,
+      "latency_ms": 21800
+    },
+    {
+      "parseable": false,
+      "contract_keys": false,
+      "crosscheck_failed": null,
+      "weight": null,
+      "latency_ms": 28308
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 34788
+    }
+  ],
+  "GLM-5.3-Flash": [
+    {
+      "error": "TimeoutError: The read operation timed out"
+    },
+    {
+      "error": "TimeoutError: The read operation timed out"
+    },
+    {
+      "error": "HTTPError: HTTP Error 429: Too Many Requests"
+    }
+  ],
+  "MiMo-V2.6-Flash": [
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 21440
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 28804
+    },
+    {
+      "parseable": true,
+      "contract_keys": true,
+      "crosscheck_failed": true,
+      "weight": 15500,
+      "latency_ms": 15636
+    }
+  ]
+}

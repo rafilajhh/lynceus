@@ -1,0 +1,713 @@
+{
+  "MiniCPM-V-4.7-35B-A3B": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 40375,
+          "hard": [
+            "metal"
+          ],
+          "locs": 4,
+          "conf": 0.9
+        },
+        {
+          "ok": true,
+          "latency_ms": 22736,
+          "hard": [
+            "metal"
+          ],
+          "locs": 4,
+          "conf": 0.9
+        },
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "ok": true,
+          "latency_ms": 17878,
+          "hard": [],
+          "locs": 4,
+          "conf": 0.95
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "ok": true,
+          "latency_ms": 84433,
+          "hard": [],
+          "locs": 4,
+          "conf": 0.95
+        }
+      ]
+    }
+  },
+  "MiniCPM-V-4.7-1B": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 10865,
+          "hard": [
+            "rusty metal pipe",
+            "cardboard",
+            "concrete",
+            "tire"
+          ],
+          "locs": 4,
+          "conf": 0.8
+        },
+        {
+          "ok": true,
+          "latency_ms": 10367,
+          "hard": [
+            "rusty metal pipe",
+            "cardboard",
+            "concrete",
+            "tire"
+          ],
+          "locs": 4,
+          "conf": 0.8
+        },
+        {
+          "ok": true,
+          "latency_ms": 10369,
+          "hard": [
+            "rusty metal pipe",
+            "cardboard",
+            "concrete",
+            "tire"
+          ],
+          "locs": 4,
+          "conf": 0.8
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 18488,
+          "hard": [
+            "cardboard",
+            "concrete"
+          ],
+          "locs": 3,
+          "conf": 0.8
+        },
+        {
+          "ok": true,
+          "latency_ms": 20612,
+          "hard": [
+            "cardboard",
+            "concrete"
+          ],
+          "locs": 3,
+          "conf": 0.8
+        },
+        {
+          "ok": true,
+          "latency_ms": 8340,
+          "hard": [
+            "cardboard",
+            "concrete"
+          ],
+          "locs": 3,
+          "conf": 0.8
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 8351,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 7811,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 7979,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        }
+      ]
+    }
+  },
+  "DeepSeek-V4-Flash-Vision-Exp": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 28262,
+          "hard": [
+            "metal"
+          ],
+          "locs": 6,
+          "conf": 0.85
+        },
+        {
+          "ok": true,
+          "latency_ms": 13397,
+          "hard": [
+            "metal"
+          ],
+          "locs": 4,
+          "conf": 0.85
+        },
+        {
+          "ok": true,
+          "latency_ms": 17691,
+          "hard": [
+            "metal"
+          ],
+          "locs": 4,
+          "conf": 0.9
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 31602,
+          "hard": [],
+          "locs": 0,
+          "conf": 0.85
+        },
+        {
+          "ok": true,
+          "latency_ms": 36784,
+          "hard": [],
+          "locs": 0,
+          "conf": 0.9
+        },
+        {
+          "ok": true,
+          "latency_ms": 6073,
+          "hard": [],
+          "locs": 0,
+          "conf": 0.9
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 18996,
+          "hard": [],
+          "locs": 8,
+          "conf": 0.85
+        },
+        {
+          "ok": false,
+          "latency_ms": 24322,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": true,
+          "latency_ms": 14310,
+          "hard": [],
+          "locs": 5,
+          "conf": 0.85
+        }
+      ]
+    }
+  },
+  "DeepSeek-V4.1-Flash": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 500: Internal Server Error"
+        },
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        }
+      ]
+    }
+  },
+  "DeepSeek-V4-Flash": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    }
+  },
+  "Gemma-4-31B-IT": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 34966,
+          "hard": [
+            "metal"
+          ],
+          "locs": 2,
+          "conf": 0.95
+        },
+        {
+          "ok": true,
+          "latency_ms": 12467,
+          "hard": [
+            "metal"
+          ],
+          "locs": 2,
+          "conf": 0.95
+        },
+        {
+          "ok": true,
+          "latency_ms": 27676,
+          "hard": [
+            "metal"
+          ],
+          "locs": 2,
+          "conf": 0.95
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 13011,
+          "hard": [],
+          "locs": 4,
+          "conf": 0.95
+        },
+        {
+          "ok": true,
+          "latency_ms": 28847,
+          "hard": [],
+          "locs": 4,
+          "conf": 0.95
+        },
+        {
+          "ok": true,
+          "latency_ms": 32811,
+          "hard": [],
+          "locs": 4,
+          "conf": 0.95
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": true,
+          "latency_ms": 30291,
+          "hard": [],
+          "locs": 5,
+          "conf": 0.95
+        },
+        {
+          "ok": true,
+          "latency_ms": 35061,
+          "hard": [],
+          "locs": 4,
+          "conf": 0.95
+        },
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        }
+      ]
+    }
+  },
+  "Qwen3.8-Flash-Next": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 27195,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 26886,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 26770,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 23788,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 24598,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 27829,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 23899,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 25654,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 24997,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        }
+      ]
+    }
+  },
+  "GLM-5.3-Flash": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 429: Too Many Requests"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    }
+  },
+  "MiMo-V2.6-Flash": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 53032,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 36189,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 29845,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 27819,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 26432,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 34202,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "latency_ms": 27134,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "latency_ms": 26451,
+          "hard": null,
+          "locs": 0,
+          "conf": null
+        },
+        {
+          "ok": false,
+          "error": "TimeoutError: The read operation timed out"
+        }
+      ]
+    }
+  },
+  "MiniCPM5-2B": {
+    "t-metal-1": {
+      "truth": "metal",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    },
+    "t-clean-1": {
+      "truth": "clean",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    },
+    "t-ambiguous-1": {
+      "truth": "ambiguous",
+      "runs": [
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        },
+        {
+          "ok": false,
+          "error": "HTTPError: HTTP Error 400: Bad Request"
+        }
+      ]
+    }
+  }
+}

@@ -29,7 +29,7 @@ endpoint catalogue, running on AMD GPUs), reached with one team API key:
 
 | Role | Model | Why (measured in `docs/research/token-factory-probe.md` + the 2026-10-17 truck-photo bake-off) |
 |---|---|---|
-| Vision: contaminants, wet/dry, hazard boxes | `DeepSeek-V4-Flash-Vision-Exp` | the only catalog vision model that detects the metal on the truck-bed photo 3/3 AND stays clean on the clean load 3/3 (with hazard boxes, JSON 8/9; runner-up `Gemma-4-31B-IT`: metal 3/3 but p50 28-35 s and no full benchmark run). `MiniCPM-V-4.7-35B-A3B` — the earlier pick from the RealWaste probe — fails to parse JSON on the truck photo and reaches 84 s latency; `DeepSeek-V4.1-Flash` times out on images |
+| Vision: contaminants, wet/dry, hazard boxes | `DeepSeek-V4-Flash-Vision-Exp` | detects the metal on the truck-bed photo 3/3 AND stays clean on the clean load 3/3 (JSON 8/9, hazard boxes, p50 18-32 s). `Gemma-4-31B-IT` matches detection and cleanliness (metal 3/3, clean 3/3, JSON 8/9) but is slower (p50 28-35 s) and has no full benchmark run — it ships as the fallback vision model. `MiniCPM-V-4.7-35B-A3B` — the earlier pick from the RealWaste probe — is not reliable on the truck photos: one read times out on the metal photo, its JSON parses on only 1 of 3 clean-load reads and 1 of 3 ambiguous reads, and its latency reaches 84 s. `DeepSeek-V4.1-Flash` times out on images |
 | Waybill cross-check and Pythia | `DeepSeek-V4-Flash` | passed the assistant citation contract 3/3 and the waybill JSON contract 3/3 on the contradictory waybill (`Gemma-4-31B-IT` failed the citation contract 0/3; `Qwen3.8-Flash-Next` breaks JSON 2/3; `GLM-5.3-Flash` times out / 429s) |
 | Detector second opinion: metal, glass, organic boxes | YOLO26m fine-tuned on RealWaste + TACO, bundled ONNX (`backend/models/`) | runs on the gate PC's CPU (ONNX Runtime), so it keeps working when the shared endpoint is down. Out of domain (TACO litter scenes) it finds 14/29 metal photos where the first model found 2/29 (`backend/models/README.md`) |
 
@@ -125,11 +125,17 @@ performance on a particular plant's trucks, lighting or waste mix.
 **Vision-model bake-off and the 2026-10-17 run (DeepSeek-V4-Flash-Vision-Exp).**
 The shipped vision model was re-picked on 2026-10-17 with a 10-model bake-off
 on the AI-generated truck-bed demo photos (production prompt, 3 runs per photo):
-`DeepSeek-V4-Flash-Vision-Exp` was the only catalog model that detected the metal
-3/3 on the metal photo, stayed clean 3/3 on the clean load, and returned usable
-JSON and hazard boxes (`Gemma-4-31B-IT` matched detection but at p50 28-35 s;
-`MiniCPM-V-4.7-35B-A3B` — the 2026-10-13 pick — failed to parse JSON on the metal
-photo and reached 84 s; everything else timed out or is not vision-capable).
+`DeepSeek-V4-Flash-Vision-Exp` and `Gemma-4-31B-IT` both detected the metal 3/3
+and stayed clean 3/3; DeepSeek wins the latency tie-break (p50 18-32 s vs
+28-35 s) and ships as the primary, Gemma as the fallback. `MiniCPM-V-4.7-35B-A3B`
+— the 2026-10-13 pick — is not reliable here: one read times out on the metal
+photo, its JSON parses on only 1 of 3 clean-load reads and 1 of 3 ambiguous
+reads, and its latency reaches 84 s. The remaining candidates failed in
+different ways: timeouts (`DeepSeek-V4.1-Flash`, `GLM-5.3-Flash`), unparseable
+or empty JSON (`Qwen3.8-Flash-Next`, `MiMo-V2.6-Flash`), HTTP errors
+(`MiniCPM5-2B`), not vision-capable (`DeepSeek-V4-Flash`), or hallucinated hard
+contaminants on the clean load (`MiniCPM-V-4.7-1B`). Raw rows:
+`docs/research/vlm-bakeoff-2026-10-17.json`.
 
 The same 80-image RealWaste benchmark was then run live with the new model
 (`2026-10-17.deepseek-vision-exp.jsonl`, 8 timeout rows, graded 72/80): on these
@@ -137,13 +143,24 @@ close-up single-item photos the new model is clearly weaker — metal recall 0.4
 (8/20), gate accuracy 0.625 VLM-only. The truck-bed framing it was picked on is
 a different domain from RealWaste close-ups, and this run says so plainly. What
 matters for the gate is the hybrid: replayed with the YOLO26m second opinion
-(`2026-10-17.deepseek-vision-exp.hybrid.jsonl`), **no metal is accepted — the 10
-VLM misses become 8 rejects and 10 operator holds** (metal_accepted 0, hybrid
-gate accuracy 0.75, clean accept rate 0.85, review rate 0.42). The MiniCPM
+(`2026-10-17.deepseek-vision-exp.hybrid-rescore.summary.json`), **on this
+replay no metal is accepted — the model's 8 confirmed rejects stand and its 10
+metal misses become 10 operator holds** (metal_accepted 0; 2 metal images
+error out; hybrid gate
+accuracy 0.75, clean accept rate 0.85, review rate 0.42). The MiniCPM
 hybrid replay on the same rules holds metal_accepted 0 too, at higher accuracy
-(0.90) — but MiniCPM cannot run the truck demo usefully (no parseable JSON on
-the truck photo, 84 s latency). The truck photo is the demo; RealWaste close-ups
-are the benchmark. Both results are kept and stated.
+(0.90) — but MiniCPM cannot run the truck demo usefully (one metal-read timeout,
+JSON parses on only 1 of 3 clean and ambiguous reads, 84 s latency). The truck
+photo is the demo; RealWaste close-ups are the benchmark. Both results are kept
+and stated.
+
+Bake-off limits, stated: the probe runs the exact production prompt but at
+temperature 0.0 (production votes at 0.1) with 512-token reads, and it recorded
+box counts only — the counts themselves varied across runs (e.g. 6/4/4 on the
+metal photo for the winner), so spatial box consistency was not validated. The
+decisive evidence for the pick is detection correctness, cleanliness, latency,
+and the live `/inspect` run plus the committed benchmark artifacts — not box
+stability.
 
 **Value per 1,000 trucks.** The `/shift` page turns these rates into an expected
 value with and without Lynceus (escaped hard loads, damage, operator time, cost
@@ -252,7 +269,7 @@ Full server guide (HTTPS, updates, backups, judging-day checklist):
 | `LYNCEUS_BENCHMARK_DIR` | `<repo>/backend/benchmark` (`/app/backend/benchmark` in the image) | Benchmark manifest and results for `/benchmark/latest` |
 | `PORT` | `8020` | Listening port of `python -m lynceus.main` |
 | `VLM_VOTES` | `3` | Vision reads per photo, merged by majority vote (1..3, run in parallel) |
-| `VLM_FALLBACK_MODELS` / `VLM_BENCHMARKED_MODELS` | `Gemma-4-31B-IT` / `DeepSeek-V4-Flash-Vision-Exp` | Vision fallback chain; only benchmarked models may accept or reject |
+| `VLM_FALLBACK_MODELS` / `VLM_BENCHMARKED_MODELS` | *(empty)* / `MiniCPM-V-4.7-35B-A3B` | Vision fallback chain; only benchmarked **fallback** models (i.e. with an 80-image benchmark run behind them) may accept or reject — the primary VLM is exempt. The env examples ship `Gemma-4-31B-IT` / `DeepSeek-V4-Flash-Vision-Exp` as the suggested values — code defaults stay MiniCPM-benchmarked until a fallback model gets its own 80-image run |
 | `DETECTOR_MODEL_PATH` | the bundled `backend/models/lynceus-yolo26m-realwaste-taco.onnx` | Detector weights; empty = detector off |
 | `DETECTOR_HARD_CONF` / `DETECTOR_LIGHT_CONF` | `0.35` / `0.05` | Detector thresholds for metal / glass+organic, picked on a val split (`backend/models/README.md`) |
 | `DETECTOR_ESCALATE_LIGHT` | `1` | An unconfirmed glass/organic box holds the truck too |
