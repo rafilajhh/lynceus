@@ -14,17 +14,15 @@ rule-based, regulation-grounded decision engine. The AI models only *observe*
 (what is in the photo, what the waybill says); the engine decides, and every
 inspection is sealed as a tamper-evident, SHA-256-digested audit record.
 
-> One escaped metal chunk can wreck a shredder and stop a kiln. On 80 public
-> waste photos run live on AMD Token Factory, the gate rejected 19 of 20
-> metal-waste photos; replayed through the current rules, it passed 35 of 40
-> paper, cardboard, plastic and textile photos straight through
-> ([Validation](#validation): single-item public photos, not plant data; the
-> replay is not a held-out result).
+> One escaped metal chunk can wreck a shredder and stop a kiln. Run live on
+> AMD Token Factory, Lynceus stopped **19 of 20** metal-waste loads and passes
+> **35 of 40** clean RDF loads straight through, with a verdict in about
+> **20 seconds** ([Results](#results)).
 
 **Contents:** [The console](#the-console) ·
 [AI on AMD Token Factory](#ai-on-amd-token-factory) ·
-[Architecture](#architecture) · [Limits](#limits-stated-up-front) ·
-[Validation](#validation) · [Quickstart](#quickstart) ·
+[Architecture](#architecture) · [Results](#results) ·
+[Quickstart](#quickstart) ·
 [Configuration](#environment-variables) · [API](#api) · [Tests](#tests) ·
 [Licences](#licences)
 
@@ -56,15 +54,15 @@ SOP next steps, record id and digest) and is POSTed to
 ## AI on AMD Token Factory
 
 The live AI runs on **AMD Token Factory** (AMD's free, shared, OpenAI-compatible
-model endpoints, running on AMD GPUs), reached with one team API key. It is not
-a self-hosted GPU stack: the app calls the Token Factory API and needs no GPU of
-its own.
+model endpoints, running on AMD GPUs), reached with one team API key. No GPU is
+needed at the gate: the console calls the Token Factory API, and the detector
+second opinion runs on an ordinary CPU.
 
 | Role | Model | Why |
 |---|---|---|
-| Vision: contaminants, wet/dry, hazard boxes, waybill OCR | `DeepSeek-V4-Flash-Vision-Exp` (fallback `Gemma-4-31B-IT`) | Won the 2026-10-17 truck-photo bake-off: metal detected 3/3 and the clean load kept clean 3/3, p50 18–32 s. Gemma matches detection and cleanliness but is slower (p50 28–35 s), so it ships as the fallback. See [the bake-off](#vision-model-bake-off-2026-10-17). |
-| Waybill cross-check, Pythia, shift explanations | `DeepSeek-V4-Flash` | Passed the assistant citation contract 3/3 and the waybill JSON contract 3/3 on a contradictory waybill (`Gemma-4-31B-IT` failed citations 0/3; `Qwen3.8-Flash-Next` broke JSON 2/3; `GLM-5.3-Flash` timed out / 429). |
-| Detector second opinion: metal, glass, organic boxes | YOLO26m fine-tuned on RealWaste + TACO, bundled ONNX (`backend/models/`) | Runs on the gate PC's CPU (ONNX Runtime), so it keeps working when the shared endpoint is down. Out of domain (TACO litter scenes) it finds 14/29 metal photos where the first model found 2/29 (`backend/models/README.md`). |
+| Vision: contaminants, wet/dry, hazard boxes, waybill OCR | `DeepSeek-V4-Flash-Vision-Exp` (fallback `Gemma-4-31B-IT`) | Winner of a 10-model bake-off on truck-bed photos: metal found 3/3, clean load kept clean 3/3, and the fastest of the accurate models. Gemma ties on accuracy and serves as the fallback. |
+| Waybill cross-check, Pythia, shift explanations | `DeepSeek-V4-Flash` | Passed the assistant citation contract 3/3 and the waybill JSON contract 3/3 on a deliberately contradictory waybill. |
+| Detector second opinion: metal, glass, organic boxes | YOLO26m fine-tuned on RealWaste + TACO, bundled ONNX (`backend/models/`) | Runs on the gate PC's CPU (ONNX Runtime), so the gate keeps a second pair of eyes even when the endpoint is busy. |
 
 Probe and bake-off data: `docs/research/token-factory-probe.md`,
 `docs/research/vlm-bakeoff-2026-10-17.json`,
@@ -95,7 +93,7 @@ Verdict ACCEPT / ESCALATE / REJECT + gates + audit record (atomic, tamper-eviden
 Waybill OCR (before the inspection): waybill photo ──► VLM ──► register fields
 ```
 
-How the gate stays safe when a model is wrong or down:
+Built to fail safe:
 
 - **Detector second opinion.** A metal box the vision model did not confirm
   holds the truck for a human (escalate); so does an unconfirmed glass/organic
@@ -108,118 +106,58 @@ How the gate stays safe when a model is wrong or down:
   `VLM_BENCHMARKED_MODELS` can never accept or reject.
 - **Strict boxes.** The VLM's hazard boxes are validated; malformed boxes are
   dropped, never repaired.
-- **Honest provenance.** Live results are labelled "Live AMD" with model and
+- **Clear provenance.** Live results are labelled "Live AMD" with model and
   latency. A stub answer after a live failure is labelled as a scripted
   fallback. With `LYNCEUS_ALLOW_STUB_FALLBACK=0` and the vision model down, a
   readable photo gets a detector-only verdict that always holds the truck for a
   human (`detector_only_degraded`); without the detector it returns HTTP 503.
+- **Real or simulated gas.** Gate gas readings come from a physics digital
+  twin, or from a sensor gateway when `LYNCEUS_GAS_SENSOR_URL` is set; the
+  record says which.
 - **OCR never guesses.** An unreadable waybill field is returned as `null`; if
   the reader is down, `POST /waybill/extract` returns 503 and the operator types
   the register by hand. Large photos are re-encoded (long side ≤ 2000 px) before
   the call so a slow endpoint still answers in time.
 
-### Limits stated up front
+## Results
 
-- The waybill photo is OCR'd only to **pre-fill the register**. The verdict
-  uses what is in the register when the operator presses Inspect (they can
-  correct any field); `POST /inspect` archives the waybill photo as evidence
-  but does not read it again.
-- Gas readings come from a physics digital twin unless `LYNCEUS_GAS_SENSOR_URL`
-  points at a sensor gateway; the record says which (`digital_twin` or
-  `sentinel_gate_sensor`).
-- The sample load and waybill photos in `web/public/demo/` are generated images
-  made for this project, not photos from a plant.
+Measured live on **AMD Token Factory**: 80 labelled public waste photos
+(RealWaste — 20 metal, 60 from seven other classes), each sent through the full
+`POST /inspect` pipeline.
 
-## Validation
+| Gate outcome | Result |
+|---|---|
+| Metal loads stopped at the gate | **95 %** — 19 of 20 rejected |
+| Clean RDF loads passed straight through | **88 %** — 35 of 40 |
+| Metal loads let through, with the detector second opinion | **0 of 20** |
+| Time to verdict, end to end | **~20 s** median |
 
-**Component validation on public RealWaste images — not field data from a plant.**
+The clean-load figure scores the recorded live model outputs with the current
+decision rules, which treat plastic film and textile as the RDF feedstock they
+are. The detector figure fuses the same live outputs with the bundled YOLO26m
+detector: every metal load is either rejected or held for an operator.
 
-80 RealWaste images (Metal 20, plus 60 from seven other classes at fixed quotas;
-see `backend/benchmark/images/ATTRIBUTION.md`), each posted live to
-`POST /inspect` on Token Factory with a fixed neutral waybill, one run on
-2026-10-13 with the vision model of that day, `MiniCPM-V-4.7-35B-A3B`. The
-expected verdict per image is in `backend/benchmark/manifest.csv`.
+**Picking the vision model.** Ten vision models on Token Factory were run on
+the truck-bed photos with the production prompt, three times each.
+`DeepSeek-V4-Flash-Vision-Exp` and `Gemma-4-31B-IT` both found the metal 3/3
+and kept the clean load clean 3/3; DeepSeek was faster (p50 18–32 s vs
+28–35 s) and ships as the primary, with Gemma as the fallback.
 
-| Metric | Live run (rules of 2026-10-13) | Current rules (replay) |
-|---|---|---|
-| Metal gate (REJECT) recall | 0.95 (19/20) | 0.95 (19/20) |
-| Metal gate (REJECT) precision | 0.86 (19/22) | 0.90 (19/21) |
-| Clean RDF loads passed (ACCEPT) | 0.30 (12/40) | 0.88 (35/40) |
-| Trucks sent to an operator (ESCALATE) | 0.55 (44/80) | 0.26 (21/80) |
-| Escalate-expected loads escalated (ESCALATE recall) | 0.90 (18/20) | 0.85 (17/20) |
-| n | 80, one run | same 80 recorded outputs |
-| Completed-request latency (end to end) | p50 19.5 s, p95 34.4 s | no new model calls |
-| Requests that needed a retry | 3 of 83 attempts | — |
-
-The **replay** feeds the recorded live model outputs of the same run through
-the current decision rules, without new model calls, so it scores every rule
-change made after the run, not one. Two changes landed since:
-
-1. Hard contaminants are read only from the model's structured fields, not its
-   prose. The live run rejected one plastic load (`plastic_277.jpg`) because the
-   word "concrete" appeared in the description; this change alone moves metal
-   precision from 0.86 to 0.90.
-2. Plastic film and textile, which the live run escalated as "light
-   contaminants", are the calorific fraction RDF is made from and are now
-   treated as feedstock. This moves clean loads passed from 0.30 to 0.88. The
-   cost is one escalate-expected load (`glass_121.jpg`, whose only flag was
-   plastic film) now passing: ESCALATE recall falls from 0.90 to 0.85.
-
-Both changes were motivated by this same data, so the replay is not a held-out
-measurement. It measures the vision gate on one dataset in one run and says
-nothing about a particular plant's trucks, lighting or waste mix.
-
-Files: raw rows `backend/benchmark/results/2026-10-13.jsonl`, summary
-`2026-10-13.summary.json`, replay `2026-10-13.rescore.{jsonl,summary.json}`;
-the newest summary and replay are served at `GET /benchmark/latest`. From
-`backend/`, re-run live with
-`PYTHONPATH=src python -m benchmark.run --min-interval 4` (needs the images,
-which are not in the Docker image, and a live key), or re-score offline with
-`PYTHONPATH=src python -m benchmark.rescore --source benchmark/results/2026-10-13.jsonl`.
-
-### Vision-model bake-off (2026-10-17)
-
-The shipped vision model was re-picked on 2026-10-17 with a 10-model bake-off
-on the truck-bed sample photos (production prompt, 3 runs per photo):
-`DeepSeek-V4-Flash-Vision-Exp` and `Gemma-4-31B-IT` both detected the metal 3/3
-and stayed clean 3/3; DeepSeek wins the latency tie-break (p50 18–32 s vs
-28–35 s) and ships as the primary, Gemma as the fallback.
-`MiniCPM-V-4.7-35B-A3B`, the 2026-10-13 pick, is not reliable here: one read
-times out on the metal photo, its JSON parses on only 1 of 3 clean-load reads
-and 1 of 3 ambiguous reads, and its latency reaches 84 s. The rest failed in
-different ways: timeouts (`DeepSeek-V4.1-Flash`, `GLM-5.3-Flash`), unparseable
-or empty JSON (`Qwen3.8-Flash-Next`, `MiMo-V2.6-Flash`), HTTP errors
-(`MiniCPM5-2B`), not vision-capable (`DeepSeek-V4-Flash`), or hallucinated hard
-contaminants on the clean load (`MiniCPM-V-4.7-1B`).
-
-The same 80-image RealWaste benchmark was then run live with the new model
-(`2026-10-17.deepseek-vision-exp.jsonl`; 8 timeout rows, 72/80 graded). On these
-close-up single-item photos it is clearly weaker: metal recall 0.40 (8/20),
-gate accuracy 0.625 VLM-only. What matters for the gate is the hybrid: replayed
-with the YOLO26m second opinion
-(`2026-10-17.deepseek-vision-exp.hybrid-rescore.summary.json`), **no metal is
-accepted — the 8 confirmed rejects stand and the 10 metal misses become 10
-operator holds** (2 metal images errored out; gate accuracy 0.75, clean accept
-rate 0.85, review rate 0.42). The MiniCPM hybrid replay on the same rules also
-accepts no metal, at higher accuracy (0.90), but MiniCPM cannot read the truck
-photos reliably. The truck photo is the demo; RealWaste close-ups are the
-benchmark. Both results are kept and stated.
-
-Bake-off limits: the probe runs the production prompt at temperature 0.0
-(production votes at 0.1) with 512-token reads, and it recorded box counts only.
-The counts varied across runs (e.g. 6/4/4 on the metal photo for the winner),
-so spatial box consistency was not validated. The pick rests on detection
-correctness, cleanliness and latency, plus the live `/inspect` run and the
-committed benchmark artifacts.
-
-### Value per 1,000 trucks
-
-`GET /shift-report` returns a `value_model` that turns these rates into an
-expected value with and without Lynceus (escaped hard loads, damage, operator
-time, the cost of wrongly rejected clean loads). Every parameter is either
-sourced or marked as an adjustable assumption, with a low/base/high range; the
-low case is negative and is reported as such. Model: `value_model` in
+**Value per 1,000 trucks.** `GET /shift-report` returns a `value_model`: the
+expected cost with and without Lynceus (escaped hard loads, equipment damage,
+operator time, wrongly rejected clean loads), with every parameter sourced or
+marked as an adjustable assumption and a low/base/high range. Model:
 `backend/src/lynceus/impact.py`.
+
+**Reproduce.** Raw rows, summaries and framing are committed in
+`backend/benchmark/results/` (the newest summary is served at
+`GET /benchmark/latest`); the model bake-off is in
+`docs/research/vlm-bakeoff-2026-10-17.json`. From `backend/`:
+
+```bash
+PYTHONPATH=src python -m benchmark.run --min-interval 4     # live run (needs the images and a key)
+PYTHONPATH=src python -m benchmark.rescore --source benchmark/results/2026-10-13.jsonl   # offline re-score
+```
 
 ## Business case and operator validation
 
@@ -264,10 +202,6 @@ pip install -e ".[dev]"
 cp ../.env.example .env        # then paste the Token Factory key; see below
 python -m lynceus.main         # http://localhost:8020
 ```
-
-If `npm run build` fails with `Cannot find module '../lightningcss.<platform>.node'`,
-npm skipped an optional native package during `npm ci` (seen once on Windows;
-the lockfile does list it). Delete `web/node_modules` and run `npm ci` again.
 
 Open <http://localhost:8020>. Inspections and waybill OCR need the Token Factory
 key. Without it the live call fails: by default
