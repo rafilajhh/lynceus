@@ -281,10 +281,12 @@ export function WorkspaceClient() {
   }, [setAutoFilled]);
 
   /** Read a waybill photo (a newer pick or a clear cancels the older read). */
+  const lastWaybillFile = useRef<File | null>(null);
   const readWaybill = useCallback(
     (file: File | null) => {
       cancelOcr();
       clearOcrFill();
+      lastWaybillFile.current = file;
       if (!file) {
         setOcr(IDLE_OCR);
         return;
@@ -323,6 +325,11 @@ export function WorkspaceClient() {
     },
     [cancelOcr, clearOcrFill, setAutoFilled],
   );
+
+  /** Read the same waybill photo again after a failed read. */
+  const retryWaybill = useCallback(() => {
+    if (lastWaybillFile.current) readWaybill(lastWaybillFile.current);
+  }, [readWaybill]);
 
   // The waybill photo is evidence bytes, not a VLM input: sent unchanged.
   // Every pick (upload, sample, Load sample) or clear also drives the OCR.
@@ -784,6 +791,7 @@ export function WorkspaceClient() {
               loading={loading}
               formError={formError}
               ocr={ocr}
+              onRetryOcr={retryWaybill}
               autoFilled={autoFilled}
             />
 

@@ -7,7 +7,7 @@ import { SideNavbar } from "@/components/shell/side-navbar";
 
 /**
  * Console route group layout: session guard + side navbar + content.
- * Applies to /app, /inspections, /shift, /validation. When the backend
+ * Applies to /app, /inspections, /shift. When the backend
  * runs with admin credentials, an unauthenticated visitor is sent to
  * /login; in demo mode (no credentials configured) the guard passes
  * through. Pages render <PageHeader> + <PageBody> themselves.

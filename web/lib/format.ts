@@ -96,7 +96,7 @@ export function providerName(provider: string): string {
  * the console and landing copy: backend/benchmark/results/2026-10-13.summary.json
  * (80 images, live on AMD Token Factory): full inspection p50 19.5 s, p95 34.4 s;
  * VLM call p50 16.5 s (docs/research/token-factory-probe.md: p50 14.5 s over
- * 9 calls). Shown on the /validation page.
+ * 9 calls).
  */
 export const LIVE_LATENCY_COPY = "about 20 s typically, 34 s at the 95th percentile of completed runs";
 

@@ -72,7 +72,6 @@ Verdict ACCEPT / ESCALATE / REJECT + gates + audit record (atomic, tamper-eviden
 - Pythia assistant grounded in `backend/src/lynceus/knowledge/*.md` and the open record, with citations.
 - Shift report with a scripted sample shift (24 trucks, seeded offline, labelled "Sample shift — scripted data") and repeat-supplier flags.
 - Ledger of stored inspections (`/inspections`).
-- `/validation` page: the benchmark below, with its framing.
 - Detector second opinion: a bundled YOLO26m detector reads the same photo. A metal box the vision model did not confirm holds the truck for a human (escalate); so does an unconfirmed glass/organic box while `DETECTOR_ESCALATE_LIGHT=1`. It never accepts or rejects on its own. Its dashed boxes, model, runtime (`onnxruntime-cpu`) and latency are shown; the audit record also stores the weights' SHA-256 and the thresholds used.
 - The vision model votes over `VLM_VOTES` reads (default 3, run in parallel) and can fall back to other benchmarked vision models (`VLM_FALLBACK_MODELS`) inside one time budget; a fallback outside `VLM_BENCHMARKED_MODELS` can never accept or reject.
 - Honest provenance: live results are labelled "Live AMD" (the verdict also shows model and latency on one quiet line); a stub answer after a live failure is labelled as a scripted fallback. With `LYNCEUS_ALLOW_STUB_FALLBACK=0` and the vision model down, a readable photo gets a detector-only verdict that always holds the truck for a human (`detector_only_degraded`); without the detector it returns HTTP 503 instead of an offline stub.
@@ -121,7 +120,7 @@ Re-run the live benchmark from `backend/` with
 `PYTHONPATH=src python -m benchmark.run --min-interval 4` (needs the images,
 which are not shipped in the Docker image, and a live key); re-score with
 `PYTHONPATH=src python -m benchmark.rescore --source benchmark/results/2026-10-13.jsonl`
-(offline). Both are served at `/benchmark/latest` and shown on `/validation`.
+(offline). Both are served at `/benchmark/latest`.
 
 This measures the vision gate on one dataset in one run. It says nothing about
 performance on a particular plant's trucks, lighting or waste mix.

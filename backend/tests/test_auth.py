@@ -192,7 +192,7 @@ def test_console_pages_redirect_to_login(client, monkeypatch, tmp_path):
     import lynceus.api as api_mod
 
     monkeypatch.setattr(api_mod, "_WEB_DIR", web_dir)
-    for path in ("/app", "/shift", "/validation"):
+    for path in ("/app", "/shift"):
         response = client.get(
             path, headers={"accept": "text/html"}, follow_redirects=False
         )

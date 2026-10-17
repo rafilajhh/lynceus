@@ -4,7 +4,6 @@ import { LogoMark } from "@/components/ui/logo-mark";
 const LINKS = [
   { href: "/app", label: "Inspection console" },
   { href: "/inspections", label: "Audit trail" },
-  { href: "/validation", label: "Validation" },
   { href: "/login", label: "Sign in" },
 ] as const;
 

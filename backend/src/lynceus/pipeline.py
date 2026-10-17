@@ -330,6 +330,40 @@ def _image_data_uri(image_b64: str) -> str:
     return f"data:{mime};base64,{image_b64}"
 
 
+WAYBILL_MAX_SIDE_PX = 2000
+WAYBILL_JPEG_QUALITY = 88
+
+
+def _compact_waybill_image(image_b64: str) -> str:
+    """The waybill photo as a compact JPEG data URI for the vision model.
+
+    Phone photos arrive as multi-megabyte JPEGs; sent raw, the upload alone
+    can eat the whole read budget on a slow endpoint.  Re-encoding (EXIF
+    orientation applied, long side capped at ``WAYBILL_MAX_SIDE_PX``, which
+    still keeps small print legible) cuts a 2.6 MB photo to ~350 KB.  Anything
+    Pillow can't open is sent as-is.
+    """
+    if image_b64.startswith("data:"):
+        return image_b64
+    try:
+        import io
+
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(base64.b64decode(image_b64, validate=False))) as im:
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            im.thumbnail((WAYBILL_MAX_SIDE_PX, WAYBILL_MAX_SIDE_PX))
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=WAYBILL_JPEG_QUALITY, optimize=True)
+    except Exception as exc:  # noqa: BLE001 - fall back to the original bytes
+        _log.debug("waybill image not re-encoded: %s", exc)
+        return _image_data_uri(image_b64)
+    compact = base64.b64encode(buf.getvalue()).decode("ascii")
+    if len(compact) >= len(image_b64):
+        return _image_data_uri(image_b64)
+    return f"data:image/jpeg;base64,{compact}"
+
+
 def _waybill_text(value: Any, max_len: int = 120) -> Optional[str]:
     """A transcribed field as one clean line; ``None`` for blanks and non-text."""
     if value is None or isinstance(value, (bool, dict, list)):
@@ -877,7 +911,7 @@ class VLLMClient:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": _WAYBILL_PROMPT},
-                    {"type": "image_url", "image_url": {"url": _image_data_uri(image_b64)}},
+                    {"type": "image_url", "image_url": {"url": _compact_waybill_image(image_b64)}},
                 ],
             }
         ]

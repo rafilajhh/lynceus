@@ -5,26 +5,23 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ClipboardList,
-  FlaskConical,
   LogOut,
   ScanLine,
   ScrollText,
 } from "lucide-react";
 import { fetchSession, logout } from "@/lib/auth-api";
 import { LogoMark } from "@/components/ui/logo-mark";
-import { StatusChip } from "@/components/shell/status-chip";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/app", label: "Inspection", Icon: ScanLine },
   { href: "/inspections", label: "Audit trail", Icon: ScrollText },
   { href: "/shift", label: "Shift report", Icon: ClipboardList },
-  { href: "/validation", label: "Validation", Icon: FlaskConical },
 ] as const;
 
 /**
  * SideNavbar — persistent 248px left rail (pen.dev "Lynceus/Sidebar"):
- * brand, "Console" group, four routes, operator block with sign-out.
+ * brand, "Console" group, three routes, operator block with sign-out.
  * Collapses to a bottom bar below md.
  */
 export function SideNavbar() {
@@ -90,10 +87,6 @@ export function SideNavbar() {
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Live /health poll: never a fake green when the engine is down. */}
-          <div className="px-1.5">
-            <StatusChip />
-          </div>
           <div className="flex items-center gap-2.5 border-t border-line px-1.5 pt-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-surface-muted text-[13px] font-medium text-fg">
               OP

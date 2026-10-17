@@ -16,8 +16,6 @@ import {
   FileJson,
   GitCompare,
   OctagonX,
-  ShieldAlert,
-  ShieldCheck,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
@@ -43,7 +41,7 @@ import { GATE_LABEL, orderedGates } from "./gate-labels";
 /**
  * Audit record screen: replaces the ledger while ?record= is set. Fetches
  * GET /inspections/{record_id} (the API re-verifies the record's SHA-256
- * on every read), then shows the verdict banner with the digest, the
+ * on every read), then shows the verdict banner, the
  * evidence photo with its regions, reasoning, inputs, the gate checklist,
  * SOP next steps, the follow-up log and Pythia, and offers the raw record as a JSON download.
  */
@@ -426,7 +424,6 @@ function DetailBody({
   const passedCount = gates.filter(([, gate]) => gate.state === "passed").length;
   const weightKg = detail.inputs?.weight?.value_kg ?? 0;
   const tone = VERDICT_TONE[decision];
-  const sha = detail.digest?.record_sha256;
   const detectorFlags = detector
     ? [...detector.hard_contaminants, ...detector.light_contaminants]
     : [];
@@ -442,7 +439,7 @@ function DetailBody({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ---- verdict banner + digest ---- */}
+      {/* ---- verdict banner ---- */}
       <section
         aria-label="Verdict"
         className={cn(
@@ -476,29 +473,6 @@ function DetailBody({
           </div>
         </div>
         <p className="m-0 text-[15px] leading-[23px] text-fg-muted">{verdictSummary(detail)}</p>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-[10px] border border-line-strong bg-surface px-3 py-2.5">
-          {sha ? (
-            <>
-              <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-success" />
-              <span className="flex min-w-0 flex-1 items-center gap-2" title={sha}>
-                <span className="figure text-[12px] text-fg-subtle">SHA-256</span>
-                <span className="figure truncate text-[12px] text-fg">{shortHash(sha)}</span>
-              </span>
-              <span
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success-tint px-2.5 py-[3px] text-[12px] font-medium text-success"
-                title="The API recomputes this SHA-256 over the record on every read; a record whose body no longer matches its digest is not served."
-              >
-                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
-                Digest verified
-              </span>
-            </>
-          ) : (
-            <>
-              <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0 text-fg-subtle" />
-              <span className="text-[12px] text-fg-muted">No digest on this record.</span>
-            </>
-          )}
-        </div>
       </section>
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,688fr)_minmax(0,408fr)]">
@@ -698,12 +672,6 @@ function InputCell({ term, value, mono = false }: { term: string; value: string;
       </dd>
     </div>
   );
-}
-
-/** 8 + 8 chars around an ellipsis; the full digest stays in the title and the JSON download. */
-function shortHash(sha: string): string {
-  const clean = sha.replace(/^sha256:/, "");
-  return clean.length > 19 ? `${clean.slice(0, 8)}…${clean.slice(-8)}` : clean;
 }
 
 /** Blob-download the audit record exactly as the API returned it. */

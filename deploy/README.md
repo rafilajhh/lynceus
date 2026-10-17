@@ -153,13 +153,13 @@ Back up first (above) if you want to keep the live records.
 ## Judging-day checklist
 
 1. `docker ps` shows `lynceus` as `healthy`; `curl -s https://your.domain.example/health` returns `"status":"ok"`.
-2. Open `/`, `/app`, `/shift` (sample shift shows 24 trucks), `/inspections`, `/validation` in a browser; each loads.
+2. Open `/`, `/app`, `/shift` (sample shift shows 24 trucks), `/inspections` in a browser; each loads.
 3. Upload a load photo with waybill text in `/app`: with the key it returns a live verdict (see step 4); the sample shift on `/shift` needs no key.
 4. **Warm-up:** run one live inspection and one Pythia question yourself 10-15 minutes before judges arrive (a cold first request is the slowest, and it confirms the key works). Expect 20-35 s for the inspection; it shows "Live AMD".
-5. **Key quota:** the Token Factory key is rate-limited and shared by the team. Check nobody else is running benchmarks or scripts on it; if the endpoint is throttled, live requests fail with HTTP 503 (because `LYNCEUS_ALLOW_STUB_FALLBACK=0`) and the sample shift and `/validation` still load. Do not re-run `benchmark.run` against the same key during judging.
+5. **Key quota:** the Token Factory key is rate-limited and shared by the team. Check nobody else is running benchmarks or scripts on it; if the endpoint is throttled, live requests fail with HTTP 503 (because `LYNCEUS_ALLOW_STUB_FALLBACK=0`) and the sample shift still loads. Do not re-run `benchmark.run` against the same key during judging.
 6. Confirm `LYNCEUS_ALLOW_STUB_FALLBACK=0` is in `/etc/lynceus.env` (`docker exec lynceus printenv LYNCEUS_ALLOW_STUB_FALLBACK`).
 7. Take a backup of the volume (above) after the warm-up if you want to keep those records.
-8. Know the fallback: if live AI is down, present the sample shift and the `/validation` page, and say so.
+8. Know the fallback: if live AI is down, present the sample shift and the benchmark numbers in the README, and say so.
 
 ## Reference
 

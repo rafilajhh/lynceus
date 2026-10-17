@@ -16,6 +16,7 @@ import {
   FileScan,
   LoaderCircle,
   RotateCcw,
+  RotateCw,
   ScanLine,
   Sparkles,
   TriangleAlert,
@@ -126,6 +127,7 @@ export function IntakeForm({
   loading,
   formError,
   ocr,
+  onRetryOcr,
   autoFilled,
 }: {
   values: IntakeValues;
@@ -144,6 +146,8 @@ export function IntakeForm({
   formError: string | null;
   /** Waybill OCR read state. */
   ocr: OcrState;
+  /** Read the same waybill photo again after a failed read. */
+  onRetryOcr: () => void;
   /** Fields still holding the value read from the waybill (not edited). */
   autoFilled: ReadonlySet<IntakeField>;
 }) {
@@ -277,6 +281,15 @@ export function IntakeForm({
               <span className="min-w-0 flex-1 break-words">
                 {ocr.message || "Couldn't read the waybill — fill in the register by hand."}
               </span>
+              <button
+                type="button"
+                onClick={onRetryOcr}
+                disabled={loading}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-brand hover:bg-brand/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50"
+              >
+                <RotateCw aria-hidden="true" className="h-3 w-3" />
+                Retry
+              </button>
             </p>
           ) : null}
 

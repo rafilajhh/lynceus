@@ -1197,22 +1197,6 @@ def create_app() -> FastAPI:
             )
         return FileResponse(page, media_type="text/html")
 
-    @app.get("/validation", include_in_schema=False, response_model=None)
-    def serve_validation_page(request: Request) -> FileResponse | RedirectResponse:
-        """Flat ``validation.html`` on ``/validation`` (same fix as ``/shift``)."""
-        if (redirect := _guard_console_page(request)) is not None:
-            return redirect
-        page = _web_file("validation.html")
-        if not page.is_file():
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "validation_page_not_found",
-                    "message": "web/out/validation.html is missing — build the web export.",
-                },
-            )
-        return FileResponse(page, media_type="text/html")
-
     def _benchmark_summaries(replay: bool) -> Iterator[dict[str, Any]]:
         """Readable summaries, newest first: live runs, or offline replays.
 

@@ -295,3 +295,28 @@ def test_busy_reader_is_503(client, monkeypatch):
     assert resp.json()["detail"]["error"] == "busy"
     # Slots were returned: the next read goes through.
     assert _post(client).status_code == 200
+
+
+def test_large_photo_is_reencoded_before_upload():
+    """A big phone photo goes to the model as a smaller, upright JPEG."""
+    import io
+
+    from PIL import Image
+
+    # Sensor-noise texture at max quality: heavy like a raw phone photo.
+    big = Image.effect_noise((4000, 3000), 40).convert("RGB")
+    buf = io.BytesIO()
+    big.save(buf, "JPEG", quality=100)
+    raw_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    uri = pipeline._compact_waybill_image(raw_b64)
+    assert uri.startswith("data:image/jpeg;base64,")
+    payload = base64.b64decode(uri.split(",", 1)[1])
+    assert len(payload) < len(buf.getvalue())
+    with Image.open(io.BytesIO(payload)) as out:
+        assert max(out.size) == pipeline.WAYBILL_MAX_SIDE_PX
+        assert out.size == (2000, 1500)
+
+
+def test_unreadable_image_is_sent_as_is():
+    assert pipeline._compact_waybill_image(_JPEG_B64) == f"data:image/jpeg;base64,{_JPEG_B64}"
