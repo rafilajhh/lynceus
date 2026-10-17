@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -9,10 +9,13 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  CircleArrowUp,
   Download,
   Lock,
   Plus,
   Search,
+  Send,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -21,6 +24,7 @@ import {
   type Decision,
   type InspectionSummary,
 } from "@/lib/api";
+import type { FollowupAction } from "@/lib/followup-api";
 import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +82,45 @@ type SortColumn = "record" | "when";
 type SortDir = "asc" | "desc";
 
 const PAGE_SIZE = 25;
+
+/** Period filter over decided_at_utc. "today" is the current UTC day,
+    matching the UTC timestamps used across the console. */
+type PeriodKey = "all" | "today" | "24h" | "7d";
+
+const PERIODS: readonly { key: PeriodKey; label: string }[] = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Today (UTC)" },
+  { key: "24h", label: "Last 24 h" },
+  { key: "7d", label: "Last 7 days" },
+] as const;
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function inPeriod(item: InspectionSummary, period: PeriodKey, now: number): boolean {
+  if (period === "all") return true;
+  const t = Date.parse(item.decided_at_utc);
+  if (!Number.isFinite(t)) return false;
+  if (period === "today") {
+    const start = new Date(now);
+    start.setUTCHours(0, 0, 0, 0);
+    return t >= start.getTime();
+  }
+  return now - t <= (period === "24h" ? 24 : 7 * 24) * HOUR_MS;
+}
+
+const hasFailedCheck = (item: InspectionSummary) =>
+  Object.values(item.gate_states).includes("failed");
+
+const hasFollowup = (item: InspectionSummary) =>
+  item.followups.notify_supplier > 0 || item.followups.escalate > 0;
+
+/** Screen-reader suffix for a row's follow-up indicators. */
+function followupLabel(item: InspectionSummary): string {
+  return [
+    item.followups.notify_supplier > 0 ? ", supplier notified" : "",
+    item.followups.escalate > 0 ? ", escalated" : "",
+  ].join("");
+}
 
 /** "inspection-000014", "inspection-14", "inspection 14", "INSPECTION–000014". */
 const RECORD_REF = /^inspection[\s#_-]*0*(\d+)$/;
@@ -236,6 +279,9 @@ function LedgerViewInner() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState<PeriodKey>("all");
+  const [failedOnly, setFailedOnly] = useState(false);
+  const [followupOnly, setFollowupOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ column: SortColumn; dir: SortDir }>({
     column: "record",
@@ -280,15 +326,77 @@ function LedgerViewInner() {
     [state],
   );
 
-  /** Rows in the supplier's scope (all rows without a supplier chip):
-      stat cards and tab counts are computed here, before verdict/search. */
-  const scoped = useMemo(
-    () =>
-      supplierFilter
-        ? ready.filter((item) => (item.supplier ?? "").trim() === supplierFilter)
-        : ready,
-    [ready, supplierFilter],
-  );
+  /** Rows in the filter popover's scope (supplier, period, failed check,
+      follow-up): stat cards and tab counts are computed here, before
+      verdict/search. */
+  const scoped = useMemo(() => {
+    const now = Date.now();
+    return ready.filter(
+      (item) =>
+        (!supplierFilter || (item.supplier ?? "").trim() === supplierFilter) &&
+        inPeriod(item, period, now) &&
+        (!failedOnly || hasFailedCheck(item)) &&
+        (!followupOnly || hasFollowup(item)),
+    );
+  }, [ready, supplierFilter, period, failedOnly, followupOnly]);
+
+  /** Distinct suppliers in the loaded ledger, for the filter's select. */
+  const suppliers = useMemo(() => {
+    const names = new Set<string>();
+    for (const item of ready) {
+      const name = (item.supplier ?? "").trim();
+      if (name) names.add(name);
+    }
+    if (supplierFilter) names.add(supplierFilter);
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [ready, supplierFilter]);
+
+  const activeFilterCount =
+    (supplierFilter ? 1 : 0) +
+    (period !== "all" ? 1 : 0) +
+    (failedOnly ? 1 : 0) +
+    (followupOnly ? 1 : 0);
+
+  /** Supplier filter and ?supplier= move together, so a refresh or a
+      shared link keeps the scope. */
+  const changeSupplier = useCallback((next: string) => {
+    setSupplierFilter(next);
+    setPage(1);
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set("supplier", next);
+    else url.searchParams.delete("supplier");
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    changeSupplier("");
+    setPeriod("all");
+    setFailedOnly(false);
+    setFollowupOnly(false);
+  }, [changeSupplier]);
+
+  /** An action logged from the record screen: bump that row's counts so the
+      indicators and the follow-up filter are current without a reload. */
+  const onFollowupLogged = useCallback((action: FollowupAction) => {
+    setState((prev) =>
+      prev.kind !== "ready"
+        ? prev
+        : {
+            kind: "ready",
+            inspections: prev.inspections.map((item) =>
+              item.record_id === action.record_id
+                ? {
+                    ...item,
+                    followups: {
+                      ...item.followups,
+                      [action.kind]: item.followups[action.kind] + 1,
+                    },
+                  }
+                : item,
+            ),
+          },
+    );
+  }, []);
 
   const counts = useMemo(() => {
     const counts: Partial<Record<FilterKey, number>> = { all: scoped.length };
@@ -403,10 +511,13 @@ function LedgerViewInner() {
   useEffect(() => {
     if (!selectedId) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeDetail();
-      }
+      if (e.key !== "Escape") return;
+      // Esc inside a text field (follow-up note, Pythia question) belongs
+      // to that field: closing the record there would drop unsent text.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      e.preventDefault();
+      closeDetail();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -428,6 +539,7 @@ function LedgerViewInner() {
         prevId={prevId}
         nextId={nextId}
         onNavigate={(recordId) => setRecordParam(recordId, "replace")}
+        onFollowupLogged={onFollowupLogged}
       />
     );
   }
@@ -523,7 +635,7 @@ function LedgerViewInner() {
                   {supplierFilter ? (
                     <button
                       type="button"
-                      onClick={() => setSupplierFilter("")}
+                      onClick={() => changeSupplier("")}
                       aria-label={`Clear supplier filter ${supplierFilter}`}
                       title="Clear supplier filter"
                       className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-brand/25 bg-brand/5 px-3 text-[13px] font-medium text-fg transition-colors duration-100 hover:border-brand/50"
@@ -532,18 +644,42 @@ function LedgerViewInner() {
                       <X aria-hidden="true" className="h-3.5 w-3.5 text-fg-muted" />
                     </button>
                   ) : null}
-                  <div className="relative w-full sm:w-[280px]">
-                    <Search
-                      aria-hidden="true"
-                      className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-fg-subtle"
-                    />
-                    <input
-                      type="search"
-                      value={search}
-                      onChange={(e) => onSearchChange(e.target.value)}
-                      placeholder="Search record or plate…"
-                      aria-label="Search record or plate"
-                      className="input h-9! pl-9! placeholder:text-fg-faint"
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <div className="relative min-w-0 flex-1 sm:w-[280px] sm:flex-none">
+                      <Search
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-fg-subtle"
+                      />
+                      <input
+                        type="search"
+                        value={search}
+                        onChange={(e) => onSearchChange(e.target.value)}
+                        placeholder="Search record or plate…"
+                        aria-label="Search record or plate"
+                        className="input h-9! pl-9! placeholder:text-fg-faint"
+                      />
+                    </div>
+                    <FilterPopover
+                      activeCount={activeFilterCount}
+                      suppliers={suppliers}
+                      supplier={supplierFilter}
+                      onSupplierChange={changeSupplier}
+                      period={period}
+                      onPeriodChange={(next) => {
+                        setPeriod(next);
+                        setPage(1);
+                      }}
+                      failedOnly={failedOnly}
+                      onFailedOnlyChange={(next) => {
+                        setFailedOnly(next);
+                        setPage(1);
+                      }}
+                      followupOnly={followupOnly}
+                      onFollowupOnlyChange={(next) => {
+                        setFollowupOnly(next);
+                        setPage(1);
+                      }}
+                      onClear={clearFilters}
                     />
                   </div>
                 </div>
@@ -589,7 +725,7 @@ function LedgerViewInner() {
                       onClick={() => openRecord(row.record_id)}
                       tabIndex={0}
                       role="button"
-                      aria-label={`Open ${row.record_id}, ${row.truck_id}, ${VERDICT_LABEL[row.decision]}`}
+                      aria-label={`Open ${row.record_id}, ${row.truck_id}, ${VERDICT_LABEL[row.decision]}${followupLabel(row)}`}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
@@ -609,8 +745,11 @@ function LedgerViewInner() {
                           {VERDICT_LABEL[row.decision]}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-0 truncate text-[13px] text-fg-muted">
-                        {rowReason(row)}
+                      <TableCell className="max-w-0 text-[13px] text-fg-muted">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 truncate">{rowReason(row)}</span>
+                          <FollowupIndicators item={row} />
+                        </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {sealShort(row.record_sha256) ? (
@@ -669,8 +808,9 @@ function LedgerViewInner() {
                       <span className="font-medium text-fg">{row.truck_id}</span>
                       <span>{relativeTime(row.decided_at_utc)}</span>
                     </div>
-                    <div className="mt-1 truncate text-[12px] text-fg-subtle">
-                      {rowReason(row)}
+                    <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] text-fg-subtle">
+                      <span className="min-w-0 truncate">{rowReason(row)}</span>
+                      <FollowupIndicators item={row} />
                     </div>
                   </button>
                 ))}
@@ -715,6 +855,231 @@ function LedgerViewInner() {
         )}
       </PageBody>
     </>
+  );
+}
+
+/** Small icons beside the Reason when the record has follow-up actions. */
+function FollowupIndicators({ item }: { item: InspectionSummary }) {
+  const { notify_supplier: notified, escalate: escalated } = item.followups;
+  if (notified <= 0 && escalated <= 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {notified > 0 ? (
+        <span
+          title={notified > 1 ? `Supplier notified (${notified} times)` : "Supplier notified"}
+          className="inline-flex items-center gap-0.5 text-brand"
+        >
+          <Send aria-hidden="true" className="h-3.5 w-3.5" />
+          <span className="sr-only">Supplier notified</span>
+          {notified > 1 ? <span className="figure text-[11px]">{notified}</span> : null}
+        </span>
+      ) : null}
+      {escalated > 0 ? (
+        <span
+          title={escalated > 1 ? `Escalated (${escalated} times)` : "Escalated"}
+          className="inline-flex items-center gap-0.5 text-warning"
+        >
+          <CircleArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+          <span className="sr-only">Escalated</span>
+          {escalated > 1 ? <span className="figure text-[11px]">{escalated}</span> : null}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Sliders button + non-modal popover with the ledger filters. Esc and a
+ * click outside close it; Esc and "Done" return focus to the button.
+ */
+function FilterPopover({
+  activeCount,
+  suppliers,
+  supplier,
+  onSupplierChange,
+  period,
+  onPeriodChange,
+  failedOnly,
+  onFailedOnlyChange,
+  followupOnly,
+  onFollowupOnlyChange,
+  onClear,
+}: {
+  activeCount: number;
+  suppliers: string[];
+  supplier: string;
+  onSupplierChange: (next: string) => void;
+  period: PeriodKey;
+  onPeriodChange: (next: PeriodKey) => void;
+  failedOnly: boolean;
+  onFailedOnlyChange: (next: boolean) => void;
+  followupOnly: boolean;
+  onFollowupOnlyChange: (next: boolean) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const firstFieldRef = useRef<HTMLSelectElement>(null);
+  const popoverId = useId();
+  const supplierId = useId();
+  const periodId = useId();
+
+  const close = useCallback((restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    firstFieldRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(true);
+      }
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [open, close]);
+
+  const label = activeCount > 0 ? `Filters, ${activeCount} active` : "Filters";
+
+  return (
+    <div ref={wrapRef} className="relative shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? popoverId : undefined}
+        aria-label={label}
+        title={label}
+        onClick={() => (open ? close(false) : setOpen(true))}
+        className={cn(
+          "relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-[8px] border bg-surface text-fg transition-colors duration-100 hover:bg-surface-subtle",
+          activeCount > 0 || open ? "border-brand/50" : "border-line-strong",
+        )}
+      >
+        <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+        {activeCount > 0 ? (
+          <span
+            aria-hidden="true"
+            className="figure absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] leading-none text-white"
+          >
+            {activeCount}
+          </span>
+        ) : null}
+      </button>
+      {open ? (
+        <div
+          id={popoverId}
+          role="dialog"
+          aria-label="Filter inspections"
+          className="absolute top-full right-0 z-30 mt-2 flex w-[300px] max-w-[calc(100vw-32px)] flex-col gap-4 rounded-[14px] border border-line-strong bg-surface p-4 shadow-card"
+        >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={supplierId} className="text-[13px] font-medium text-fg">
+              Supplier
+            </label>
+            <select
+              id={supplierId}
+              ref={firstFieldRef}
+              value={supplier}
+              onChange={(e) => onSupplierChange(e.target.value)}
+              className="input h-9! cursor-pointer"
+            >
+              <option value="">All suppliers</option>
+              {suppliers.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={periodId} className="text-[13px] font-medium text-fg">
+              Period
+            </label>
+            <select
+              id={periodId}
+              value={period}
+              onChange={(e) => onPeriodChange(e.target.value as PeriodKey)}
+              className="input h-9! cursor-pointer"
+            >
+              {PERIODS.map(({ key, label: periodLabel }) => (
+                <option key={key} value={key}>
+                  {periodLabel}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            <FilterSwitch
+              label="Has a failed check"
+              checked={failedOnly}
+              onChange={onFailedOnlyChange}
+            />
+            <FilterSwitch
+              label="Has follow-up"
+              checked={followupOnly}
+              onChange={onFollowupOnlyChange}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2 border-t border-line pt-3">
+            <Button variant="ghost" size="sm" disabled={activeCount === 0} onClick={onClear}>
+              Clear filters
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => close(true)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FilterSwitch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex cursor-pointer items-center justify-between gap-3 text-left text-[13px] text-fg"
+    >
+      {label}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative h-5 w-9 shrink-0 rounded-full transition-colors duration-100",
+          checked ? "bg-brand" : "bg-line-strong",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-control transition-transform duration-100",
+            checked && "translate-x-4",
+          )}
+        />
+      </span>
+    </button>
   );
 }
 

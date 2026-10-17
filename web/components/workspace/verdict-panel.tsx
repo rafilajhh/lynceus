@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { GateStrip, type GateDisplay, type GatePhase } from "./gate-strip";
 import { NextSteps } from "./next-steps";
+import { FollowupActions } from "./followup-actions";
 import { PhotoEvidence, detectorName } from "./photo-evidence";
 import { Segmented } from "./segmented";
 import type { InspectResponse } from "@/lib/inspect-api";
@@ -69,6 +70,8 @@ export interface SubmittedLoad {
   age_h: number;
   loadFilename: string | null;
   waybillFilename: string | null;
+  /** The register was auto-filled from the waybill photo (OCR). */
+  waybillOcr: boolean;
 }
 
 const EVALUATING_COPY: Record<RunMode, string> = {
@@ -610,7 +613,11 @@ export function VerdictPanel({
               variant="card"
               steps={data.actions}
               emptyText="The backend returned no next steps."
-            />
+            >
+              {data.record_id ? (
+                <FollowupActions key={data.record_id} recordId={data.record_id} />
+              ) : null}
+            </NextSteps>
           ) : null}
 
           <Card
@@ -655,7 +662,9 @@ export function VerdictPanel({
                   <span className="truncate font-mono text-[13px] text-fg">
                     {submitted.waybillFilename ?? "No waybill photo"}
                   </span>
-                  <span className="text-[12px] text-fg-muted">Waybill photo</span>
+                  <span className="text-[12px] text-fg-muted">
+                    {submitted.waybillOcr ? "Waybill · OCR" : "Waybill photo"}
+                  </span>
                 </span>
                 {submitted.waybillFilename ? (
                   <CircleCheck aria-label="Attached" className="h-4 w-4 shrink-0 text-success" />

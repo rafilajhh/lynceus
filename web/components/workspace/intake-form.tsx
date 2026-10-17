@@ -6,13 +6,26 @@
  * stream, moisture, age, and the Inspect / Reset actions. The load photo
  * upload lives in the "01 Incoming load" card (WorkspaceClient). The
  * declared waybill text is synthesized by the parent from stream + weight.
+ * The parent reads the waybill photo (OCR) and auto-fills the register;
+ * this card shows the read state and marks fields still holding an
+ * auto-filled value.
  */
 
 import type { FormEvent } from "react";
-import { FileScan, Info, RotateCcw, ScanLine, Upload, X } from "lucide-react";
+import {
+  FileScan,
+  LoaderCircle,
+  RotateCcw,
+  ScanLine,
+  Sparkles,
+  TriangleAlert,
+  Upload,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WASTE_STREAMS } from "@/lib/demo-cases";
 import { cn } from "@/lib/utils";
+import type { WaybillExtract } from "@/lib/waybill-api";
 
 export interface IntakeValues {
   truck_id: string;
@@ -30,13 +43,75 @@ export interface UploadSlot {
   filename: string | null;
 }
 
-/** Field label: 12px medium muted, 6px above the control. */
-function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
+/** Waybill OCR state, owned by the parent. "idle": no read running or
+    done (no waybill, or a read cancelled by Inspect). */
+export interface OcrState {
+  status: "idle" | "reading" | "done" | "error";
+  /** Why the read failed (status "error"). */
+  message: string | null;
+  /** What the reader returned (status "done"). */
+  extract: WaybillExtract | null;
+}
+
+export type IntakeField = keyof IntakeValues;
+
+/** Field label: 12px medium muted, 6px above the control; an "OCR" tag
+    while the field still holds the value read from the waybill. */
+function FieldLabel({
+  htmlFor,
+  auto,
+  children,
+}: {
+  htmlFor: string;
+  auto?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-[12px] font-medium text-fg-muted">
+    <label
+      htmlFor={htmlFor}
+      className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-fg-muted"
+    >
       {children}
+      {auto ? (
+        <span
+          className="rounded-[4px] bg-brand/10 px-1 py-px font-mono text-[10px] leading-[14px] font-medium tracking-[0.5px] text-brand-deep"
+          title="Read from the waybill photo"
+        >
+          OCR
+        </span>
+      ) : null}
     </label>
   );
+}
+
+/** The register chip next to "Register": the waybill read state. */
+function registerChip(hasWaybill: boolean, ocr: OcrState) {
+  if (!hasWaybill) return { label: "Waiting for waybill", tone: "bg-surface-subtle text-fg-muted" };
+  if (ocr.status === "reading")
+    return { label: "Reading waybill…", tone: "bg-surface-subtle text-fg-muted" };
+  if (ocr.status === "done")
+    return { label: "Auto-filled from waybill", tone: "bg-success-tint text-success" };
+  if (ocr.status === "error")
+    return { label: "Couldn't read waybill", tone: "bg-warning-tint text-warning" };
+  return { label: "Waybill attached", tone: "bg-surface-subtle text-fg-muted" };
+}
+
+/** Waybill details the register has no field for, as read (non-null only). */
+function waybillDetails(extract: WaybillExtract | null): [string, string][] {
+  if (!extract) return [];
+  const f = extract.fields;
+  const route =
+    f.origin && f.destination
+      ? `${f.origin} → ${f.destination}`
+      : (f.origin ?? (f.destination ? `→ ${f.destination}` : null));
+  const rows: [string, string | null | undefined][] = [
+    ["Waybill no.", f.waybill_no],
+    ["Date", f.date],
+    ["Driver", f.driver],
+    ["Route", route],
+    ["Reference", f.reference],
+  ];
+  return rows.filter((r): r is [string, string] => Boolean(r[1]));
 }
 
 export function IntakeForm({
@@ -50,6 +125,8 @@ export function IntakeForm({
   waybillPhoto,
   loading,
   formError,
+  ocr,
+  autoFilled,
 }: {
   values: IntakeValues;
   onChange: (patch: Partial<IntakeValues>) => void;
@@ -65,8 +142,15 @@ export function IntakeForm({
   waybillPhoto: UploadSlot;
   loading: boolean;
   formError: string | null;
+  /** Waybill OCR read state. */
+  ocr: OcrState;
+  /** Fields still holding the value read from the waybill (not edited). */
+  autoFilled: ReadonlySet<IntakeField>;
 }) {
   const field = "input disabled:cursor-not-allowed disabled:opacity-50";
+  /** Subtle brand tint on a field holding an auto-filled value. */
+  const auto = (name: IntakeField) =>
+    autoFilled.has(name) ? "border-brand-soft bg-brand/[0.04]" : null;
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -74,6 +158,8 @@ export function IntakeForm({
   };
 
   const hasWaybill = Boolean(waybillPhoto.filename);
+  const chip = registerChip(hasWaybill, ocr);
+  const details = ocr.status === "done" ? waybillDetails(ocr.extract) : [];
 
   return (
     <section aria-labelledby="register-title" className="card flex flex-col">
@@ -93,8 +179,9 @@ export function IntakeForm({
         className="flex flex-1 flex-col"
       >
         <div className="flex flex-col gap-3 px-5 py-4">
-          {/* Waybill photo: optional evidence bytes; the declared text is
-              synthesized from stream + weight below. */}
+          {/* Waybill photo: evidence bytes, and the source the register is
+              auto-filled from (OCR); the declared text is synthesized from
+              stream + weight below. */}
           <div className="flex flex-col gap-3 rounded-[10px] border border-line-strong bg-surface-subtle p-4">
             <div className="flex items-center gap-3">
               <span
@@ -150,10 +237,23 @@ export function IntakeForm({
                 ) : null}
               </div>
             </div>
+            {details.length > 0 ? (
+              <div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
+                <span className="text-[11px] font-medium text-fg-subtle">Read from waybill</span>
+                <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
+                  {details.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="text-fg-muted">{k}</dt>
+                      <dd className="m-0 break-words text-fg">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : null}
             <div className="flex items-center gap-2 border-t border-line pt-2.5">
               <p className="m-0 flex flex-1 items-center gap-2 text-[12px] text-fg-muted">
-                <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand" />
-                Copy the truck ID, supplier, weight and stream from the waybill into the register.
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand" />
+                Truck ID, supplier, weight and stream are filled in automatically.
               </p>
               {hasWaybill ? null : (
                 <button
@@ -168,38 +268,59 @@ export function IntakeForm({
             </div>
           </div>
 
+          {hasWaybill && ocr.status === "error" ? (
+            <p
+              role="alert"
+              className="m-0 flex items-start gap-2 text-[12px] leading-[17px] text-warning"
+            >
+              <TriangleAlert aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 break-words">
+                {ocr.message || "Couldn't read the waybill — fill in the register by hand."}
+              </span>
+            </p>
+          ) : null}
+
           <div className="flex items-center gap-2 pt-1">
             <span className="text-[13px] font-medium text-fg">Register</span>
             <span
+              role="status"
+              aria-live="polite"
               className={cn(
-                "rounded-full px-2 py-px text-[11px] font-medium",
-                hasWaybill ? "bg-success-tint text-success" : "bg-surface-subtle text-fg-muted",
+                "inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] font-medium",
+                chip.tone,
               )}
             >
-              {hasWaybill ? "Waybill attached" : "Waiting for waybill"}
+              {hasWaybill && ocr.status === "reading" ? (
+                <LoaderCircle aria-hidden="true" className="h-3 w-3 animate-spin" />
+              ) : null}
+              {chip.label}
             </span>
           </div>
 
           <div>
-            <FieldLabel htmlFor="truck_id">Truck ID</FieldLabel>
+            <FieldLabel htmlFor="truck_id" auto={autoFilled.has("truck_id")}>
+              Truck ID
+            </FieldLabel>
             <input
               id="truck_id"
-              className={field}
+              className={cn(field, auto("truck_id"))}
               value={values.truck_id}
               onChange={(e) => onChange({ truck_id: e.target.value })}
-              placeholder="e.g. B 9174 KT"
+              placeholder="Auto-filled"
               disabled={loading}
               autoComplete="off"
             />
           </div>
           <div>
-            <FieldLabel htmlFor="supplier">Supplier</FieldLabel>
+            <FieldLabel htmlFor="supplier" auto={autoFilled.has("supplier")}>
+              Supplier
+            </FieldLabel>
             <input
               id="supplier"
-              className={field}
+              className={cn(field, auto("supplier"))}
               value={values.supplier}
               onChange={(e) => onChange({ supplier: e.target.value })}
-              placeholder="Hauler on the waybill"
+              placeholder="Auto-filled"
               disabled={loading}
               autoComplete="off"
             />
@@ -207,44 +328,58 @@ export function IntakeForm({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <FieldLabel htmlFor="weight_kg">Weight (kg)</FieldLabel>
+              <FieldLabel htmlFor="weight_kg" auto={autoFilled.has("weight_kg")}>
+                Weight (kg)
+              </FieldLabel>
               <input
                 id="weight_kg"
                 type="number"
                 min={0}
                 step="any"
-                className={cn(field, "figure")}
+                className={cn(field, "figure", auto("weight_kg"))}
                 value={values.weight_kg}
                 onChange={(e) => onChange({ weight_kg: e.target.value })}
-                placeholder="e.g. 15500"
+                placeholder="Auto-filled"
                 disabled={loading}
               />
             </div>
             <div>
-              <FieldLabel htmlFor="stream">Stream</FieldLabel>
+              <FieldLabel htmlFor="stream" auto={autoFilled.has("stream")}>
+                Stream
+              </FieldLabel>
               <select
                 id="stream"
-                className={cn(field, "figure")}
+                className={cn(
+                  field,
+                  "figure",
+                  values.stream ? null : "text-fg-subtle",
+                  auto("stream"),
+                )}
                 value={values.stream}
                 onChange={(e) => onChange({ stream: e.target.value })}
                 disabled={loading}
               >
+                <option value="" disabled>
+                  Auto-filled
+                </option>
                 {WASTE_STREAMS.map((s) => (
-                  <option key={s.value} value={s.value}>
+                  <option key={s.value} value={s.value} className="text-fg">
                     {s.label}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <FieldLabel htmlFor="moisture_pct">Moisture (%)</FieldLabel>
+              <FieldLabel htmlFor="moisture_pct" auto={autoFilled.has("moisture_pct")}>
+                Moisture (%)
+              </FieldLabel>
               <input
                 id="moisture_pct"
                 type="number"
                 min={0}
                 max={100}
                 step="any"
-                className={cn(field, "figure")}
+                className={cn(field, "figure", auto("moisture_pct"))}
                 value={values.moisture_pct}
                 onChange={(e) => onChange({ moisture_pct: e.target.value })}
                 placeholder="e.g. 18"

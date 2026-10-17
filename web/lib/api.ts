@@ -56,6 +56,13 @@ const inspectionSummarySchema = z.object({
   reason: z.string().nullish().catch(null),
   /** The record's own digest, `sha256:<64 hex>`. */
   record_sha256: z.string().nullish().catch(null),
+  /** Follow-up actions logged against the record (append-only log). */
+  followups: z
+    .object({
+      notify_supplier: z.coerce.number().catch(0),
+      escalate: z.coerce.number().catch(0),
+    })
+    .catch({ notify_supplier: 0, escalate: 0 }),
 });
 
 const inspectionsResponseSchema = z.object({

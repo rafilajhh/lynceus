@@ -36,6 +36,8 @@ import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { NextSteps } from "@/components/workspace/next-steps";
 import { PhotoEvidence } from "@/components/workspace/photo-evidence";
+import type { FollowupAction } from "@/lib/followup-api";
+import { FollowupCard } from "./followup-card";
 import { GATE_LABEL, orderedGates } from "./gate-labels";
 
 /**
@@ -43,7 +45,7 @@ import { GATE_LABEL, orderedGates } from "./gate-labels";
  * GET /inspections/{record_id} (the API re-verifies the record's SHA-256
  * on every read), then shows the verdict banner with the digest, the
  * evidence photo with its regions, reasoning, inputs, the gate checklist,
- * SOP next steps and Pythia, and offers the raw record as a JSON download.
+ * SOP next steps, the follow-up log and Pythia, and offers the raw record as a JSON download.
  */
 
 type GateTone = { Icon: LucideIcon; icon: string; row: string; label: string };
@@ -184,6 +186,7 @@ export function InspectionDetailPanel({
   prevId,
   nextId,
   onNavigate,
+  onFollowupLogged,
 }: {
   recordId: string;
   onClose: () => void;
@@ -192,6 +195,8 @@ export function InspectionDetailPanel({
   prevId: string | null;
   nextId: string | null;
   onNavigate: (recordId: string) => void;
+  /** A follow-up action was appended to this record's log. */
+  onFollowupLogged?: (action: FollowupAction) => void;
 }) {
   const [state, setState] = useState<DetailLoad>({ kind: "loading" });
   const [retryCount, setRetryCount] = useState(0);
@@ -322,7 +327,7 @@ export function InspectionDetailPanel({
             </div>
           </div>
         ) : (
-          <DetailBody detail={state.detail} />
+          <DetailBody detail={state.detail} onFollowupLogged={onFollowupLogged} />
         )}
       </PageBody>
     </div>
@@ -393,7 +398,13 @@ function SectionCard({
   );
 }
 
-function DetailBody({ detail }: { detail: InspectionDetail }) {
+function DetailBody({
+  detail,
+  onFollowupLogged,
+}: {
+  detail: InspectionDetail;
+  onFollowupLogged?: (action: FollowupAction) => void;
+}) {
   const decision = detail.verdict?.decision ?? "unknown";
   const reasoning = detail.ai_outputs?.llm?.reasoning;
   const reasoningText = reasoning
@@ -595,7 +606,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
           </SectionCard>
         </div>
 
-        {/* ---- right: checks, next steps, Pythia ---- */}
+        {/* ---- right: checks, next steps, follow-up, Pythia ---- */}
         <div className="flex min-w-0 flex-col gap-4">
           <SectionCard
             title={
@@ -656,6 +667,14 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
               emptyText="Not recorded: this record predates SOP-cited next steps."
             />
           </div>
+
+          {detail.record_id ? (
+            <FollowupCard
+              key={`followup-${detail.record_id}`}
+              recordId={detail.record_id}
+              onLogged={onFollowupLogged}
+            />
+          ) : null}
 
           {detail.record_id ? (
             <PythiaPanel

@@ -32,9 +32,12 @@ import { Button } from "@/components/ui/button";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import {
   IntakeForm,
+  type IntakeField,
   type IntakeValues,
+  type OcrState,
   type UploadSlot,
 } from "./intake-form";
+import { HelpDialog } from "./help-dialog";
 import {
   VerdictPanel,
   type ResultError,
@@ -50,6 +53,7 @@ import {
   InspectError,
   type InspectResponse,
 } from "@/lib/inspect-api";
+import { extractWaybill, WaybillError, type WaybillExtract } from "@/lib/waybill-api";
 
 /** Long edge (px) of the load photo sent to the VLM. Image tokens, and so
  * VLM latency, grow with pixel count; a 12 MP phone photo has ~10x the pixels
@@ -134,10 +138,29 @@ const EMPTY_FORM: IntakeValues = {
   truck_id: "",
   supplier: "",
   weight_kg: "",
-  stream: "mixed-msw",
+  // Empty until read from the waybill or picked: the select shows the
+  // "Auto-filled" placeholder, and Inspect asks for a stream.
+  stream: "",
   moisture_pct: "",
   age_h: "",
 };
+
+const IDLE_OCR: OcrState = { status: "idle", message: null, extract: null };
+
+const OCR_FALLBACK_MESSAGE = "Couldn't read the waybill — fill in the register by hand.";
+
+/** Register values read from the waybill. Only fields the reader actually
+    returned: an unreadable field stays empty for the operator. */
+function ocrPatch(extract: WaybillExtract): Partial<IntakeValues> {
+  const f = extract.fields;
+  const patch: Partial<IntakeValues> = {};
+  if (f.truck_id) patch.truck_id = f.truck_id;
+  if (f.supplier) patch.supplier = f.supplier;
+  if (f.weight_kg != null) patch.weight_kg = String(f.weight_kg);
+  if (f.stream) patch.stream = f.stream;
+  if (f.moisture_pct != null) patch.moisture_pct = String(f.moisture_pct);
+  return patch;
+}
 
 /** The gate's manifest gate needs declared waybill text; without it the
     inspection refuses (insufficient input). The operator no longer types
@@ -220,14 +243,98 @@ export function WorkspaceClient() {
     [pickFile, loadUpload],
   );
 
+  // ---- Waybill OCR: every waybill pick is read and auto-fills the
+  // register. A field the operator edited is never overwritten; fields
+  // still holding the read value are tracked (marked "OCR" in the form)
+  // so a new waybill, a clear or Reset can take them back out. ---------
+  const [ocr, setOcr] = useState<OcrState>(IDLE_OCR);
+  const [autoFilled, setAutoFilledState] = useState<ReadonlySet<IntakeField>>(() => new Set());
+  const autoFilledRef = useRef<ReadonlySet<IntakeField>>(new Set());
+  const setAutoFilled = useCallback((next: ReadonlySet<IntakeField>) => {
+    autoFilledRef.current = next;
+    setAutoFilledState(next);
+  }, []);
+  // Fields the operator typed into (and left non-empty).
+  const dirty = useRef(new Set<IntakeField>());
+  const ocrAbort = useRef<AbortController | null>(null);
+
+  const cancelOcr = useCallback(() => {
+    ocrAbort.current?.abort();
+    ocrAbort.current = null;
+  }, []);
+
+  useEffect(() => () => ocrAbort.current?.abort(), []);
+
+  /** Take out the values the last read put in; edited fields keep theirs. */
+  const clearOcrFill = useCallback(() => {
+    const filled = autoFilledRef.current;
+    if (filled.size > 0) {
+      setValues((v) => {
+        const next = { ...v };
+        filled.forEach((k) => {
+          next[k] = EMPTY_FORM[k];
+        });
+        return next;
+      });
+    }
+    setAutoFilled(new Set());
+  }, [setAutoFilled]);
+
+  /** Read a waybill photo (a newer pick or a clear cancels the older read). */
+  const readWaybill = useCallback(
+    (file: File | null) => {
+      cancelOcr();
+      clearOcrFill();
+      if (!file) {
+        setOcr(IDLE_OCR);
+        return;
+      }
+      const ctrl = new AbortController();
+      ocrAbort.current = ctrl;
+      setOcr({ status: "reading", message: null, extract: null });
+      void (async () => {
+        try {
+          const base64 = await blobToBase64(file);
+          if (ctrl.signal.aborted) return;
+          const extract = await extractWaybill(base64, file.name, ctrl.signal);
+          if (ctrl.signal.aborted) return;
+          const patch = ocrPatch(extract);
+          const fill: Partial<IntakeValues> = {};
+          const keys: IntakeField[] = [];
+          for (const k of Object.keys(patch) as IntakeField[]) {
+            if (dirty.current.has(k)) continue;
+            fill[k] = patch[k];
+            keys.push(k);
+          }
+          setValues((v) => ({ ...v, ...fill }));
+          setAutoFilled(new Set(keys));
+          setOcr({ status: "done", message: null, extract });
+        } catch (err) {
+          if (ctrl.signal.aborted) return;
+          setOcr({
+            status: "error",
+            message: err instanceof WaybillError ? err.message : OCR_FALLBACK_MESSAGE,
+            extract: null,
+          });
+        } finally {
+          if (ocrAbort.current === ctrl) ocrAbort.current = null;
+        }
+      })();
+    },
+    [cancelOcr, clearOcrFill, setAutoFilled],
+  );
+
   // The waybill photo is evidence bytes, not a VLM input: sent unchanged.
+  // Every pick (upload, sample, Load sample) or clear also drives the OCR.
   const onWaybillPhoto = useCallback(
-    (file: File | null) =>
+    (file: File | null) => {
       pickFile(file, setWaybillUpload, waybillBase64, waybillUpload, async (f) => ({
         base64: await blobToBase64(f),
         mime: f.type,
-      })),
-    [pickFile, waybillUpload],
+      }));
+      readWaybill(file);
+    },
+    [pickFile, waybillUpload, readWaybill],
   );
 
   // Quick-pick: site photo assets piped through the upload handlers above,
@@ -277,9 +384,24 @@ export function WorkspaceClient() {
   );
   const decision = data?.verdict?.decision ?? data?.decision;
 
-  const onChange = useCallback((patch: Partial<IntakeValues>) => {
-    setValues((v) => ({ ...v, ...patch }));
-  }, []);
+  // Operator edits: the field becomes theirs (an OCR read never overwrites
+  // it) and loses its auto-filled mark. Emptying a field hands it back.
+  const onChange = useCallback(
+    (patch: Partial<IntakeValues>) => {
+      const edited = Object.keys(patch) as IntakeField[];
+      for (const k of edited) {
+        if (patch[k]) dirty.current.add(k);
+        else dirty.current.delete(k);
+      }
+      if (edited.some((k) => autoFilledRef.current.has(k))) {
+        const next = new Set(autoFilledRef.current);
+        edited.forEach((k) => next.delete(k));
+        setAutoFilled(next);
+      }
+      setValues((v) => ({ ...v, ...patch }));
+    },
+    [setAutoFilled],
+  );
 
   // ---- Submit -------------------------------------------------------
   const runInspection = useCallback(async () => {
@@ -296,6 +418,10 @@ export function WorkspaceClient() {
       setFormError("Weight must be a positive number (kg).");
       return;
     }
+    if (!values.stream) {
+      setFormError("Pick the waste stream.");
+      return;
+    }
     const moisture = parseFloat(values.moisture_pct);
     if (!isFinite(moisture) || moisture < 0 || moisture > 100) {
       setFormError("Moisture must be between 0 and 100 (%).");
@@ -310,6 +436,13 @@ export function WorkspaceClient() {
     // A photo picked just now may still be downscaling: wait for its bytes.
     // Loading is set first so a second click cannot start a parallel run.
     setLoading(true);
+    // Inspecting while the waybill is still being read: the operator's
+    // register stands; the read is cancelled.
+    const ocrDone = ocr.status === "done";
+    if (ocrAbort.current) {
+      cancelOcr();
+      setOcr(IDLE_OCR);
+    }
     await Promise.all(encoding.current.values());
 
     // Freeze the evidence photo for this inspection. Uploaded bytes become
@@ -332,6 +465,7 @@ export function WorkspaceClient() {
       age_h: age,
       loadFilename: loadUpload.filename,
       waybillFilename: waybillUpload.filename,
+      waybillOcr: ocrDone && waybillUpload.filename !== null,
     });
     // Wait copy only: whether a live model actually ran is stated by the
     // result's provenance badge, never assumed here.
@@ -381,7 +515,7 @@ export function WorkspaceClient() {
     } finally {
       setLoading(false);
     }
-  }, [values, loadUpload, waybillUpload.filename]);
+  }, [values, loadUpload, waybillUpload.filename, ocr.status, cancelOcr]);
 
   const onSubmit = useCallback(() => runInspection(), [runInspection]);
 
@@ -399,6 +533,10 @@ export function WorkspaceClient() {
     setBannerLit(false);
     setResultError(null);
     setFormError(null);
+    cancelOcr();
+    setOcr(IDLE_OCR);
+    setAutoFilled(new Set());
+    dirty.current.clear();
     setValues(EMPTY_FORM);
     setLoadUpload((prev) => {
       if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
@@ -411,7 +549,7 @@ export function WorkspaceClient() {
     loadBase64.current = null;
     waybillBase64.current = null;
     encoding.current.clear(); // an encode still in flight must not refill them
-  }, []);
+  }, [cancelOcr, setAutoFilled]);
 
   // Back to the intake with the register and photos kept: fix an input,
   // then inspect again.
@@ -506,6 +644,7 @@ export function WorkspaceClient() {
   return (
     <>
       <PageHeader crumb="Console / Weighbridge Gate A" title="New inspection">
+        <HelpDialog />
         <Button
           type="button"
           onClick={() => void loadSample()}
@@ -627,7 +766,7 @@ export function WorkspaceClient() {
 
             <p className="m-0 flex items-center gap-2.5 rounded-[10px] bg-brand/7 px-4 py-3 text-[13px] text-fg">
               <Info aria-hidden="true" className="h-4 w-4 shrink-0 text-brand" />
-              Upload the load photo and the waybill photo, fill in the register, then press Inspect load.
+              Upload the load photo and the waybill photo, check the auto-filled register, then press Inspect load.
             </p>
           </div>
 
@@ -644,6 +783,8 @@ export function WorkspaceClient() {
               waybillPhoto={waybillUpload}
               loading={loading}
               formError={formError}
+              ocr={ocr}
+              autoFilled={autoFilled}
             />
 
             <IdleVerdictCard
