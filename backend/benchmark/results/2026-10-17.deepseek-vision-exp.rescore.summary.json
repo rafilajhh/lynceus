@@ -4,20 +4,20 @@
     "reject": {
       "reject": 8,
       "escalate": 0,
-      "accept": 10,
-      "error": 2
+      "accept": 12,
+      "error": 0
     },
     "escalate": {
       "reject": 0,
-      "escalate": 6,
-      "accept": 12,
-      "error": 2
+      "escalate": 7,
+      "accept": 13,
+      "error": 0
     },
     "accept": {
       "reject": 0,
       "escalate": 0,
-      "accept": 36,
-      "error": 4
+      "accept": 40,
+      "error": 0
     }
   },
   "reject": {
@@ -36,22 +36,22 @@
     "p50": null,
     "p95": null
   },
-  "errors": 8,
-  "clean_accept_rate": 0.9,
+  "errors": 0,
+  "clean_accept_rate": 1.0,
   "clean_escalate_rate": 0.0,
   "clean_reject_rate": 0.0,
-  "review_rate": 0.08333333333333333,
-  "escalate_recall": 0.3,
+  "review_rate": 0.0875,
+  "escalate_recall": 0.35,
   "kind": "replay",
   "source_run": "2026-10-17.deepseek-vision-exp",
   "framing": "Re-scored: the recorded live model outputs of the 2026-10-17.deepseek-vision-exp AMD Token Factory run, replayed through the current decision rules. No new model calls.",
   "scope": "component validation on public RealWaste images — not field data from a plant",
-  "disclosure": "The replay scores every decision-rule change made after the live run, not one: hard contaminants are now read from the structured fields only, not from the model's prose (one recorded reject, plastic_277.jpg, came from the word 'concrete' in prose; that change alone moves metal precision from 0.86 to 0.90), and plastic film and textile are RDF feedstock and no longer escalate a load. Both changes were motivated by this same run's data, so these rates are not a held-out result. Only a new live run on unseen images can confirm them.",
+  "disclosure": "This live run was made under the current decision rules, which were tuned on the 2026-10-13 run of these same 80 images (hard contaminants read from the structured fields only; plastic film and textile treated as RDF feedstock). The images are not new to the rules, so these rates are not a held-out result. Only a live run on unseen images can confirm them.",
   "llm_note": "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence of 0.95. That confidence only fills the ocr_confidence gate value, which has no threshold and never moves the verdict. The VLM prompt was not changed for this re-score; latency is not re-measured (no model was called).",
   "date": "2026-10-17.deepseek-vision-exp",
   "rescored_on": "2026-10-17",
   "manifest_n": 80,
-  "complete": false,
+  "complete": true,
   "vlm_model": "DeepSeek-V4-Flash-Vision-Exp",
   "llm_model": "DeepSeek-V4-Flash",
   "provider": "amd-token-factory",
@@ -65,8 +65,8 @@
     "Metal": {
       "reject": 8,
       "escalate": 0,
-      "accept": 10,
-      "error": 2
+      "accept": 12,
+      "error": 0
     },
     "Glass": {
       "reject": 0,
@@ -76,9 +76,9 @@
     },
     "Food Organics": {
       "reject": 0,
-      "escalate": 3,
-      "accept": 2,
-      "error": 2
+      "escalate": 4,
+      "accept": 3,
+      "error": 0
     },
     "Vegetation": {
       "reject": 0,
@@ -95,14 +95,14 @@
     "Cardboard": {
       "reject": 0,
       "escalate": 0,
-      "accept": 8,
-      "error": 2
+      "accept": 10,
+      "error": 0
     },
     "Plastic": {
       "reject": 0,
       "escalate": 0,
-      "accept": 8,
-      "error": 2
+      "accept": 10,
+      "error": 0
     },
     "Textile Trash": {
       "reject": 0,
@@ -115,20 +115,20 @@
     "reject": {
       "reject": 8,
       "escalate": 0,
-      "accept": 10,
-      "error": 2
+      "accept": 12,
+      "error": 0
     },
     "escalate": {
       "reject": 0,
-      "escalate": 6,
-      "accept": 12,
-      "error": 2
+      "escalate": 7,
+      "accept": 13,
+      "error": 0
     },
     "accept": {
       "reject": 0,
       "escalate": 0,
-      "accept": 36,
-      "error": 4
+      "accept": 40,
+      "error": 0
     }
   },
   "changed": [],

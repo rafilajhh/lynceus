@@ -426,8 +426,8 @@ Problem-first, no kicker/eyebrow, no hero-metric grid:
    can stop a cement kiln." (`max-w-[16ch]`), one paragraph, CTAs **Open
    Inspection Console** (`primary lg`) → `/app` and **View Audit Trail**
    (`default lg`) → `/inspections`; right: proof photo `figure.panel` with
-   labeled mono captions (real REJECT-case waste photo, RealWaste CC BY 4.0
-   credit).
+   labeled mono captions (REJECT-case truck-bed photo, labelled as an
+   AI-generated illustration).
 2. **Proof strip** — "What one missed truck costs" (`smallcaps` head):
    three unequal columns (`lg:w-[1.25fr]` etc.) split by `lg:border-l
    border-seam`, each a `CountUpFigure` + label + source line under a

@@ -173,6 +173,21 @@ def require_auth(request: Request) -> str | None:
     return user
 
 
+def is_https(request: Request) -> bool:
+    """True when the browser reached us over HTTPS, directly or via the proxy.
+
+    The reverse proxy terminates TLS and forwards plain HTTP from the Docker
+    bridge, which uvicorn does not trust for ``X-Forwarded-Proto`` by default,
+    so the header is read here too (first hop).  Trusting it is safe for this
+    one use: a spoofed ``https`` only marks the client's own cookie
+    ``Secure``.  Plain-HTTP local dev and tests stay non-secure.
+    """
+    if request.url.scheme == "https":
+        return True
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    return forwarded.split(",")[0].strip().lower() == "https"
+
+
 def register_auth_routes(app: FastAPI) -> None:
     """Mount ``/auth/login``, ``/auth/logout`` and ``/auth/session``."""
 
@@ -211,7 +226,7 @@ def register_auth_routes(app: FastAPI) -> None:
             max_age=SESSION_MAX_AGE_S,
             httponly=True,
             samesite="lax",
-            secure=request.url.scheme == "https",
+            secure=is_https(request),
         )
         return {"authenticated": True, "user": settings.username}
 

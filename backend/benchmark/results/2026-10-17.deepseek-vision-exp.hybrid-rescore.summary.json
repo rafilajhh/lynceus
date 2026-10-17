@@ -3,7 +3,7 @@
   "source_run": "2026-10-17.deepseek-vision-exp",
   "framing": "What-if re-score: the recorded live VLM outputs of the 2026-10-17.deepseek-vision-exp AMD Token Factory run, fused with the CPU detector (YOLO26m fine-tuned on RealWaste + TACO) through the current decision rules. No new model calls.",
   "scope": "component validation on public RealWaste images — not field data from a plant",
-  "disclosure": "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the same sessions as these 80 held-out images (one item per frame on the same floor; the held-out images were excluded from training) plus TACO litter photos. The default thresholds were picked on a separate val split (RealWaste val + TACO val; not trained on, but used for checkpoint selection) by a rule committed before this model was trained, and the sweep below is read on this test set. It shows the fusion rules work as designed on these images, not that the detector works on a truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were changed after the live run, using that run's data.",
+  "disclosure": "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the same sessions as these 80 held-out images (one item per frame on the same floor; the held-out images were excluded from training) plus TACO litter photos. The default thresholds were picked on a separate val split (RealWaste val + TACO val; not trained on, but used for checkpoint selection) by a rule committed before this model was trained, and the sweep below is read on this test set. It shows the fusion rules work as designed on these images, not that the detector works on a truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were tuned on the 2026-10-13 run of these same images.",
   "llm_note": "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence of 0.95. That confidence only fills the ocr_confidence gate value, which has no threshold and never moves the verdict. The VLM prompt was not changed for this re-score; latency is not re-measured (no model was called).",
   "rescored_on": "2026-10-17",
   "manifest_n": 80,
@@ -19,31 +19,31 @@
   },
   "table": {
     "vlm_only": {
-      "clean_accept_rate": 0.9,
-      "review_rate": 0.08333333333333333,
+      "clean_accept_rate": 1.0,
+      "review_rate": 0.0875,
       "metal_reject_recall": 0.4,
       "metal_reject_precision": 1.0,
-      "metal_accepted": 10,
-      "escalate_recall": 0.3,
-      "gate_accuracy": 0.625
+      "metal_accepted": 12,
+      "escalate_recall": 0.35,
+      "gate_accuracy": 0.6875
     },
     "hybrid_light_escalation_on": {
-      "clean_accept_rate": 0.85,
-      "review_rate": 0.4166666666666667,
+      "clean_accept_rate": 0.925,
+      "review_rate": 0.4375,
       "metal_reject_recall": 0.4,
       "metal_reject_precision": 1.0,
       "metal_accepted": 0,
-      "escalate_recall": 0.9,
-      "gate_accuracy": 0.75
+      "escalate_recall": 1.0,
+      "gate_accuracy": 0.8125
     },
     "hybrid_light_escalation_off": {
-      "clean_accept_rate": 0.875,
-      "review_rate": 0.2361111111111111,
+      "clean_accept_rate": 0.975,
+      "review_rate": 0.25,
       "metal_reject_recall": 0.4,
       "metal_reject_precision": 1.0,
       "metal_accepted": 0,
-      "escalate_recall": 0.3,
-      "gate_accuracy": 0.6125
+      "escalate_recall": 0.35,
+      "gate_accuracy": 0.675
     },
     "detector_only_degraded": {
       "clean_accept_rate": 0.0,
@@ -58,10 +58,10 @@
   "variants": {
     "vlm_only": {
       "n": 80,
-      "errors": 8,
-      "clean_accept_rate": 0.9,
-      "review_rate": 0.08333333333333333,
-      "escalate_recall": 0.3,
+      "errors": 0,
+      "clean_accept_rate": 1.0,
+      "review_rate": 0.0875,
+      "escalate_recall": 0.35,
       "metal_reject": {
         "precision": 1.0,
         "recall": 0.4,
@@ -69,38 +69,38 @@
         "fp": 0,
         "fn": 12
       },
-      "metal_accepted": 10,
-      "gate_accuracy": 0.625,
-      "gate_correct": "50/80",
-      "graded": 72,
+      "metal_accepted": 12,
+      "gate_accuracy": 0.6875,
+      "gate_correct": "55/80",
+      "graded": 80,
       "confusion": {
         "reject": {
           "reject": 8,
           "escalate": 0,
-          "accept": 10,
-          "error": 2
+          "accept": 12,
+          "error": 0
         },
         "escalate": {
           "reject": 0,
-          "escalate": 6,
-          "accept": 12,
-          "error": 2
+          "escalate": 7,
+          "accept": 13,
+          "error": 0
         },
         "accept": {
           "reject": 0,
           "escalate": 0,
-          "accept": 36,
-          "error": 4
+          "accept": 40,
+          "error": 0
         }
       },
       "detector_gate_failed": 0
     },
     "hybrid_light_escalation_on": {
       "n": 80,
-      "errors": 8,
-      "clean_accept_rate": 0.85,
-      "review_rate": 0.4166666666666667,
-      "escalate_recall": 0.9,
+      "errors": 0,
+      "clean_accept_rate": 0.925,
+      "review_rate": 0.4375,
+      "escalate_recall": 1.0,
       "metal_reject": {
         "precision": 1.0,
         "recall": 0.4,
@@ -109,30 +109,30 @@
         "fn": 12
       },
       "metal_accepted": 0,
-      "gate_accuracy": 0.75,
-      "gate_correct": "60/80",
-      "graded": 72,
+      "gate_accuracy": 0.8125,
+      "gate_correct": "65/80",
+      "graded": 80,
       "confusion": {
         "reject": {
           "reject": 8,
-          "escalate": 10,
+          "escalate": 12,
           "accept": 0,
-          "error": 2
+          "error": 0
         },
         "escalate": {
           "reject": 0,
-          "escalate": 18,
+          "escalate": 20,
           "accept": 0,
-          "error": 2
+          "error": 0
         },
         "accept": {
           "reject": 0,
-          "escalate": 2,
-          "accept": 34,
-          "error": 4
+          "escalate": 3,
+          "accept": 37,
+          "error": 0
         }
       },
-      "detector_gate_failed": 25,
+      "detector_gate_failed": 29,
       "changed_vs_vlm_only": [
         {
           "image": "food_organics_1.jpg",
@@ -165,7 +165,19 @@
           "hybrid": "escalate"
         },
         {
+          "image": "metal_79.jpg",
+          "expected": "reject",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
           "image": "glass_121.jpg",
+          "expected": "escalate",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "food_organics_117.jpg",
           "expected": "escalate",
           "vlm_only": "accept",
           "hybrid": "escalate"
@@ -225,6 +237,12 @@
           "hybrid": "escalate"
         },
         {
+          "image": "cardboard_277.jpg",
+          "expected": "accept",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
           "image": "metal_274.jpg",
           "expected": "reject",
           "vlm_only": "accept",
@@ -233,6 +251,12 @@
         {
           "image": "plastic_645.jpg",
           "expected": "accept",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "metal_313.jpg",
+          "expected": "reject",
           "vlm_only": "accept",
           "hybrid": "escalate"
         },
@@ -282,10 +306,10 @@
     },
     "hybrid_light_escalation_off": {
       "n": 80,
-      "errors": 8,
-      "clean_accept_rate": 0.875,
-      "review_rate": 0.2361111111111111,
-      "escalate_recall": 0.3,
+      "errors": 0,
+      "clean_accept_rate": 0.975,
+      "review_rate": 0.25,
+      "escalate_recall": 0.35,
       "metal_reject": {
         "precision": 1.0,
         "recall": 0.4,
@@ -294,33 +318,39 @@
         "fn": 12
       },
       "metal_accepted": 0,
-      "gate_accuracy": 0.6125,
-      "gate_correct": "49/80",
-      "graded": 72,
+      "gate_accuracy": 0.675,
+      "gate_correct": "54/80",
+      "graded": 80,
       "confusion": {
         "reject": {
           "reject": 8,
-          "escalate": 10,
+          "escalate": 12,
           "accept": 0,
-          "error": 2
+          "error": 0
         },
         "escalate": {
           "reject": 0,
-          "escalate": 6,
-          "accept": 12,
-          "error": 2
+          "escalate": 7,
+          "accept": 13,
+          "error": 0
         },
         "accept": {
           "reject": 0,
           "escalate": 1,
-          "accept": 35,
-          "error": 4
+          "accept": 39,
+          "error": 0
         }
       },
-      "detector_gate_failed": 11,
+      "detector_gate_failed": 13,
       "changed_vs_vlm_only": [
         {
           "image": "metal_40.jpg",
+          "expected": "reject",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "metal_79.jpg",
           "expected": "reject",
           "vlm_only": "accept",
           "hybrid": "escalate"
@@ -340,6 +370,12 @@
         {
           "image": "plastic_645.jpg",
           "expected": "accept",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "metal_313.jpg",
+          "expected": "reject",
           "vlm_only": "accept",
           "hybrid": "escalate"
         },
@@ -460,10 +496,10 @@
     "0.05": {
       "light_escalation_on": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.775,
-        "review_rate": 0.4583333333333333,
-        "escalate_recall": 0.9,
+        "errors": 0,
+        "clean_accept_rate": 0.85,
+        "review_rate": 0.475,
+        "escalate_recall": 1.0,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -472,30 +508,30 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.7125,
-        "gate_correct": "57/80",
-        "graded": 72,
+        "gate_accuracy": 0.775,
+        "gate_correct": "62/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 18,
+            "escalate": 20,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "accept": {
             "reject": 0,
-            "escalate": 5,
-            "accept": 31,
-            "error": 4
+            "escalate": 6,
+            "accept": 34,
+            "error": 0
           }
         },
-        "detector_gate_failed": 28,
+        "detector_gate_failed": 32,
         "changed_vs_vlm_only": [
           {
             "image": "food_organics_1.jpg",
@@ -528,7 +564,19 @@
             "hybrid": "escalate"
           },
           {
+            "image": "metal_79.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
             "expected": "escalate",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -600,6 +648,12 @@
             "hybrid": "escalate"
           },
           {
+            "image": "cardboard_277.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "metal_274.jpg",
             "expected": "reject",
             "vlm_only": "accept",
@@ -608,6 +662,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -663,10 +723,10 @@
       },
       "light_escalation_off": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.8,
-        "review_rate": 0.2777777777777778,
-        "escalate_recall": 0.3,
+        "errors": 0,
+        "clean_accept_rate": 0.9,
+        "review_rate": 0.2875,
+        "escalate_recall": 0.35,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -675,33 +735,39 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.575,
-        "gate_correct": "46/80",
-        "graded": 72,
+        "gate_accuracy": 0.6375,
+        "gate_correct": "51/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 6,
-            "accept": 12,
-            "error": 2
+            "escalate": 7,
+            "accept": 13,
+            "error": 0
           },
           "accept": {
             "reject": 0,
             "escalate": 4,
-            "accept": 32,
-            "error": 4
+            "accept": 36,
+            "error": 0
           }
         },
-        "detector_gate_failed": 14,
+        "detector_gate_failed": 16,
         "changed_vs_vlm_only": [
           {
             "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_79.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -733,6 +799,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -790,10 +862,10 @@
     "0.1": {
       "light_escalation_on": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.825,
-        "review_rate": 0.4305555555555556,
-        "escalate_recall": 0.9,
+        "errors": 0,
+        "clean_accept_rate": 0.9,
+        "review_rate": 0.45,
+        "escalate_recall": 1.0,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -802,30 +874,30 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.7375,
-        "gate_correct": "59/80",
-        "graded": 72,
+        "gate_accuracy": 0.8,
+        "gate_correct": "64/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 18,
+            "escalate": 20,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "accept": {
             "reject": 0,
-            "escalate": 3,
-            "accept": 33,
-            "error": 4
+            "escalate": 4,
+            "accept": 36,
+            "error": 0
           }
         },
-        "detector_gate_failed": 26,
+        "detector_gate_failed": 30,
         "changed_vs_vlm_only": [
           {
             "image": "food_organics_1.jpg",
@@ -858,7 +930,19 @@
             "hybrid": "escalate"
           },
           {
+            "image": "metal_79.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
             "expected": "escalate",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -918,6 +1002,12 @@
             "hybrid": "escalate"
           },
           {
+            "image": "cardboard_277.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "metal_274.jpg",
             "expected": "reject",
             "vlm_only": "accept",
@@ -926,6 +1016,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -981,10 +1077,10 @@
       },
       "light_escalation_off": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.85,
-        "review_rate": 0.25,
-        "escalate_recall": 0.3,
+        "errors": 0,
+        "clean_accept_rate": 0.95,
+        "review_rate": 0.2625,
+        "escalate_recall": 0.35,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -993,33 +1089,39 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.6,
-        "gate_correct": "48/80",
-        "graded": 72,
+        "gate_accuracy": 0.6625,
+        "gate_correct": "53/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 6,
-            "accept": 12,
-            "error": 2
+            "escalate": 7,
+            "accept": 13,
+            "error": 0
           },
           "accept": {
             "reject": 0,
             "escalate": 2,
-            "accept": 34,
-            "error": 4
+            "accept": 38,
+            "error": 0
           }
         },
-        "detector_gate_failed": 12,
+        "detector_gate_failed": 14,
         "changed_vs_vlm_only": [
           {
             "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_79.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1039,6 +1141,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -1096,10 +1204,10 @@
     "0.25": {
       "light_escalation_on": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.85,
-        "review_rate": 0.4166666666666667,
-        "escalate_recall": 0.9,
+        "errors": 0,
+        "clean_accept_rate": 0.925,
+        "review_rate": 0.4375,
+        "escalate_recall": 1.0,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -1108,30 +1216,30 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.75,
-        "gate_correct": "60/80",
-        "graded": 72,
+        "gate_accuracy": 0.8125,
+        "gate_correct": "65/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 18,
+            "escalate": 20,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "accept": {
             "reject": 0,
-            "escalate": 2,
-            "accept": 34,
-            "error": 4
+            "escalate": 3,
+            "accept": 37,
+            "error": 0
           }
         },
-        "detector_gate_failed": 25,
+        "detector_gate_failed": 29,
         "changed_vs_vlm_only": [
           {
             "image": "food_organics_1.jpg",
@@ -1164,7 +1272,19 @@
             "hybrid": "escalate"
           },
           {
+            "image": "metal_79.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
             "expected": "escalate",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1224,6 +1344,12 @@
             "hybrid": "escalate"
           },
           {
+            "image": "cardboard_277.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "metal_274.jpg",
             "expected": "reject",
             "vlm_only": "accept",
@@ -1232,6 +1358,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -1281,10 +1413,10 @@
       },
       "light_escalation_off": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.875,
-        "review_rate": 0.2361111111111111,
-        "escalate_recall": 0.3,
+        "errors": 0,
+        "clean_accept_rate": 0.975,
+        "review_rate": 0.25,
+        "escalate_recall": 0.35,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -1293,33 +1425,39 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.6125,
-        "gate_correct": "49/80",
-        "graded": 72,
+        "gate_accuracy": 0.675,
+        "gate_correct": "54/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 6,
-            "accept": 12,
-            "error": 2
+            "escalate": 7,
+            "accept": 13,
+            "error": 0
           },
           "accept": {
             "reject": 0,
             "escalate": 1,
-            "accept": 35,
-            "error": 4
+            "accept": 39,
+            "error": 0
           }
         },
-        "detector_gate_failed": 11,
+        "detector_gate_failed": 13,
         "changed_vs_vlm_only": [
           {
             "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_79.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1339,6 +1477,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -1390,10 +1534,10 @@
     "0.35": {
       "light_escalation_on": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.85,
-        "review_rate": 0.4166666666666667,
-        "escalate_recall": 0.9,
+        "errors": 0,
+        "clean_accept_rate": 0.925,
+        "review_rate": 0.4375,
+        "escalate_recall": 1.0,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -1402,30 +1546,30 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.75,
-        "gate_correct": "60/80",
-        "graded": 72,
+        "gate_accuracy": 0.8125,
+        "gate_correct": "65/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 18,
+            "escalate": 20,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "accept": {
             "reject": 0,
-            "escalate": 2,
-            "accept": 34,
-            "error": 4
+            "escalate": 3,
+            "accept": 37,
+            "error": 0
           }
         },
-        "detector_gate_failed": 25,
+        "detector_gate_failed": 29,
         "changed_vs_vlm_only": [
           {
             "image": "food_organics_1.jpg",
@@ -1458,7 +1602,19 @@
             "hybrid": "escalate"
           },
           {
+            "image": "metal_79.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
             "expected": "escalate",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1518,6 +1674,12 @@
             "hybrid": "escalate"
           },
           {
+            "image": "cardboard_277.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "metal_274.jpg",
             "expected": "reject",
             "vlm_only": "accept",
@@ -1526,6 +1688,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -1575,10 +1743,10 @@
       },
       "light_escalation_off": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.875,
-        "review_rate": 0.2361111111111111,
-        "escalate_recall": 0.3,
+        "errors": 0,
+        "clean_accept_rate": 0.975,
+        "review_rate": 0.25,
+        "escalate_recall": 0.35,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -1587,33 +1755,39 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.6125,
-        "gate_correct": "49/80",
-        "graded": 72,
+        "gate_accuracy": 0.675,
+        "gate_correct": "54/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 6,
-            "accept": 12,
-            "error": 2
+            "escalate": 7,
+            "accept": 13,
+            "error": 0
           },
           "accept": {
             "reject": 0,
             "escalate": 1,
-            "accept": 35,
-            "error": 4
+            "accept": 39,
+            "error": 0
           }
         },
-        "detector_gate_failed": 11,
+        "detector_gate_failed": 13,
         "changed_vs_vlm_only": [
           {
             "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_79.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1633,6 +1807,12 @@
           {
             "image": "plastic_645.jpg",
             "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
+            "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
           },
@@ -1684,10 +1864,10 @@
     "0.5": {
       "light_escalation_on": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.875,
-        "review_rate": 0.4027777777777778,
-        "escalate_recall": 0.9,
+        "errors": 0,
+        "clean_accept_rate": 0.95,
+        "review_rate": 0.425,
+        "escalate_recall": 1.0,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -1696,30 +1876,30 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.7625,
-        "gate_correct": "61/80",
-        "graded": 72,
+        "gate_accuracy": 0.825,
+        "gate_correct": "66/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 18,
+            "escalate": 20,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "accept": {
             "reject": 0,
-            "escalate": 1,
-            "accept": 35,
-            "error": 4
+            "escalate": 2,
+            "accept": 38,
+            "error": 0
           }
         },
-        "detector_gate_failed": 24,
+        "detector_gate_failed": 28,
         "changed_vs_vlm_only": [
           {
             "image": "food_organics_1.jpg",
@@ -1752,7 +1932,19 @@
             "hybrid": "escalate"
           },
           {
+            "image": "metal_79.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
             "expected": "escalate",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1812,7 +2004,19 @@
             "hybrid": "escalate"
           },
           {
+            "image": "cardboard_277.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
             "image": "metal_274.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1863,10 +2067,10 @@
       },
       "light_escalation_off": {
         "n": 80,
-        "errors": 8,
-        "clean_accept_rate": 0.9,
-        "review_rate": 0.2222222222222222,
-        "escalate_recall": 0.3,
+        "errors": 0,
+        "clean_accept_rate": 1.0,
+        "review_rate": 0.2375,
+        "escalate_recall": 0.35,
         "metal_reject": {
           "precision": 1.0,
           "recall": 0.4,
@@ -1875,33 +2079,39 @@
           "fn": 12
         },
         "metal_accepted": 0,
-        "gate_accuracy": 0.625,
-        "gate_correct": "50/80",
-        "graded": 72,
+        "gate_accuracy": 0.6875,
+        "gate_correct": "55/80",
+        "graded": 80,
         "confusion": {
           "reject": {
             "reject": 8,
-            "escalate": 10,
+            "escalate": 12,
             "accept": 0,
-            "error": 2
+            "error": 0
           },
           "escalate": {
             "reject": 0,
-            "escalate": 6,
-            "accept": 12,
-            "error": 2
+            "escalate": 7,
+            "accept": 13,
+            "error": 0
           },
           "accept": {
             "reject": 0,
             "escalate": 0,
-            "accept": 36,
-            "error": 4
+            "accept": 40,
+            "error": 0
           }
         },
-        "detector_gate_failed": 10,
+        "detector_gate_failed": 12,
         "changed_vs_vlm_only": [
           {
             "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_79.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"
@@ -1914,6 +2124,12 @@
           },
           {
             "image": "metal_274.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_313.jpg",
             "expected": "reject",
             "vlm_only": "accept",
             "hybrid": "escalate"

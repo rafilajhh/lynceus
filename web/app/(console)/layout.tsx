@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchSession } from "@/lib/auth-api";
 import { SideNavbar } from "@/components/shell/side-navbar";
+import { SiteFooter } from "@/components/shell/site-footer";
 import { TopBar } from "@/components/shell/top-bar";
 
 /**
@@ -55,10 +56,11 @@ export default function ConsoleLayout({
       {/* md:ml-60 expanded (240px), md:ml-16 collapsed (64px) — follows side navbar width */}
       <div className={`flex flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? "md:ml-16" : "md:ml-60"}`}>
         <TopBar showNav={false} showWordmark={false} />
-        {/* pb-20 on mobile: clears the fixed bottom nav (h-16 = 64px + breathing room) */}
-        <main className="mx-auto w-full max-w-[1320px] flex-1 px-6 py-6 pb-20 md:pb-14">
+        <main className="mx-auto w-full max-w-[1320px] flex-1 px-6 py-6 pb-14">
           {children}
         </main>
+        {/* mb-16 on mobile: the footer clears the fixed bottom nav (h-16 = 64px) */}
+        <SiteFooter className="mb-16 md:mb-0" />
       </div>
     </>
   );

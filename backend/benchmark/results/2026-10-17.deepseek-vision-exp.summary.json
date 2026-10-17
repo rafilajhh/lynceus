@@ -4,20 +4,20 @@
     "reject": {
       "reject": 8,
       "escalate": 0,
-      "accept": 10,
-      "error": 2
+      "accept": 12,
+      "error": 0
     },
     "escalate": {
       "reject": 0,
-      "escalate": 6,
-      "accept": 12,
-      "error": 2
+      "escalate": 7,
+      "accept": 13,
+      "error": 0
     },
     "accept": {
       "reject": 0,
       "escalate": 0,
-      "accept": 36,
-      "error": 4
+      "accept": 40,
+      "error": 0
     }
   },
   "reject": {
@@ -29,35 +29,35 @@
     "fn": 12
   },
   "latency_ms": {
-    "p50": 10167.179800000667,
-    "p95": 15855.506600000808
+    "p50": 10461.865799999941,
+    "p95": 15984.607200000028
   },
   "total_ms": {
-    "p50": 11934.5,
-    "p95": 25272.2
+    "p50": 12165.6,
+    "p95": 27075.1
   },
-  "errors": 8,
-  "clean_accept_rate": 0.9,
+  "errors": 0,
+  "clean_accept_rate": 1.0,
   "clean_escalate_rate": 0.0,
   "clean_reject_rate": 0.0,
-  "review_rate": 0.08333333333333333,
-  "escalate_recall": 0.3,
+  "review_rate": 0.0875,
+  "escalate_recall": 0.35,
   "kind": "live",
   "framing": "component validation on public RealWaste images — not field data from a plant",
   "date": "2026-10-17.deepseek-vision-exp",
   "manifest_n": 80,
-  "complete": false,
+  "complete": true,
   "attempt_stats": {
-    "attempts": 80,
-    "retried": 0,
+    "attempts": 90,
+    "retried": 10,
     "total_ms": {
-      "p95": 46087.3,
-      "max": 46209.2
+      "p95": 46109.0,
+      "max": 46673.0
     }
   },
   "vlm_model": "DeepSeek-V4-Flash-Vision-Exp",
   "vlm_models": {
-    "DeepSeek-V4-Flash-Vision-Exp": 72
+    "DeepSeek-V4-Flash-Vision-Exp": 80
   },
   "llm_model": "DeepSeek-V4-Flash",
   "provider": "amd-token-factory",
@@ -68,8 +68,8 @@
     "Metal": {
       "reject": 8,
       "escalate": 0,
-      "accept": 10,
-      "error": 2
+      "accept": 12,
+      "error": 0
     },
     "Glass": {
       "reject": 0,
@@ -79,9 +79,9 @@
     },
     "Food Organics": {
       "reject": 0,
-      "escalate": 3,
-      "accept": 2,
-      "error": 2
+      "escalate": 4,
+      "accept": 3,
+      "error": 0
     },
     "Vegetation": {
       "reject": 0,
@@ -98,14 +98,14 @@
     "Cardboard": {
       "reject": 0,
       "escalate": 0,
-      "accept": 8,
-      "error": 2
+      "accept": 10,
+      "error": 0
     },
     "Plastic": {
       "reject": 0,
       "escalate": 0,
-      "accept": 8,
-      "error": 2
+      "accept": 10,
+      "error": 0
     },
     "Textile Trash": {
       "reject": 0,

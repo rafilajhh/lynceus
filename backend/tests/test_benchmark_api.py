@@ -76,6 +76,83 @@ def test_latest_replay_is_null_without_a_matching_rescore(client):
     assert c.get("/benchmark/latest").json()["replay"] is None
 
 
+def _hybrid(source_run, metal_accepted=0):
+    """A minimal ``hybrid_replay`` summary in the committed shape."""
+    return {
+        "kind": "hybrid_replay",
+        "source_run": source_run,
+        "framing": "What-if re-score: recorded VLM outputs fused with the CPU detector.",
+        "disclosure": "In-domain and optimistic.",
+        "vlm_model": "DeepSeek-V4-Flash-Vision-Exp",
+        "detector": {"model": "yolo26m-realwaste-taco", "runtime": "onnxruntime-cpu",
+                     "hard_conf_default": 0.35, "light_conf": 0.05},
+        "table": {"hybrid_light_escalation_on": {
+            "clean_accept_rate": 0.85, "review_rate": 0.42, "metal_reject_recall": 0.4,
+            "metal_reject_precision": 1.0, "metal_accepted": metal_accepted,
+            "escalate_recall": 0.9, "gate_accuracy": 0.75}},
+        "variants": {"hybrid_light_escalation_on": {
+            "n": 80, "errors": 8, "gate_correct": "60/80", "graded": 72,
+            "metal_reject": {"precision": 1.0, "recall": 0.4, "tp": 8, "fp": 0, "fn": 12},
+            "metal_accepted": metal_accepted,
+            "confusion": {
+                "reject": {"reject": 8, "escalate": 10, "accept": 0, "error": 2},
+                "escalate": {"reject": 0, "escalate": 18, "accept": 0, "error": 2},
+                "accept": {"reject": 0, "escalate": 2, "accept": 34, "error": 4}}}},
+    }
+
+
+def test_latest_attaches_the_hybrid_of_this_run(client):
+    c, root = client
+    results = root / "results"
+    _write(results, "2026-10-17.x.summary.json", {"kind": "live", "date": "2026-10-17.x", "n": 80})
+    _write(results, "2026-10-17.x.hybrid-rescore.summary.json", _hybrid("2026-10-17.x"))
+    # Sorts newer by name but re-scores an older run: never attached here.
+    _write(results, "2026-10-17.zz-hybrid.summary.json", _hybrid("2026-10-13", metal_accepted=3))
+    body = c.get("/benchmark/latest").json()
+    assert body["date"] == "2026-10-17.x" and body["n"] == 80
+    hybrid = body["hybrid"]
+    assert hybrid["kind"] == "hybrid_replay" and hybrid["source_run"] == "2026-10-17.x"
+    shipped = hybrid["table"]["hybrid_light_escalation_on"]
+    assert shipped["metal_accepted"] == 0 and shipped["gate_accuracy"] == 0.75
+    variant = hybrid["variants"]["hybrid_light_escalation_on"]
+    assert variant["confusion"]["reject"]["escalate"] == 10
+    assert hybrid["detector"]["model"] == "yolo26m-realwaste-taco"
+    assert hybrid["framing"] and hybrid["disclosure"]
+
+
+def test_latest_hybrid_is_null_without_a_matching_rescore(client):
+    c, root = client
+    _write(root / "results", "2026-10-17.summary.json", {"kind": "live", "date": "2026-10-17"})
+    _write(root / "results", "2026-10-16.hybrid-rescore.summary.json", _hybrid("2026-10-13"))
+    body = c.get("/benchmark/latest").json()
+    assert body["date"] == "2026-10-17"
+    assert body["hybrid"] is None and body["replay"] is None
+
+
+def test_a_hybrid_named_like_a_live_run_is_never_the_live_run(client):
+    c, root = client
+    _write(root / "results", "2026-10-13.summary.json", {"date": "2026-10-13"})
+    _write(root / "results", "2026-10-14.summary.json", _hybrid("2026-10-13"))
+    body = c.get("/benchmark/latest").json()
+    assert body["date"] == "2026-10-13"
+    assert body["hybrid"]["source_run"] == "2026-10-13"
+
+
+def test_committed_latest_carries_the_shipped_gate_hybrid():
+    """The committed newest live run has its VLM + CPU detector re-score attached."""
+    from lynceus import impact
+
+    results = Path(__file__).resolve().parents[1] / "benchmark" / "results"
+    live = next(impact.benchmark_summaries(results, "live"))[0]
+    found = impact.matching_summary(results, "hybrid_replay", live)
+    assert found is not None
+    hybrid, name = found
+    assert name.endswith(".hybrid-rescore.summary.json")
+    assert hybrid["source_run"] == live["date"]
+    assert hybrid["vlm_model"] == live["vlm_model"]
+    assert "metal_accepted" in hybrid["table"]["hybrid_light_escalation_on"]
+
+
 def test_latest_is_404_when_only_a_replay_exists(client):
     c, root = client
     _write(root / "results", "2026-10-13.rescore.summary.json",

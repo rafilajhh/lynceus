@@ -74,6 +74,23 @@ def test_login_success_sets_httponly_cookie(client):
     assert "secure" not in cookie.lower()
 
 
+def test_login_cookie_is_secure_behind_a_tls_terminating_proxy(client):
+    # The proxy terminates TLS and forwards plain HTTP with X-Forwarded-Proto.
+    response = client.post(
+        "/auth/login",
+        json={"username": _USERNAME, "password": _PASSWORD},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 200
+    assert "secure" in response.headers["set-cookie"].lower()
+    plain = client.post(
+        "/auth/login",
+        json={"username": _USERNAME, "password": _PASSWORD},
+        headers={"X-Forwarded-Proto": "http"},
+    )
+    assert "secure" not in plain.headers["set-cookie"].lower()
+
+
 def test_login_accepts_sha256_env_over_plaintext(tmp_path, monkeypatch):
     monkeypatch.setenv(auth.LYNCEUS_ADMIN_USERNAME_ENV, _USERNAME)
     monkeypatch.setenv(auth.LYNCEUS_ADMIN_PASSWORD_ENV, "ignored plaintext")

@@ -387,3 +387,77 @@ def test_value_model_prefers_rescore_file_and_falls_back(tmp_path):
 
 def test_value_model_none_without_benchmark(tmp_path):
     assert impact.value_model_from_benchmark(tmp_path) is None
+
+
+def _hybrid_summary(source_run: str, metal_accepted: int = 0) -> dict:
+    """Shipped-gate re-score: metal 8 rejected, the rest held (or accepted)."""
+    held = 12 - metal_accepted
+    return {
+        "kind": "hybrid_replay",
+        "source_run": source_run,
+        "vlm_model": "DeepSeek-V4-Flash-Vision-Exp",
+        "detector": {"model": "yolo26m-realwaste-taco", "runtime": "onnxruntime-cpu"},
+        "disclosure": "Hybrid fixture disclosure.",
+        "variants": {
+            "vlm_only": {"confusion": _SUMMARY["confusion"], "metal_reject": {"recall": 0.9}},
+            "hybrid_light_escalation_on": {
+                "metal_reject": {"precision": 1.0, "recall": 0.4, "tp": 8, "fp": 0, "fn": 12},
+                "metal_accepted": metal_accepted,
+                "confusion": {
+                    "reject": {"reject": 8, "escalate": held, "accept": metal_accepted, "error": 0},
+                    "escalate": {"reject": 0, "escalate": 20, "accept": 0, "error": 0},
+                    "accept": {"reject": 0, "escalate": 3, "accept": 37, "error": 0},
+                },
+            },
+        },
+    }
+
+
+def test_hybrid_rates_hold_unrejected_metal_instead_of_accepting_it():
+    rates = impact.benchmark_rates(_hybrid_summary("run"))
+    assert rates["hard_reject_rate"] == pytest.approx(0.4)
+    # metal_accepted 0 of 20: every unrejected metal load goes to an operator.
+    assert rates["hard_escalate_rate"] == pytest.approx(0.6)
+    assert rates["clean_reject_rate"] == 0.0
+    assert rates["clean_escalate_rate"] == pytest.approx(3 / 40)
+    leaky = impact.benchmark_rates(_hybrid_summary("run", metal_accepted=2))
+    assert 1 - leaky["hard_reject_rate"] - leaky["hard_escalate_rate"] == pytest.approx(2 / 20)
+
+
+def test_hybrid_escape_is_only_the_manual_misses_of_held_metal():
+    model = impact.value_model(_hybrid_summary("run"), "x.hybrid-rescore.summary.json")
+    base = model["scenarios"]["base"]
+    # 20 hard loads per 1,000; 40% rejected, 60% held, manual check misses 30%:
+    # escaped = 20 × 0.6 × 0.3, not 20 × (1 − 0.4).
+    assert base["with"]["escaped_hard_loads"] == pytest.approx(3.6)
+    assert model["benchmark_source"].startswith(
+        "DeepSeek-V4-Flash-Vision-Exp + yolo26m-realwaste-taco CPU detector")
+    measured = [row for row in model["parameters"] if row["key"] == "hard_reject_rate"][0]
+    assert "shipped gate" in measured["rationale"]
+    assert "held for an operator, not accepted" in measured["rationale"]
+    assert "Hybrid fixture disclosure." in measured["rationale"]
+
+
+def test_value_model_prefers_the_newest_live_runs_hybrid(tmp_path):
+    import json
+
+    def write(name, body):
+        (tmp_path / name).write_text(json.dumps(body), encoding="utf-8")
+
+    write("2026-10-13.summary.json", {**_SUMMARY, "date": "2026-10-13"})
+    # A hybrid of the old run only: the fallback list still wins.
+    write("2026-10-16.hybrid-rescore.summary.json", _hybrid_summary("2026-10-13"))
+    write("2026-10-17.x.summary.json", {**_SUMMARY, "kind": "live", "date": "2026-10-17.x"})
+    model = impact.value_model_from_benchmark(tmp_path)
+    assert model["benchmark_file"] == "2026-10-13.summary.json"
+
+    write("2026-10-17.x.hybrid-rescore.summary.json", _hybrid_summary("2026-10-17.x"))
+    model = impact.value_model_from_benchmark(tmp_path)
+    assert model["benchmark_file"] == "2026-10-17.x.hybrid-rescore.summary.json"
+    assert model["scenarios"]["base"]["with"]["escaped_hard_loads"] == pytest.approx(3.6)
+
+
+def test_committed_value_model_runs_on_the_shipped_gate():
+    model = impact.value_model_from_benchmark()
+    assert model["benchmark_file"].endswith(".hybrid-rescore.summary.json")
+    assert "yolo26m" in model["benchmark_source"]

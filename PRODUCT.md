@@ -21,13 +21,13 @@ Lynceus is an AI gate inspector for alternative-fuel (RDF) facilities. It fuses 
 
 ## Positioning
 
-AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route scoring) + tamper-evident audit trail — not a chatbot, not a dashboard. The decision engine, AMD AI layer, fusion pipeline, and web app are all part of this project.
+AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route scoring) + tamper-evident audit trail — not a chatbot, not a dashboard. The decision engine (`lynceus_engine`) is the team's own earlier MIT engine, vendored in on 13 Oct 2026; the AMD AI layer, the CPU detector, the fusion pipeline, the audit trail and the web app were built during the hackathon.
 
 ## Operating Context
 
 - Trucks stop at the weighbridge 15–30 s; operator uploads/submits photo + surat jalan + weight; verdict ticket must be readable in seconds (traffic-light + reasons).
 - Demo runs live at a public URL; AI served via AMD Token Factory (AMD's shared OpenAI-compatible endpoint catalogue on AMD GPUs; env-var switch to any OpenAI-compatible server, zero code change).
-- Demo cases grounded in real Indonesian data: arm-roll trucks ~5.2 t/trip, MSW moisture 40–60%, PUPR surat jalan format, RealWaste photos (CC BY 4.0).
+- Demo cases grounded in real Indonesian data: arm-roll trucks ~5.2 t/trip, MSW moisture 40–60%, PUPR surat jalan format; the demo truck-bed photos and the waybill are AI-generated, fictitious illustrations; the benchmark uses RealWaste photos (licence terms disagree, CC BY-NC-SA 4.0 treated as binding).
 - English UI for international judges.
 
 ## Capabilities and Constraints
@@ -37,20 +37,20 @@ AI vision + regulation-grounded decision engine (Eq. HH-1, EN 15359-style route 
 - Audit records: tamper-evident, atomic-write, strict-decode; 57 invariant checks; record_id never reused.
 - Gas digital twin: Eq. HH-1 generation → virtual NDIR/PID/EC sensors, deterministic per truck/record; gas supports (never overrides) the visual verdict.
 - Impact estimates: prevented-loss in IDR/USD with cited basis rows (REJECT: shredder + kiln downtime; ACCEPT: RDF value band).
-- 35 backend tests green; stub AI is deterministic and honestly labeled (`provenance: stub` vs `live`).
+- Backend test suite green (`pytest`); stub AI is deterministic and honestly labeled (`provenance: stub` vs `live`).
 - Constraint: eligibility requires AMD to power the working product at demo time.
 
 ## Brand Commitments
 
 - Name: **Lynceus** (the sharp-sighted watchman of Greek myth); agent name **Pythia**.
-- User-pinned visual direction: **Cloudflare-style industrial** — enterprise-grade, dark, technical, credible — with Vercel-grade minimalism and typographic discipline. User's words: "cloudflare style, itu industrial paling mantep buat layak disebut, vercel style juga".
+- Visual direction: **industrial** — enterprise-grade, dark, technical, credible — with minimalism and typographic discipline.
 
 ## Evidence on Hand
 
 - `docs/research/realcase-indonesia.md` — sourced figures (SIPSN, ITATS, SBI Cilacap, RDI reports) for demo data and impact numbers.
 - `docs/research/token-factory-probe.md` — measured Token Factory model comparison and selection.
-- `web/public/demo/` — 3 AI-generated truck-bed photos (metal / clean / ambiguous scenarios).
-- `docs/PLAN.md`, `docs/HACKATHON-CHECKLIST.md` — plan, judging criteria mapping, submission checklist.
+- `web/public/demo/` — AI-generated truck-bed photos (metal / clean / ambiguous scenarios) and an AI-generated sample waybill; see `web/public/demo/README.md`.
+- `docs/BUSINESS.md`, `docs/submission/` — business case and the lablab submission text.
 - Absences that must not be fabricated: no real customer logos, no real deployment, no measured accuracy on production data (label demo numbers as sourced estimates).
 
 ## Product Principles

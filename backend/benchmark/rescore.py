@@ -69,6 +69,21 @@ DISCLOSURE = (
     "Both changes were motivated by this same run's data, so these rates are not a "
     "held-out result. Only a new live run on unseen images can confirm them."
 )
+#: The live run whose data motivated the current rule changes (see DISCLOSURE).
+RULES_TUNED_ON = "2026-10-13"
+#: A later live run on the same 80 images: run under the current rules already.
+LATER_RUN_DISCLOSURE = (
+    "This live run was made under the current decision rules, which were tuned on the "
+    f"{RULES_TUNED_ON} run of these same 80 images (hard contaminants read from the "
+    "structured fields only; plastic film and textile treated as RDF feedstock). The "
+    "images are not new to the rules, so these rates are not a held-out result. Only a "
+    "live run on unseen images can confirm them."
+)
+
+
+def disclosure_for(source_run: str) -> str:
+    """The replay caveat that is true for ``source_run``."""
+    return DISCLOSURE if source_run == RULES_TUNED_ON else LATER_RUN_DISCLOSURE
 #: How the LLM side of the replay is built (the live rows kept only gate states).
 LLM_NOTE = (
     "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM "
@@ -329,7 +344,7 @@ def build_summary(
             "source_run": source_run,
             "framing": FRAMING.format(source_run=source_run),
             "scope": bench.FRAMING,
-            "disclosure": DISCLOSURE,
+            "disclosure": disclosure_for(source_run),
             "llm_note": LLM_NOTE.format(confidence=REPLAY_LLM_CONFIDENCE),
             "date": source_run,
             "rescored_on": rescored_on,
@@ -370,9 +385,18 @@ HYBRID_DISCLOSURE = (
     "trained on, but used for checkpoint selection) by a rule committed before this "
     "model was trained, and the sweep below is read on this test set. It shows "
     "the fusion rules work as designed on these images, not that the detector works on a "
-    "truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision "
-    "rules were changed after the live run, using that run's data."
+    "truck bed of mixed RDF. The VLM side carries the replay's own caveat: {vlm_caveat}"
 )
+#: The VLM caveat per source run (see ``disclosure_for``).
+_HYBRID_VLM_CAVEAT = {
+    True: "the decision rules were changed after the live run, using that run's data.",
+    False: f"the decision rules were tuned on the {RULES_TUNED_ON} run of these same images.",
+}
+
+
+def hybrid_disclosure_for(source_run: str) -> str:
+    """The hybrid caveat that is true for ``source_run``."""
+    return HYBRID_DISCLOSURE.format(vlm_caveat=_HYBRID_VLM_CAVEAT[source_run == RULES_TUNED_ON])
 DEGRADED_NOTE = (
     "Detector-only degraded mode (vision model unavailable, stub fallback off) holds "
     "every truck for a human by design, so its verdict is escalate on all images. "
@@ -596,7 +620,7 @@ def hybrid_rescore(
         "source_run": source_run,
         "framing": HYBRID_FRAMING.format(source_run=source_run),
         "scope": bench.FRAMING,
-        "disclosure": HYBRID_DISCLOSURE,
+        "disclosure": hybrid_disclosure_for(source_run),
         "llm_note": LLM_NOTE.format(confidence=REPLAY_LLM_CONFIDENCE),
         "rescored_on": today,
         "manifest_n": len(bench.read_manifest(manifest)),

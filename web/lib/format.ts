@@ -92,12 +92,13 @@ export function providerName(provider: string): string {
 
 /**
  * Measured live-inspection latency, the one source for every latency claim in
- * the console and landing copy: backend/benchmark/results/2026-10-13.summary.json
- * (80 images, live on AMD Token Factory): full inspection p50 19.5 s, p95 34.4 s;
- * VLM call p50 16.5 s (docs/research/token-factory-probe.md: p50 14.5 s over
- * 9 calls). Shown on the /validation page.
+ * the console and landing copy: backend/benchmark/results/2026-10-17.deepseek-vision-exp.summary.json
+ * (80/80 images, live on AMD Token Factory, vision model DeepSeek-V4-Flash-Vision-Exp,
+ * language model DeepSeek-V4-Flash): full inspection p50 12.2 s, p95 27.1 s;
+ * VLM call p50 10.5 s, p95 16.0 s. The slowest request, retries included,
+ * took 46.7 s. Shown on the /validation page (read there at runtime).
  */
-export const LIVE_LATENCY_COPY = "about 20 s typically, 34 s at the 95th percentile of completed runs";
+export const LIVE_LATENCY_COPY = "about 12 s typically, 27 s at the 95th percentile of completed runs";
 
 /** Latency in seconds, one decimal: 14523 → "14.5 s". */
 export function formatSeconds(ms: number | null | undefined): string | null {
