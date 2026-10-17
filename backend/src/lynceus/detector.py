@@ -1,6 +1,6 @@
 """CPU object-detector second opinion (fine-tuned YOLO26m, ONNX).
 
-One photo in, contaminant boxes out, in ~150 ms on a laptop CPU, with no
+One photo in, contaminant boxes out, in ~0.6 s on a laptop CPU, with no
 network: the detector keeps working when the shared AMD endpoint does not.
 It is a *second opinion* next to the vision-language model, never a verdict
 of its own (see :func:`lynceus.decision.decide`).

@@ -108,8 +108,8 @@ sedikit tahanan: naikkan `DETECTOR_LIGHT_CONF` atau set `DETECTOR_ESCALATE_LIGHT
   mengambil lantai; hard 0,35 vs 0,30 ditentukan oleh satu foto TACO val. Dua-duanya rapuh.
 * **Data val juga dipakai saat training** (early stop, pilih epoch terbaik), jadi "tidak pernah
   dilatih" benar, tapi val bukan data yang sama sekali tak tersentuh.
-* **YOLO26m** dari run Colab yang sama masih training. Ia hanya menggantikan model ini kalau
-  menang di val dengan aturan yang sama dan lolos cek yang sama (bagian 6).
+* **YOLO26m** dari run Colab yang sama sudah dievaluasi dengan aturan dan cek yang sama, menang di
+  val, dan menggantikan model ini (lihat bagian "Update: YOLO26m" di atas).
 * Catatan lama yang masih berlaku: read vote yang sudah terlanjur jalan saat modelnya gagal tetap
   selesai dan memegang slot sampai selesai (read yang belum mulai sekarang dibatalkan); fallback ke stub bisa accept (perilaku lama); model VLM utama tidak dicek
   terhadap `VLM_BENCHMARKED_MODELS`. Semua sudah ada sebelum branch ini.
@@ -225,7 +225,7 @@ From the repo root, after `ml/fetch_taco.py` (train, val and test; the decoder n
 backend venv, the leakage check the `ml/` venv):
 
 ```bash
-backend/.venv/Scripts/python ml/eval_decoder.py --ultralytics ml/results/finetuned_yolo26s_e26l_nmsfree.json
+backend/.venv/Scripts/python ml/eval_decoder.py --onnx <YOLO26s file, restored per section 7> --ultralytics ml/results/finetuned_yolo26s_e26l_nmsfree.json
 ml/.venv/Scripts/python ml/check_leakage.py --taco-only
 backend/.venv/Scripts/python ml/taco_robustness.py
 ```
@@ -257,8 +257,9 @@ The previous model's rows come from the same `eval_decoder.py` with
 * No result here comes from gate imagery. Calibrate on a few hundred labelled gate photos before
   relying on the thresholds.
 * 41 % TACO metal recall is a large gain over 7 %, not a solved problem.
-* YOLO26m: evaluate with the same rule, the same decoder rows, the same leakage and paired
-  statistics, before it replaces this file.
+* YOLO26m: done with the same rule, decoder rows, leakage check and paired statistics; it won on
+  val and replaced this file (top of this note). A finished YOLO26m run, if it comes, goes through
+  the same steps before it replaces that one.
 * Licences: the weights are AGPL-3.0-derived (Ultralytics) and trained on RealWaste
   (CC BY-NC-SA 4.0 treated as binding) and TACO (annotations CC BY 4.0): evaluation and
   non-commercial use only (`backend/models/NOTICE`).

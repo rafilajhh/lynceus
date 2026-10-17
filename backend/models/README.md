@@ -166,8 +166,14 @@ checkpoint at `ml/runs/yolo26m_e26l_colab/weights/best.pt`:
     ml/.venv/Scripts/python ml/eval_finetuned.py --weights ... --nms-free --tag yolo26m_e26l
     ml/.venv/Scripts/python ml/export_onnx.py --weights ... --out yolo26m_e26l.onnx
 
-then copy `ml/weights/yolo26m_e26l.onnx` here under this name and run `ml/eval_decoder.py`
-and `ml/taco_robustness.py --new ml/results/decoder_lynceus-yolo26m-realwaste-taco.json`.
+then copy `ml/weights/yolo26m_e26l.onnx` here under this name and run (backend venv):
+
+    backend/.venv/Scripts/python ml/eval_decoder.py --ultralytics ml/results/finetuned_yolo26m_e26l_nmsfree.json
+    backend/.venv/Scripts/python ml/taco_robustness.py --new ml/results/decoder_lynceus-yolo26m-realwaste-taco.json --old ml/results/decoder_lynceus-yolo26s-realwaste-taco.json --old-val-pick 0.35 0.05 --out ml/results/taco_test_robustness_m_vs_s.json
+    backend/.venv/Scripts/python ml/taco_robustness.py --new ml/results/decoder_lynceus-yolo26m-realwaste-taco.json --old-val-pick 0.15 0.30 --out ml/results/taco_test_robustness_m_vs_previous.json
+
+Without `--out` the script writes `ml/results/taco_test_robustness.json`, the YOLO26s vs
+RealWaste-only report.
 
 ## Configuration
 

@@ -29,7 +29,7 @@ WORKDIR /app
 
 # Backend sources, sample-shift seeder, the committed benchmark manifest/results
 # (the benchmark images are excluded by .dockerignore) and the CPU detector model
-# (backend/models/, 38 MB ONNX).
+# (backend/models/, 82 MB ONNX).
 COPY backend/ ./backend/
 
 # Regular (non-editable) install; knowledge/*.md ships as package data.

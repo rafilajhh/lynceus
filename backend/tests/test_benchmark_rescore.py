@@ -17,7 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from benchmark import rescore  # noqa: E402
-from lynceus import detector, pipeline  # noqa: E402
+from lynceus import config, detector, pipeline  # noqa: E402
 
 JPEG = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"fake"
 PASSED = {
@@ -237,7 +237,7 @@ def hybrid(tmp_path, monkeypatch):
 def test_hybrid_variants(hybrid):
     s = hybrid["summary"]
     assert s["kind"] == "hybrid_replay" and "separate val split" in s["disclosure"]
-    assert s["detector"]["model"] == detector.MODEL_NAME
+    assert s["detector"]["model"] == detector.model_name(str(config.BUNDLED_DETECTOR_MODEL))
     assert (s["detector"]["hard_conf_default"], s["detector"]["light_conf"]) == (0.35, 0.05)
     assert json.loads(hybrid["out"].read_text(encoding="utf-8")) == s
     # The summary names what produced the boxes, not a runtime it did not use.
