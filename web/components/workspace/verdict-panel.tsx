@@ -13,7 +13,7 @@ import { Panel, PanelHead } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { GateStrip, type GateDisplay, type GatePhase } from "./gate-strip";
-import { ImpactCounter } from "./impact-counter";
+
 import { AuditModal } from "./audit-modal";
 import { NextSteps } from "./next-steps";
 import { PhotoEvidence, detectorName } from "./photo-evidence";
@@ -237,8 +237,6 @@ export function VerdictPanel({
   gates,
   data,
   decision,
-  preventedLossIdr,
-  impactRunKey,
   bannerLit,
   onAllResolved,
   onReset,
@@ -251,9 +249,6 @@ export function VerdictPanel({
   gates: GateDisplay[];
   data: InspectResponse | null;
   decision: string | undefined;
-  preventedLossIdr: number;
-  /** Increment per verdict; 0 = idle. */
-  impactRunKey: number;
   /** Verdict banner may only light after all gates resolve. */
   bannerLit: boolean;
   onAllResolved: () => void;
@@ -264,7 +259,7 @@ export function VerdictPanel({
   evidence: { src: string | null; alt: string };
   /** How this inspection was submitted (drives the wait copy only). */
   runMode: RunMode;
-  /** Optional extra below the impact counter (impact note). */
+  /** Optional extra below the next steps (impact note). */
   children?: ReactNode;
 }) {
   const tone = verdictTone(decision);
@@ -424,15 +419,6 @@ export function VerdictPanel({
               <NextSteps steps={data.actions} emptyText="The backend returned no next steps." />
             ) : null}
           </div>
-        ) : null}
-
-        {/* Impact counter: only on resolved verdicts. */}
-        {phase === "resolved" && data ? (
-          <ImpactCounter
-            preventedLossIdr={preventedLossIdr}
-            runKey={bannerLit ? impactRunKey : 0}
-            label={tone === "accept" ? "RDF value admitted" : "Worst-case loss exposure"}
-          />
         ) : null}
 
         {children}

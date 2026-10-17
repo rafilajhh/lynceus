@@ -131,7 +131,7 @@ export default function LandingPage() {
               Metal contaminant, REJECT case: one bolt can kill a shredder
             </span>
             <span className="figure text-[11px] text-muted">
-              Real waste-stream photo (RealWaste, CC BY 4.0)
+              Truck-load photo at the weighbridge, refuse-derived fuel stream
             </span>
           </figcaption>
         </figure>
@@ -314,7 +314,6 @@ export default function LandingPage() {
         <p className="m-0 max-w-[90ch] text-[12.5px] leading-[1.7] text-muted">
           Built for the AMD Developer Hackathon (ACT III). Figures sourced from
           RDI 2024, US cement benchmarks, and ITATS Surabaya weighbridge data.
-          Photos: RealWaste, CC BY 4.0.
         </p>
       </footer>
     </div>

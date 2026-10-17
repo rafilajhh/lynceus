@@ -119,7 +119,6 @@ export function WorkspaceClient() {
   const [data, setData] = useState<InspectResponse | null>(null);
   const [phase, setPhase] = useState<GatePhase>("idle");
   const [bannerLit, setBannerLit] = useState(false);
-  const [impactRunKey, setImpactRunKey] = useState(0);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
   // ---- Uploads: an uploaded load photo is the evidence; an uploaded
@@ -200,7 +199,6 @@ export function WorkspaceClient() {
     [data?.gates],
   );
   const decision = data?.verdict?.decision ?? data?.decision;
-  const impact = data?.impact;
 
   const onChange = useCallback((patch: Partial<IntakeValues>) => {
     setValues((v) => ({ ...v, ...patch }));
@@ -281,7 +279,6 @@ export function WorkspaceClient() {
         age_h: age,
       });
       setData(resp);
-      setImpactRunKey((k) => k + 1);
       setPhase("resolved");
       // Banner lights only after the six gates resolve (GateStrip
       // calls onAllResolved after the last stagger step).
@@ -449,22 +446,13 @@ export function WorkspaceClient() {
             gates={gates}
             data={data}
             decision={decision}
-            preventedLossIdr={impact?.prevented_loss_idr ?? 0}
-            impactRunKey={impactRunKey}
             bannerLit={bannerLit}
             onAllResolved={onAllResolved}
             onReset={onReset}
             error={resultError}
             evidence={evidence}
             runMode={runMode}
-          >
-            {phase === "resolved" && impact ? (
-              <p className="m-0 text-[13px] leading-relaxed text-muted">
-                {impact.note}{" "}
-                {impact.provenance ? <span>({impact.provenance})</span> : null}
-              </p>
-            ) : null}
-          </VerdictPanel>
+          />
         </div>
       ) : (
         <div ref={verdictRef} className="scroll-mt-[72px]">
