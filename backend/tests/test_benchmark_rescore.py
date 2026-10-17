@@ -202,7 +202,7 @@ HYBRID_RECORDED = [
 ]
 DETECTIONS = {
     "metal_1.jpg": _boxes(("metal", 0.96)),
-    "metal_2.jpg": _boxes(("metal", 0.3)),
+    "metal_2.jpg": _boxes(("metal", 0.4)),  # above the 0.35 default, below 0.5
     "glass_1.jpg": _boxes(("glass", 0.8)),
     "paper_1.jpg": _boxes(("paper", 0.9)),
 }
@@ -236,7 +236,9 @@ def hybrid(tmp_path, monkeypatch):
 
 def test_hybrid_variants(hybrid):
     s = hybrid["summary"]
-    assert s["kind"] == "hybrid_replay" and "no calibration split" in s["disclosure"]
+    assert s["kind"] == "hybrid_replay" and "separate val split" in s["disclosure"]
+    assert s["detector"]["model"] == "yolo26s-realwaste-taco"
+    assert (s["detector"]["hard_conf_default"], s["detector"]["light_conf"]) == (0.35, 0.05)
     assert json.loads(hybrid["out"].read_text(encoding="utf-8")) == s
     # The summary names what produced the boxes, not a runtime it did not use.
     assert s["detector"]["runtime"] == "ultralytics-predict"
@@ -251,16 +253,33 @@ def test_hybrid_variants(hybrid):
                s["variants"]["hybrid_light_escalation_on"]["changed_vs_vlm_only"]}
     assert set(changed) == {"metal_2.jpg", "glass_1.jpg"}
     assert changed["metal_2.jpg"]["hybrid"] == "escalate"
-    # At 0.5 the 0.3 metal box no longer holds the truck; at 0.1 it does.
+    # At 0.5 the 0.4 metal box no longer holds the truck; at 0.1 it does.
     assert s["sweep_detector_hard_conf"]["0.5"]["light_escalation_off"]["metal_accepted"] == 1
     assert s["sweep_detector_hard_conf"]["0.1"]["light_escalation_off"]["metal_accepted"] == 0
 
 
-def test_committed_hybrid_summary_was_produced_by_lynceus_detector():
-    path = Path(rescore.__file__).resolve().parent / "results" / "2026-10-16.hybrid-rescore.summary.json"
+@pytest.mark.parametrize("name", ["2026-10-16.hybrid-rescore.summary.json",
+                                  "2026-10-16.hybrid-rescore.realwaste-taco.summary.json"])
+def test_committed_hybrid_summary_was_produced_by_lynceus_detector(name):
+    path = Path(rescore.__file__).resolve().parent / "results" / name
     d = json.loads(path.read_text(encoding="utf-8"))["detector"]
     assert d["runtime"] == "onnxruntime-cpu" and d["detections_source"].startswith("lynceus.detector")
     assert d["model_sha256"].startswith("sha256:")
+
+
+def test_committed_summary_of_the_bundled_model_matches_its_weights():
+    import hashlib
+
+    from lynceus import config, decision, detector
+
+    path = (Path(rescore.__file__).resolve().parent / "results"
+            / "2026-10-16.hybrid-rescore.realwaste-taco.summary.json")
+    d = json.loads(path.read_text(encoding="utf-8"))["detector"]
+    digest = hashlib.sha256(config.BUNDLED_DETECTOR_MODEL.read_bytes()).hexdigest()
+    # The committed numbers describe the shipped weights at the shipped defaults.
+    assert d["model"] == detector.MODEL_NAME and d["model_sha256"] == "sha256:" + digest
+    assert (d["hard_conf_default"], d["light_conf"]) == (
+        decision.DETECTOR_HARD_CONFIDENCE, decision.DETECTOR_LIGHT_CONFIDENCE)
 
 
 def test_hybrid_degraded_mode_holds_every_truck(hybrid):
@@ -268,6 +287,7 @@ def test_hybrid_degraded_mode_holds_every_truck(hybrid):
     assert d["confusion"]["accept"]["escalate"] == 1 and d["review_rate"] == 1.0
     assert d["errors"] == 0
     f = d["detector_findings"]
+    assert f["thresholds"] == {"hard": 0.35, "light": 0.05}
     assert f["by_expected"]["reject"] == {"n": 2, "metal": 2, "light": 0, "nothing": 0}
     assert f["by_expected"]["accept"]["nothing"] == 1
     assert f["advisory_gate"] == "4/4"

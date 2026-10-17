@@ -5,15 +5,30 @@
   "Unlabeled litter"
  ],
  "stats": {
-  "box_dropped:Cigarette": 45,
-  "box_dropped:Unlabeled litter": 33,
-  "source:original": 46,
+  "box_dropped:Cigarette": 667,
+  "box_dropped:Unlabeled litter": 517,
   "test:box:glass": 13,
   "test:box:metal": 58,
   "test:box:paper": 65,
   "test:box:plastic": 208,
   "test:box:textile": 2,
   "test:images": 150,
-  "test:images_with_metal": 29
+  "test:images_with_metal": 29,
+  "train:box:glass": 201,
+  "train:box:metal": 450,
+  "train:box:organic": 7,
+  "train:box:paper": 394,
+  "train:box:plastic": 1841,
+  "train:box:textile": 31,
+  "train:images": 1200,
+  "train:images_with_metal": 231,
+  "val:box:glass": 40,
+  "val:box:metal": 44,
+  "val:box:organic": 1,
+  "val:box:paper": 38,
+  "val:box:plastic": 204,
+  "val:box:textile": 3,
+  "val:images": 150,
+  "val:images_with_metal": 31
  }
 }

@@ -1,0 +1,911 @@
+{
+  "kind": "hybrid_replay",
+  "source_run": "2026-10-13",
+  "framing": "What-if re-score: the recorded live VLM outputs of the 2026-10-13 AMD Token Factory run, fused with the CPU detector (YOLO26s fine-tuned on RealWaste + TACO) through the current decision rules. No new model calls.",
+  "scope": "component validation on public RealWaste images — not field data from a plant",
+  "disclosure": "In-domain and optimistic. The detector was fine-tuned on RealWaste photos from the same sessions as these 80 held-out images (one item per frame on the same floor; the held-out images were excluded from training) plus TACO litter photos. The default thresholds were picked on a separate val split (RealWaste val + TACO val; not trained on, but used for checkpoint selection) by a rule committed before this model was trained, and the sweep below is read on this test set. It shows the fusion rules work as designed on these images, not that the detector works on a truck bed of mixed RDF. The VLM side carries the replay's own caveat: the decision rules were changed after the live run, using that run's data.",
+  "llm_note": "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence of 0.95. That confidence only fills the ocr_confidence gate value, which has no threshold and never moves the verdict. The VLM prompt was not changed for this re-score; latency is not re-measured (no model was called).",
+  "rescored_on": "2026-10-16",
+  "manifest_n": 80,
+  "vlm_model": "MiniCPM-V-4.7-35B-A3B",
+  "detector": {
+    "model": "yolo26s-realwaste-taco",
+    "runtime": "onnxruntime-cpu",
+    "model_sha256": "sha256:c84f795aca8fb2126600efa69b9c62f8c3e8d22c2ff8262446d2c45620bf5405",
+    "detections_source": "lynceus.detector (onnxruntime-cpu) run over benchmark/images, conf >= 0.05",
+    "hard_conf_default": 0.35,
+    "light_conf": 0.05,
+    "thresholds_note": "Defaults picked on the val split (RealWaste val + TACO val) by a rule committed before this model was trained (ml/eval_val.py); the sweep is read on this test set."
+  },
+  "table": {
+    "vlm_only": {
+      "clean_accept_rate": 0.875,
+      "review_rate": 0.2625,
+      "metal_reject_recall": 0.95,
+      "metal_reject_precision": 0.9047619047619048,
+      "metal_accepted": 1,
+      "escalate_recall": 0.85,
+      "gate_accuracy": 0.8875
+    },
+    "hybrid_light_escalation_on": {
+      "clean_accept_rate": 0.825,
+      "review_rate": 0.325,
+      "metal_reject_recall": 0.95,
+      "metal_reject_precision": 0.9047619047619048,
+      "metal_accepted": 0,
+      "escalate_recall": 0.95,
+      "gate_accuracy": 0.8875
+    },
+    "hybrid_light_escalation_off": {
+      "clean_accept_rate": 0.875,
+      "review_rate": 0.275,
+      "metal_reject_recall": 0.95,
+      "metal_reject_precision": 0.9047619047619048,
+      "metal_accepted": 0,
+      "escalate_recall": 0.85,
+      "gate_accuracy": 0.8875
+    },
+    "detector_only_degraded": {
+      "clean_accept_rate": 0.0,
+      "review_rate": 1.0,
+      "metal_reject_recall": 0.0,
+      "metal_reject_precision": null,
+      "metal_accepted": 0,
+      "escalate_recall": 1.0,
+      "gate_accuracy": 0.25
+    }
+  },
+  "variants": {
+    "vlm_only": {
+      "n": 80,
+      "errors": 0,
+      "clean_accept_rate": 0.875,
+      "review_rate": 0.2625,
+      "escalate_recall": 0.85,
+      "metal_reject": {
+        "precision": 0.9047619047619048,
+        "recall": 0.95,
+        "tp": 19,
+        "fp": 2,
+        "fn": 1
+      },
+      "metal_accepted": 1,
+      "gate_accuracy": 0.8875,
+      "gate_correct": "71/80",
+      "graded": 80,
+      "confusion": {
+        "reject": {
+          "reject": 19,
+          "escalate": 0,
+          "accept": 1,
+          "error": 0
+        },
+        "escalate": {
+          "reject": 1,
+          "escalate": 17,
+          "accept": 2,
+          "error": 0
+        },
+        "accept": {
+          "reject": 1,
+          "escalate": 4,
+          "accept": 35,
+          "error": 0
+        }
+      },
+      "detector_gate_failed": 0
+    },
+    "hybrid_light_escalation_on": {
+      "n": 80,
+      "errors": 0,
+      "clean_accept_rate": 0.825,
+      "review_rate": 0.325,
+      "escalate_recall": 0.95,
+      "metal_reject": {
+        "precision": 0.9047619047619048,
+        "recall": 0.95,
+        "tp": 19,
+        "fp": 2,
+        "fn": 1
+      },
+      "metal_accepted": 0,
+      "gate_accuracy": 0.8875,
+      "gate_correct": "71/80",
+      "graded": 80,
+      "confusion": {
+        "reject": {
+          "reject": 19,
+          "escalate": 1,
+          "accept": 0,
+          "error": 0
+        },
+        "escalate": {
+          "reject": 1,
+          "escalate": 19,
+          "accept": 0,
+          "error": 0
+        },
+        "accept": {
+          "reject": 1,
+          "escalate": 6,
+          "accept": 33,
+          "error": 0
+        }
+      },
+      "detector_gate_failed": 7,
+      "changed_vs_vlm_only": [
+        {
+          "image": "cardboard_1.jpg",
+          "expected": "accept",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "metal_40.jpg",
+          "expected": "reject",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "glass_121.jpg",
+          "expected": "escalate",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "food_organics_117.jpg",
+          "expected": "escalate",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        },
+        {
+          "image": "textile_trash_280.jpg",
+          "expected": "accept",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        }
+      ]
+    },
+    "hybrid_light_escalation_off": {
+      "n": 80,
+      "errors": 0,
+      "clean_accept_rate": 0.875,
+      "review_rate": 0.275,
+      "escalate_recall": 0.85,
+      "metal_reject": {
+        "precision": 0.9047619047619048,
+        "recall": 0.95,
+        "tp": 19,
+        "fp": 2,
+        "fn": 1
+      },
+      "metal_accepted": 0,
+      "gate_accuracy": 0.8875,
+      "gate_correct": "71/80",
+      "graded": 80,
+      "confusion": {
+        "reject": {
+          "reject": 19,
+          "escalate": 1,
+          "accept": 0,
+          "error": 0
+        },
+        "escalate": {
+          "reject": 1,
+          "escalate": 17,
+          "accept": 2,
+          "error": 0
+        },
+        "accept": {
+          "reject": 1,
+          "escalate": 4,
+          "accept": 35,
+          "error": 0
+        }
+      },
+      "detector_gate_failed": 1,
+      "changed_vs_vlm_only": [
+        {
+          "image": "metal_40.jpg",
+          "expected": "reject",
+          "vlm_only": "accept",
+          "hybrid": "escalate"
+        }
+      ]
+    },
+    "detector_only_degraded": {
+      "n": 80,
+      "errors": 0,
+      "clean_accept_rate": 0.0,
+      "review_rate": 1.0,
+      "escalate_recall": 1.0,
+      "metal_reject": {
+        "precision": null,
+        "recall": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 20
+      },
+      "metal_accepted": 0,
+      "gate_accuracy": 0.25,
+      "gate_correct": "20/80",
+      "graded": 80,
+      "confusion": {
+        "reject": {
+          "reject": 0,
+          "escalate": 20,
+          "accept": 0,
+          "error": 0
+        },
+        "escalate": {
+          "reject": 0,
+          "escalate": 20,
+          "accept": 0,
+          "error": 0
+        },
+        "accept": {
+          "reject": 0,
+          "escalate": 40,
+          "accept": 0,
+          "error": 0
+        }
+      },
+      "detector_gate_failed": 42,
+      "note": "Detector-only degraded mode (vision model unavailable, stub fallback off) holds every truck for a human by design, so its verdict is escalate on all images. 'detector_findings' counts what the hold reasons would list; 'advisory_gate' reads those findings as if they were a verdict (metal -> reject, glass/organic -> escalate, else accept), which Lynceus never does.",
+      "detector_findings": {
+        "thresholds": {
+          "hard": 0.35,
+          "light": 0.05
+        },
+        "by_expected": {
+          "reject": {
+            "n": 20,
+            "metal": 18,
+            "light": 1,
+            "nothing": 1
+          },
+          "escalate": {
+            "n": 20,
+            "metal": 0,
+            "light": 20,
+            "nothing": 0
+          },
+          "accept": {
+            "n": 40,
+            "metal": 0,
+            "light": 3,
+            "nothing": 37
+          }
+        },
+        "advisory_gate": "75/80",
+        "advisory_gate_accuracy": 0.9375
+      }
+    }
+  },
+  "sweep_detector_hard_conf": {
+    "0.05": {
+      "light_escalation_on": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.8,
+        "review_rate": 0.3375,
+        "escalate_recall": 0.95,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.875,
+        "gate_correct": "70/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 19,
+            "accept": 0,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 7,
+            "accept": 32,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 10,
+        "changed_vs_vlm_only": [
+          {
+            "image": "cardboard_1.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "plastic_369.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "textile_trash_280.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      },
+      "light_escalation_off": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.85,
+        "review_rate": 0.2875,
+        "escalate_recall": 0.85,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.875,
+        "gate_correct": "70/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 17,
+            "accept": 2,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 5,
+            "accept": 34,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 4,
+        "changed_vs_vlm_only": [
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "plastic_369.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      }
+    },
+    "0.1": {
+      "light_escalation_on": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.8,
+        "review_rate": 0.3375,
+        "escalate_recall": 0.95,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.875,
+        "gate_correct": "70/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 19,
+            "accept": 0,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 7,
+            "accept": 32,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 10,
+        "changed_vs_vlm_only": [
+          {
+            "image": "cardboard_1.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "plastic_369.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "textile_trash_280.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      },
+      "light_escalation_off": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.85,
+        "review_rate": 0.2875,
+        "escalate_recall": 0.85,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.875,
+        "gate_correct": "70/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 17,
+            "accept": 2,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 5,
+            "accept": 34,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 4,
+        "changed_vs_vlm_only": [
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "plastic_369.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      }
+    },
+    "0.25": {
+      "light_escalation_on": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.825,
+        "review_rate": 0.325,
+        "escalate_recall": 0.95,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.8875,
+        "gate_correct": "71/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 19,
+            "accept": 0,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 6,
+            "accept": 33,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 8,
+        "changed_vs_vlm_only": [
+          {
+            "image": "cardboard_1.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "textile_trash_280.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      },
+      "light_escalation_off": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.875,
+        "review_rate": 0.275,
+        "escalate_recall": 0.85,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.8875,
+        "gate_correct": "71/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 17,
+            "accept": 2,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 4,
+            "accept": 35,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 2,
+        "changed_vs_vlm_only": [
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      }
+    },
+    "0.35": {
+      "light_escalation_on": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.825,
+        "review_rate": 0.325,
+        "escalate_recall": 0.95,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.8875,
+        "gate_correct": "71/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 19,
+            "accept": 0,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 6,
+            "accept": 33,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 7,
+        "changed_vs_vlm_only": [
+          {
+            "image": "cardboard_1.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "textile_trash_280.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      },
+      "light_escalation_off": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.875,
+        "review_rate": 0.275,
+        "escalate_recall": 0.85,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.8875,
+        "gate_correct": "71/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 17,
+            "accept": 2,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 4,
+            "accept": 35,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 1,
+        "changed_vs_vlm_only": [
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      }
+    },
+    "0.5": {
+      "light_escalation_on": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.825,
+        "review_rate": 0.325,
+        "escalate_recall": 0.95,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.8875,
+        "gate_correct": "71/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 19,
+            "accept": 0,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 6,
+            "accept": 33,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 7,
+        "changed_vs_vlm_only": [
+          {
+            "image": "cardboard_1.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "glass_121.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "food_organics_117.jpg",
+            "expected": "escalate",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          },
+          {
+            "image": "textile_trash_280.jpg",
+            "expected": "accept",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      },
+      "light_escalation_off": {
+        "n": 80,
+        "errors": 0,
+        "clean_accept_rate": 0.875,
+        "review_rate": 0.275,
+        "escalate_recall": 0.85,
+        "metal_reject": {
+          "precision": 0.9047619047619048,
+          "recall": 0.95,
+          "tp": 19,
+          "fp": 2,
+          "fn": 1
+        },
+        "metal_accepted": 0,
+        "gate_accuracy": 0.8875,
+        "gate_correct": "71/80",
+        "graded": 80,
+        "confusion": {
+          "reject": {
+            "reject": 19,
+            "escalate": 1,
+            "accept": 0,
+            "error": 0
+          },
+          "escalate": {
+            "reject": 1,
+            "escalate": 17,
+            "accept": 2,
+            "error": 0
+          },
+          "accept": {
+            "reject": 1,
+            "escalate": 4,
+            "accept": 35,
+            "error": 0
+          }
+        },
+        "detector_gate_failed": 1,
+        "changed_vs_vlm_only": [
+          {
+            "image": "metal_40.jpg",
+            "expected": "reject",
+            "vlm_only": "accept",
+            "hybrid": "escalate"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -10,7 +10,9 @@ a RealWaste image has its folder's class, a TACO image (name ``taco_*``) every
 class drawn in it. "Metal" = the image holds metal; "clean" = no metal, glass
 or organic. Scores are reported per source and pooled.
 
-Rule, fixed before any test-set read: the hard (metal) threshold is the
+Rule (committed before the RealWaste+TACO model was trained; the previous
+RealWaste-only model had already been scored on both test sets when the
+per-source caps were written): the hard (metal) threshold is the
 lowest t in THRESHOLDS whose false-metal rate is <= MAX_FALSE[source] for
 every source present; the light (glass/organic) threshold likewise with the
 false-escalate rate on clean images (MAX_FALSE_LIGHT). --hard/--light skip the

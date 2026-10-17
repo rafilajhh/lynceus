@@ -9,6 +9,32 @@ git-ignored (`ml/.venv/`, `ml/.cache/`, `ml/data/`, `ml/runs/`, `ml/weights/`).
 photos. Each photo shows one item on the same concrete floor. A truck bed at a cement-plant gate is
 a different domain.
 
+## Update 2026-10-17: the retrained detector is in production
+
+The Colab run (`colab_train.sh`, run `yolo26s_e26l`: YOLO26s on RealWaste pseudo-boxes + TACO
+human boxes) replaced the bundled model. It is `backend/models/lynceus-yolo26s-realwaste-taco.onnx`
+with defaults hard 0.35 / light 0.05, both picked on val by the rule in `eval_val.py`.
+Full model card: `backend/models/README.md`; plain-language summary and rollback:
+`docs/detector-update-2026-10-17.md`.
+
+| | New (0.35 / 0.05) | Previous (0.25 / 0.25, its shipped defaults) |
+|---|---|---|
+| val mAP50 (RealWaste val + TACO val; not like for like, see the model card) | 0.712 | 0.519 |
+| TACO test metal recall (production decoder) | **12/29** | 2/29 |
+| TACO test false escalate on clean images | **8/112** | 27/112 |
+| TACO test false metal flags | 6/121 | 0/121 |
+| 80 benchmark: metal recall / false metal | 18/20 / 0/60 | 18/20 / 0/60 |
+| Hybrid replay: metal accepted / review rate / verdict = expected | 0 / 26/80 / 71/80 | 0 / 24/80 / 73/80 |
+
+Paired over the 150 TACO test images (`taco_robustness.py`, exact McNemar): metal recall
++34.5 pp, p = 0.006; false escalate on clean −17 pp, p = 0.001; false metal +5 pp, p = 0.031, a
+real regression. Dropping the 3 test images with a near-duplicate or same-scene shot in TACO
+train/val (`check_leakage.py`) leaves the metal gain at 10/27 vs 2/27, p = 0.022. The 80-image
+benchmark differences are noise. Better out of domain, the same in domain, with two extra manual
+checks on the 80 benchmark images from the low light threshold. YOLO26m from the same run is
+still training; it replaces this one only if it wins on val by the same rule and passes the same
+checks.
+
 ## Update 2026-10-16: val calibration, out-of-domain check
 
 **Thresholds on a val split, not the test set.** `eval_val.py` scores the production model
@@ -18,7 +44,7 @@ on, and they are not the 80 benchmark images. Full sweep: `results/val_yolo26s_r
 | t | Metal recall | False metal flags | Glass/organic recall | False escalate (clean) |
 |---|---|---|---|---|
 | 0.05 | 96.1 % | 0.9 % | 100 % | 7.0 % |
-| 0.25 (current default) | 85.7 % | 0.3 % | 95.2 % | 2.8 % |
+| 0.25 (its default then) | 85.7 % | 0.3 % | 95.2 % | 2.8 % |
 
 Because the detector can only hold a truck for a human, a lower hard threshold costs little.
 
@@ -33,7 +59,8 @@ Result file: `results/val_prod_yolo26s_tacotest_local.json`, scored on CPU.
 The in-domain 18/20 says the model learned RealWaste, which is one item on a concrete floor. It
 does not hold for cluttered scenes. That is caveat 1 below, now measured.
 
-**The fix being trained.** `COLAB_TRAINING.md` and `colab_train.sh` run the new training:
+**The fix (trained since; see the 2026-10-17 update above).** `COLAB_TRAINING.md` and
+`colab_train.sh` run the new training:
 - data: RealWaste pseudo-labelled with YOLOE-26l, plus TACO train/val with human boxes
   (`fetch_taco.py`);
 - models: YOLO26s, m and l, with the production model as the baseline;
@@ -162,7 +189,7 @@ Every script imports `_env.py`. It pins pip, torch, HF, Ultralytics and temp cac
 
 ```
 python -m venv ml/.venv
-ml/.venv/Scripts/python ml/setup_env.py            # torch 2.6 cu124 + ultralytics 8.4.x, onnx, onnxruntime
+ml/.venv/Scripts/python ml/setup_env.py            # torch 2.6 cu124 + ultralytics 8.4.177, onnx, onnxruntime
 python -I ml/fetch_realwaste.py                     # ~690 MB zip -> ml/data/zip/realwaste.zip (read in place)
 ml/.venv/Scripts/python ml/eval_zeroshot.py --model yoloe-26s-seg.pt     # task 1 (~1 min on RTX 3050)
 ml/.venv/Scripts/python ml/build_dataset.py --model yoloe-26s-seg.pt     # pseudo-labels (~3 min)
@@ -188,11 +215,16 @@ about 4.8 GB of GPU memory. The 1 h time cap stopped it at 28 epochs, about 2.1 
 | `_env.py`, `common.py` | Cache pinning; manifest, held-out list, zip access, metal metrics |
 | `setup_env.py`, `fetch_realwaste.py` | Dependencies; dataset download |
 | `eval_zeroshot.py` | Task 1: YOLOE-26 text-prompt baseline and threshold sweep |
-| `build_dataset.py`, `check_leakage.py`, `train.py`, `eval_finetuned.py` | Task 2 |
+| `build_dataset.py`, `check_leakage.py`, `train.py`, `eval_finetuned.py` | Task 2; `check_leakage.py` also hashes TACO test against TACO train/val (`--taco-only` skips RealWaste) |
 | `export_onnx.py`, `bench_onnx.py`, `onnx_infer.py` | Task 3; `onnx_infer.py` needs only onnxruntime + numpy + Pillow |
 | `fetch_taco.py` | TACO download and mapping to the 6 classes; id-based train/val/test split |
 | `eval_val.py`, `select_model.py` | Image-level val scoring per source, val-only thresholds and model selection |
 | `colab_train.sh`, `COLAB_TRAINING.md`, `colab_finetune.ipynb` | One-command Colab GPU run and its rules |
+| `eval_decoder.py` | Production decoder (`lynceus.detector`, ONNX) on the TACO test split, and its verdict vs Ultralytics on the 80 images; backend venv only |
+| `results/val_<tag>.json`, `results/val_<tag>_tacotest*.json` | Val sweeps and selected thresholds; TACO test at those thresholds |
+| `taco_robustness.py` | TACO test re-scored without near-duplicate / same-scene images; Wilson intervals, paired bootstrap, exact McNemar; stdlib only |
+| `results/decoder_*.json` | `eval_decoder.py` output per ONNX model, with one row per TACO test image |
+| `results/taco_test_robustness.json` | `taco_robustness.py` output |
 | `results/zeroshot_yoloe.json` | Per-image YOLOE-26s detections (contaminant prompts, conf >= 0.05, normalised xyxy) |
 | `results/zeroshot_yoloe_distractors.json`, `results/zeroshot_yoloe_26m-seg*.json` | Other prompt sets and the m model |
 | `results/finetuned_yolo26s_realwaste[_nmsfree].json` | Per-image fine-tuned detections |

@@ -30,7 +30,7 @@ import math
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Protocol
@@ -62,14 +62,25 @@ class VisionModelsFailedError(RuntimeError):
     (the primary's first) and the last failure is chained as the cause."""
 
 
+class RateLimitSpentError(ValueError):
+    """Every 429 retry was spent: the shared key is throttled for all models."""
+
+
+#: Statuses that mean the key, not the model, is refused: no other model helps.
+_KEY_REFUSED_STATUSES = frozenset({401, 403})
+
+
 def _model_specific_failure(exc: BaseException) -> bool:
     """True when the next vision model may still answer: the endpoint replied
     with an error status (400 "model not supported", 503 "no available
-    workers", 429 retries spent) or the model's reply was not usable JSON.
-    Connection failures and timeouts are not: the endpoint is down or the
-    budget is spent."""
+    workers") or the model's reply was not usable JSON.  Connection failures,
+    timeouts, a refused key (401/403) and spent 429 retries are not: the
+    endpoint is down, the budget is spent, or every model would be refused."""
+    if isinstance(exc, RateLimitSpentError):
+        return False
     if isinstance(exc, httpx.HTTPStatusError):
-        return True
+        response = getattr(exc, "response", None)
+        return getattr(response, "status_code", None) not in _KEY_REFUSED_STATUSES
     return isinstance(exc, (ValueError, KeyError, TypeError)) and not isinstance(
         exc, httpx.HTTPError
     )
@@ -82,6 +93,11 @@ _DEFAULT_RETRY_AFTER_S = 1.0
 #: One process-wide budget across VLM, LLM, assist and shift calls. Four leaves
 #: headroom for teammates under Token Factory's eight-concurrent shared-key cap.
 _OUTBOUND_SLOTS = threading.BoundedSemaphore(4)
+#: VLM vote reads in flight process-wide.  One fewer than the outbound slots,
+#: so in steady state a waybill, assist or shift call finds a slot even while
+#: two inspections vote at once (they would otherwise queue behind six reads).
+_VLM_READ_SLOT_COUNT = 3
+_VLM_READ_SLOTS = threading.BoundedSemaphore(_VLM_READ_SLOT_COUNT)
 #: Floor for the per-request httpx timeout passed as the budget left.
 _MIN_REQUEST_TIMEOUT_S = 0.05
 
@@ -263,7 +279,9 @@ def _vote_majority(reads: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Majority vote on hard_contaminants (the safety-critical field).
     hard_votes: Dict[str, int] = {}
     for r in reads:
-        for c in r.get("hard_contaminants", []) or []:
+        # Each read counts a contaminant once; a malformed (non-string) entry
+        # is ignored instead of crashing the vote.
+        for c in {c for c in (r.get("hard_contaminants") or []) if isinstance(c, str)}:
             hard_votes[c] = hard_votes.get(c, 0) + 1
     majority = len(reads) // 2 + 1
     agreed_hard = sorted([c for c, n in hard_votes.items() if n >= majority])
@@ -271,7 +289,7 @@ def _vote_majority(reads: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Pick the read that best matches the majority hard set (prefer one that
     # actually contains them) as the base for light/boxes.
     def score(r: Dict[str, Any]) -> int:
-        h = set(r.get("hard_contaminants", []) or [])
+        h = {c for c in (r.get("hard_contaminants") or []) if isinstance(c, str)}
         return len(h & set(agreed_hard))
 
     base = max(reads, key=score)
@@ -491,7 +509,7 @@ class VLLMClient:
                 return client._chat_once(base_url, model, messages, max_tokens)
             except _RateLimitedError as exc:
                 if attempt == 2:
-                    raise ValueError(
+                    raise RateLimitSpentError(
                         f"endpoint rate-limited after 3 attempts ({base_url})"
                     ) from exc
                 time.sleep(min(MAX_RETRY_AFTER_S, exc.retry_after + 0.25 * (attempt + 1)))
@@ -542,20 +560,42 @@ class VLLMClient:
         "none detected", so no single read decides the verdict.  A hard
         contaminant seen by only a minority of reads is dropped; the detector
         second opinion still escalates what it sees.  The reads run
-        concurrently inside the chain's budget (and the shared outbound
-        slots), so N votes cost about one read of wall time; any failed read
-        fails the model, as a single read would.
+        concurrently inside the chain's budget, each holding a
+        :data:`_VLM_READ_SLOTS` slot and an outbound slot, so N votes cost
+        about one read of wall time.  The first failed read fails the model
+        at once, as a single read would: the chain does not wait for the
+        other reads (they end at the deadline and their answers are dropped).
         """
-        votes = max(1, self._settings.vlm_votes)
+        # Settings built in code skip the env clamp: never more reads than slots.
+        votes = min(max(1, self._settings.vlm_votes), _VLM_READ_SLOT_COUNT)
         url = self._settings.vllm_vlm_url
+        abandoned = threading.Event()
+
+        def read() -> Dict[str, Any]:
+            if not _VLM_READ_SLOTS.acquire(timeout=max(deadline - time.monotonic(), 0.0)):
+                raise _deadline_error(self._timeout_s)
+            try:
+                if abandoned.is_set():  # the model already failed: spend nothing
+                    raise _deadline_error(self._timeout_s)
+                return self._remaining(deadline)._chat_json(url, model, messages)
+            finally:
+                _VLM_READ_SLOTS.release()
+
         if votes == 1:
-            return self._remaining(deadline)._chat_json(url, model, messages)
-        with ThreadPoolExecutor(max_workers=votes, thread_name_prefix="lynceus-vote") as pool:
-            reads = [
-                pool.submit(self._remaining(deadline)._chat_json, url, model, messages)
-                for _ in range(votes)
-            ]
-            return _vote_majority([read.result() for read in reads])
+            return read()
+        pool = ThreadPoolExecutor(max_workers=votes, thread_name_prefix="lynceus-vote")
+        try:
+            reads = [pool.submit(read) for _ in range(votes)]
+            done, _ = wait(reads, return_when=FIRST_EXCEPTION)
+            errors = [f.exception() for f in done if f.exception() is not None]
+            if errors:
+                # A failure that ends the chain (refused key, spent 429s,
+                # timeout) wins over one that would move to the next model.
+                raise next((e for e in errors if not _model_specific_failure(e)), errors[0])
+            return _vote_majority([future.result() for future in reads])
+        finally:
+            abandoned.set()
+            pool.shutdown(wait=False, cancel_futures=True)
 
     def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
         if not photo:
@@ -1027,10 +1067,16 @@ def _photo_bytes(photo: Any) -> bytes:
         return b""
 
 
-def safe_detect(photo_bytes: bytes, settings: Settings) -> Optional[Dict[str, Any]]:
+def safe_detect(
+    photo_bytes: bytes, settings: Settings, *, wait_for_slot: bool = True
+) -> Optional[Dict[str, Any]]:
     """:func:`detector.detect`, with any failure logged and turned into None:
-    the second opinion must never fail the inspection."""
+    the second opinion must never fail the inspection.  ``wait_for_slot``
+    False takes only an idle run slot (scripted demo requests: they must
+    never make a live inspection wait for the detector)."""
     try:
+        if not wait_for_slot:
+            return detector.detect(photo_bytes, settings, slot_wait_s=0.0)
         return detector.detect(photo_bytes, settings)
     except Exception as exc:  # noqa: BLE001 — logged, never raised
         _log.warning("detector skipped: %s: %s", type(exc).__name__, exc)
@@ -1107,11 +1153,15 @@ def run_inspection(
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         # The detector runs beside the model calls (~150 ms on CPU, no network).
-        detector_future = (
-            pool.submit(safe_detect, photo_bytes, settings)
-            if precomputed_detector is _DETECTOR_NOT_SUPPLIED and photo_bytes
-            else None
-        )
+        detector_future = None
+        if precomputed_detector is _DETECTOR_NOT_SUPPLIED and photo_bytes:
+            # Scripted demo requests never queue for the detector and use at
+            # most one of its run slots, so live inspections always keep one.
+            detector_future = (
+                pool.submit(safe_detect, photo_bytes, settings, wait_for_slot=False)
+                if payload.get("demo_case")
+                else pool.submit(safe_detect, photo_bytes, settings)
+            )
         try:
             # The two calls are independent and each takes seconds on a shared
             # endpoint, so run them concurrently; .result() re-raises either error.

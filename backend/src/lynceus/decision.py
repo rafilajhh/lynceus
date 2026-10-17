@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lynceus import detector as cv_detector
 from lynceus.audit import Decision, GateState, Route
+from lynceus.config import DEFAULT_DETECTOR_HARD_CONF, DEFAULT_DETECTOR_LIGHT_CONF
 
 __all__ = [
     "HARD_CONTAMINANTS",
@@ -88,9 +89,9 @@ MOISTURE_CONFLICT_MARGIN = 0.15
 #: the load is far wetter and older than declared.
 GAS_CH4_ANAEROBIC_THRESHOLD_PPM = 100.0
 #: Default detector thresholds (``config.Settings`` overrides them per call).
-#: Read off the 80-image RealWaste test set itself (no calibration split).
-DETECTOR_HARD_CONFIDENCE = 0.25
-DETECTOR_LIGHT_CONFIDENCE = 0.25
+#: Picked on the val split, never on the test images (one source: config).
+DETECTOR_HARD_CONFIDENCE = DEFAULT_DETECTOR_HARD_CONF
+DETECTOR_LIGHT_CONFIDENCE = DEFAULT_DETECTOR_LIGHT_CONF
 #: How reasons name the detector.
 DETECTOR_NAME = "Detector (YOLO26s)"
 #: Vision models with a benchmark run behind them (``config.Settings``
@@ -301,7 +302,7 @@ def decide_degraded(
 ) -> Tuple[str, Dict[str, Any], List[str]]:
     """Verdict when a live model call failed but the detector answered.
 
-    ``escalate_human``: one CPU detector trained on RealWaste photos may hold
+    ``escalate_human``: one CPU detector trained on RealWaste and TACO photos may hold
     a truck for a human, never clear or reject it on its own.  The reasons
     say which live call failed (``failed_stage``: ``"vlm"``, the vision
     model; ``"llm"``, the waybill model, whose vision answer is then

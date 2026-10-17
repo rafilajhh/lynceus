@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -64,7 +65,14 @@ def test_settings_default_to_the_bundled_model(monkeypatch):
     assert config.BUNDLED_DETECTOR_MODEL.is_file()
     assert s.detector_model_path == str(config.BUNDLED_DETECTOR_MODEL)
     assert (s.detector_hard_conf, s.detector_light_conf, s.detector_escalate_light) == (
-        0.25, 0.25, True)
+        0.35, 0.05, True)
+
+
+def test_decision_and_config_share_the_detector_defaults():
+    s = config.Settings("v", "l", "vm", "lm", "a", "am", "e", "em", "box", "", True,
+                        "./runs", 1, "0")
+    assert (decision.DETECTOR_HARD_CONFIDENCE, decision.DETECTOR_LIGHT_CONFIDENCE) == (
+        s.detector_hard_conf, s.detector_light_conf)
 
 
 def test_settings_empty_path_disables_and_bad_thresholds_keep_defaults(monkeypatch):
@@ -74,7 +82,7 @@ def test_settings_empty_path_disables_and_bad_thresholds_keep_defaults(monkeypat
     monkeypatch.setenv("DETECTOR_ESCALATE_LIGHT", "0")
     s = get_settings()
     assert s.detector_model_path == ""
-    assert s.detector_hard_conf == 0.25 and s.detector_light_conf == 0.25
+    assert s.detector_hard_conf == 0.35 and s.detector_light_conf == 0.05
     assert s.detector_escalate_light is False
     assert detector.enabled(s) is False
     assert detector.detect(b"\xff\xd8\xff", s) is None
@@ -84,7 +92,7 @@ def test_settings_keep_older_positional_construction():
     """New fields sit at the end with defaults: older Settings(...) calls work."""
     s = config.Settings("v", "l", "vm", "lm", "a", "am", "e", "em", "box", "", True,
                         "./runs", 1, "0")
-    assert s.detector_model_path == "" and s.detector_hard_conf == 0.25
+    assert s.detector_model_path == "" and s.detector_hard_conf == 0.35
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +102,7 @@ def test_settings_keep_older_positional_construction():
 
 def test_detect_finds_metal_on_a_metal_image():
     result = detector.detect((IMAGES / "metal_1.jpg").read_bytes())
-    assert result["model"] == "yolo26s-realwaste"
+    assert result["model"] == "yolo26s-realwaste-taco"
     assert result["runtime"] == "onnxruntime-cpu"
     assert result["latency_ms"] > 0
     assert result["hard_contaminants"] == ["metal"]
@@ -107,8 +115,8 @@ def test_detect_finds_metal_on_a_metal_image():
 
 
 def test_feedstock_classes_never_flag():
-    result = detector.detect((IMAGES / "cardboard_1.jpg").read_bytes())
-    assert {b["label"] for b in result["boxes"]} == {"paper"}
+    result = detector.detect((IMAGES / "paper_51.jpg").read_bytes())
+    assert {b["label"] for b in result["boxes"]} == {"paper", "plastic"}
     assert result["hard_contaminants"] == [] and result["light_contaminants"] == []
 
 
@@ -152,7 +160,7 @@ def test_unconfirmed_detector_metal_escalates_never_rejects():
         "hold for a manual check."
     ]
     gate = gates["detector_second_opinion"]
-    assert gate["state"] == G.FAILED and gate["value"] == 0.93 and gate["threshold"] == 0.25
+    assert gate["state"] == G.FAILED and gate["value"] == 0.93 and gate["threshold"] == 0.35
 
 
 def test_detector_metal_below_vlm_trust_still_holds_the_truck():
@@ -249,7 +257,7 @@ def test_run_inspection_runs_the_detector_on_the_photo_bytes(monkeypatch):
     out = pipeline.run_inspection({"photo_base64": "data:image/jpeg;base64," + _PHOTO},
                                   _Live(), precomputed_gas=None)
     assert seen == [(IMAGES / "metal_1.jpg").read_bytes()]
-    assert out["detector"]["model"] == "yolo26s-realwaste"
+    assert out["detector"]["model"] == detector.MODEL_NAME
     assert out["provenance"] == "live"
 
 
@@ -705,6 +713,76 @@ def test_detector_runs_are_bounded(monkeypatch):
     assert detector.detect(_png((64, 48)), min_conf=0.99)["boxes"] == []
 
 
+def test_png_has_a_lower_pixel_cap_than_jpeg(monkeypatch):
+    # A PNG decodes at full size (no DCT scaling), so it gets its own cap.
+    monkeypatch.setattr(detector, "MAX_PNG_PIXELS", 100)
+    with pytest.raises(detector.DetectorImageError, match="PNG 20x20 is over 100 pixels"):
+        detector._decode(_png((20, 20)))
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (90, 90, 90)).save(buf, format="JPEG")
+    assert detector._decode(buf.getvalue()).size == (20, 20)
+
+
+def test_only_jpeg_and_png_are_decoded():
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (90, 90, 90)).save(buf, format="GIF")
+    with pytest.raises(detector.DetectorImageError, match="image refused"):
+        detector._decode(buf.getvalue())
+    assert pipeline.safe_detect(buf.getvalue(), get_settings()) is None
+
+
+def test_phone_mpo_photo_is_decoded_at_a_reduced_scale(monkeypatch):
+    monkeypatch.setattr(detector, "_DRAFT_SIZE", (300, 300))
+    buf = io.BytesIO()
+    # Two frames, as a phone writes it (one frame opens as plain JPEG).
+    frame = Image.new("RGB", (1300, 1000), (90, 90, 90))
+    frame.save(buf, format="MPO", save_all=True, append_images=[frame.copy()])
+    assert Image.open(io.BytesIO(buf.getvalue())).format == "MPO"
+    assert detector._decode(buf.getvalue()).size == (650, 500)
+
+
+def test_a_busy_detector_refuses_a_no_wait_run_at_once():
+    assert detector._settings_model(get_settings()) is not None  # model load not timed
+    held = [detector._RUN_SLOTS.acquire(timeout=1) for _ in range(detector.MAX_CONCURRENT_RUNS)]
+    try:
+        assert all(held)
+        started = time.perf_counter()
+        with pytest.raises(RuntimeError, match="busy"):
+            detector.detect(_png((64, 48)), slot_wait_s=0.0)
+        assert time.perf_counter() - started < 1.0
+    finally:
+        for ok in held:
+            if ok:
+                detector._RUN_SLOTS.release()
+
+
+def test_no_wait_runs_never_take_the_last_live_slot():
+    # One no-wait (demo) run in flight: a second is refused while a run slot
+    # is still free, and that slot stays usable by a live run.
+    assert detector._NO_WAIT_SLOT.acquire(timeout=1)
+    try:
+        with pytest.raises(RuntimeError, match="no-wait run is already in flight"):
+            detector.detect(_png((64, 48)), slot_wait_s=0.0)
+        assert detector.detect(_png((64, 48)), min_conf=0.99)["boxes"] == []
+    finally:
+        detector._NO_WAIT_SLOT.release()
+    assert detector.detect(_png((64, 48)), min_conf=0.99, slot_wait_s=0.0)["boxes"] == []
+
+
+def test_scripted_demo_photo_never_waits_for_a_detector_slot(monkeypatch):
+    seen = []
+
+    def _detect(raw, settings, slot_wait_s=detector._SLOT_WAIT_S):
+        seen.append(slot_wait_s)
+        return _det()
+
+    monkeypatch.setattr(detector, "detect", _detect)
+    pipeline.run_inspection({"photo_base64": _PHOTO, "demo_case": "red"}, _Live(),
+                            precomputed_gas=None)
+    pipeline.run_inspection({"photo_base64": _PHOTO}, _Live(), precomputed_gas=None)
+    assert seen == [0.0, detector._SLOT_WAIT_S]
+
+
 def test_detector_threads_setting_and_session(monkeypatch):
     monkeypatch.setenv("DETECTOR_THREADS", "0")
     assert get_settings().detector_threads == 2
@@ -720,9 +798,9 @@ def test_result_names_the_exact_weights_and_thresholds():
     result = detector.detect((IMAGES / "metal_1.jpg").read_bytes())
     digest = hashlib.sha256(config.BUNDLED_DETECTOR_MODEL.read_bytes()).hexdigest()
     assert result["model_sha256"] == "sha256:" + digest
-    assert result["thresholds"] == {"hard": 0.25, "light": 0.25, "escalate_light": True}
+    assert result["thresholds"] == {"hard": 0.35, "light": 0.05, "escalate_light": True}
     parsed = audit.DetectorOutput.model_validate(result)
-    assert parsed.thresholds.hard == 0.25 and parsed.model_sha256 == result["model_sha256"]
+    assert parsed.thresholds.hard == 0.35 and parsed.model_sha256 == result["model_sha256"]
 
 
 def test_model_name_comes_from_the_file_name():

@@ -12,8 +12,9 @@ upright shape does not match the annotation's width/height is skipped.
 
 Split by image id: id % 10 == 8 -> val, == 9 -> test (out-of-domain test set,
 scored once after model selection), else train.
-Writes ml/data/taco/{images,labels}/{train,val,test}, ml/data/taco/data.yaml
-and ml/results/taco_stats.json.
+Writes ml/data/taco/{images,labels}/{train,val,test}, ml/data/taco/data.yaml,
+ml/data/taco/meta.json (our name -> TACO file name) and ml/results/taco_stats.json.
+Downloads are https only, from GitHub raw and Flickr hosts, at most MAX_BYTES each.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import io
 import json
 import threading
 import time
+import urllib.parse
 import urllib.request
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -69,11 +71,22 @@ def split_of(image_id: int) -> str:
     return {8: "val", 9: "test"}.get(image_id % 10, "train")
 
 
+#: Hosts the annotation file may point at; anything else (file://, other hosts) is refused.
+ALLOWED_HOSTS = ("raw.githubusercontent.com", ".staticflickr.com", ".flickr.com")
+#: Largest download accepted (TACO originals are a few MB).
+MAX_BYTES = 40_000_000
+
+
 def fetch(url: str, tries: int = 3) -> bytes | None:
+    parts = urllib.parse.urlsplit(url or "")
+    host = parts.hostname or ""
+    if parts.scheme != "https" or not any(host == h.lstrip(".") or host.endswith(h) for h in ALLOWED_HOSTS):
+        return None
     for i in range(tries):
         try:
             with urllib.request.urlopen(url, timeout=30) as r:
-                return r.read()
+                data = r.read(MAX_BYTES + 1)
+                return data if len(data) <= MAX_BYTES else None
         except Exception:  # noqa: BLE001 - network flake, retry then give up
             time.sleep(1 + 2 * i)
     return None
@@ -166,6 +179,10 @@ def main() -> None:
             if i % 250 == 0:
                 print(f"{i}/{len(ann['images'])}", flush=True)
 
+    # TACO's own file names ("batch_7/000012.jpg"): consecutive shots of one scene share a batch
+    # and neighbouring numbers, which taco_robustness.py uses to find test scenes seen in training.
+    (OUT / "meta.json").write_text(json.dumps(
+        {f"taco_{img['id']:04d}": img.get("file_name") for img in ann["images"]}, indent=0), encoding="utf-8")
     names = "\n".join(f"  {i}: {c}" for i, c in enumerate(common.CLASSES))
     (OUT / "data.yaml").write_text(
         f"path: {OUT.as_posix()}\ntrain: images/train\nval: images/val\ntest: images/test\nnames:\n{names}\n",

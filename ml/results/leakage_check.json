@@ -84,5 +84,1014 @@
    "nearest_train": "Plastic_301.jpg",
    "hamming": 7
   }
- ]
+ ],
+ "taco_test": {
+  "images": 150,
+  "batch_neighbours": "computed",
+  "pool_images": {
+   "train": 1200,
+   "val": 150
+  },
+  "nearest_hamming_cumulative": {
+   "<=0": 0,
+   "<=4": 0,
+   "<=8": 1,
+   "<=10": 2,
+   "<=12": 8
+  },
+  "closest": [
+   {
+    "image": "taco_0989.jpg",
+    "nearest_train": "taco_0991.jpg",
+    "hamming": 5,
+    "neighbour_hamming": 5
+   },
+   {
+    "image": "taco_0709.jpg",
+    "nearest_train": "taco_0412.jpg",
+    "hamming": 10,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_0719.jpg",
+    "nearest_train": "taco_1355.jpg",
+    "hamming": 11,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0839.jpg",
+    "nearest_train": "taco_0727.jpg",
+    "hamming": 11,
+    "neighbour_hamming": 14
+   },
+   {
+    "image": "taco_1239.jpg",
+    "nearest_train": "taco_0707.jpg",
+    "hamming": 11,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0209.jpg",
+    "nearest_train": "taco_1326.jpg",
+    "hamming": 12,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0319.jpg",
+    "nearest_train": "taco_0991.jpg",
+    "hamming": 12,
+    "neighbour_hamming": 19
+   },
+   {
+    "image": "taco_1329.jpg",
+    "nearest_train": "taco_0090.jpg",
+    "hamming": 12,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0339.jpg",
+    "nearest_train": "taco_0477.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 20
+   },
+   {
+    "image": "taco_0779.jpg",
+    "nearest_train": "taco_0090.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0959.jpg",
+    "nearest_train": "taco_1036.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1249.jpg",
+    "nearest_train": "taco_0475.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_1369.jpg",
+    "nearest_train": "taco_1180.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0029.jpg",
+    "nearest_train": "taco_0082.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0359.jpg",
+    "nearest_train": "taco_1404.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 27
+   }
+  ],
+  "rows": [
+   {
+    "image": "taco_0009.jpg",
+    "nearest_train": "taco_0317.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0019.jpg",
+    "nearest_train": "taco_0333.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0029.jpg",
+    "nearest_train": "taco_0082.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0039.jpg",
+    "nearest_train": "taco_0852.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0049.jpg",
+    "nearest_train": "taco_1345.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0059.jpg",
+    "nearest_train": "taco_1307.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0069.jpg",
+    "nearest_train": "taco_0906.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0079.jpg",
+    "nearest_train": "taco_1183.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0089.jpg",
+    "nearest_train": "taco_1042.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0099.jpg",
+    "nearest_train": "taco_0662.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0109.jpg",
+    "nearest_train": "taco_1454.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_0119.jpg",
+    "nearest_train": "taco_0383.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0129.jpg",
+    "nearest_train": "taco_0908.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0139.jpg",
+    "nearest_train": "taco_0237.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0149.jpg",
+    "nearest_train": "taco_0653.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0159.jpg",
+    "nearest_train": "taco_0773.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0169.jpg",
+    "nearest_train": "taco_1075.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_0179.jpg",
+    "nearest_train": "taco_0011.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0189.jpg",
+    "nearest_train": "taco_0001.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0199.jpg",
+    "nearest_train": "taco_0943.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0209.jpg",
+    "nearest_train": "taco_1326.jpg",
+    "hamming": 12,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0219.jpg",
+    "nearest_train": "taco_0462.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 19
+   },
+   {
+    "image": "taco_0229.jpg",
+    "nearest_train": "taco_1095.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0239.jpg",
+    "nearest_train": "taco_0100.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0249.jpg",
+    "nearest_train": "taco_0198.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0259.jpg",
+    "nearest_train": "taco_0726.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0269.jpg",
+    "nearest_train": "taco_0230.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0279.jpg",
+    "nearest_train": "taco_0356.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0289.jpg",
+    "nearest_train": "taco_0154.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0299.jpg",
+    "nearest_train": "taco_1076.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0309.jpg",
+    "nearest_train": "taco_1077.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0319.jpg",
+    "nearest_train": "taco_0991.jpg",
+    "hamming": 12,
+    "neighbour_hamming": 19
+   },
+   {
+    "image": "taco_0329.jpg",
+    "nearest_train": "taco_0701.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0339.jpg",
+    "nearest_train": "taco_0477.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 20
+   },
+   {
+    "image": "taco_0349.jpg",
+    "nearest_train": "taco_1034.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0359.jpg",
+    "nearest_train": "taco_1404.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0369.jpg",
+    "nearest_train": "taco_0386.jpg",
+    "hamming": 21,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0379.jpg",
+    "nearest_train": "taco_0563.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_0389.jpg",
+    "nearest_train": "taco_0286.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0399.jpg",
+    "nearest_train": "taco_1304.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0409.jpg",
+    "nearest_train": "taco_0317.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0419.jpg",
+    "nearest_train": "taco_0290.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0429.jpg",
+    "nearest_train": "taco_1325.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_0439.jpg",
+    "nearest_train": "taco_1184.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0449.jpg",
+    "nearest_train": "taco_1046.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0459.jpg",
+    "nearest_train": "taco_1142.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 21
+   },
+   {
+    "image": "taco_0469.jpg",
+    "nearest_train": "taco_0777.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0479.jpg",
+    "nearest_train": "taco_1274.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0489.jpg",
+    "nearest_train": "taco_1281.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0499.jpg",
+    "nearest_train": "taco_0497.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 20
+   },
+   {
+    "image": "taco_0509.jpg",
+    "nearest_train": "taco_0563.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0519.jpg",
+    "nearest_train": "taco_0816.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0529.jpg",
+    "nearest_train": "taco_0438.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0539.jpg",
+    "nearest_train": "taco_0197.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0549.jpg",
+    "nearest_train": "taco_0362.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0559.jpg",
+    "nearest_train": "taco_1032.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0569.jpg",
+    "nearest_train": "taco_0756.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0579.jpg",
+    "nearest_train": "taco_0622.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0589.jpg",
+    "nearest_train": "taco_0456.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0599.jpg",
+    "nearest_train": "taco_0170.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0609.jpg",
+    "nearest_train": "taco_1486.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0619.jpg",
+    "nearest_train": "taco_0668.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0629.jpg",
+    "nearest_train": "taco_0306.jpg",
+    "hamming": 21,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0639.jpg",
+    "nearest_train": "taco_1074.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 20
+   },
+   {
+    "image": "taco_0649.jpg",
+    "nearest_train": "taco_0421.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0659.jpg",
+    "nearest_train": "taco_0707.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_0669.jpg",
+    "nearest_train": "taco_1302.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_0679.jpg",
+    "nearest_train": "taco_0161.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0689.jpg",
+    "nearest_train": "taco_0988.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0699.jpg",
+    "nearest_train": "taco_1155.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0709.jpg",
+    "nearest_train": "taco_0412.jpg",
+    "hamming": 10,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_0719.jpg",
+    "nearest_train": "taco_1355.jpg",
+    "hamming": 11,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0729.jpg",
+    "nearest_train": "taco_0486.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_0739.jpg",
+    "nearest_train": "taco_0273.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0749.jpg",
+    "nearest_train": "taco_0830.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0759.jpg",
+    "nearest_train": "taco_0410.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0769.jpg",
+    "nearest_train": "taco_0471.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0779.jpg",
+    "nearest_train": "taco_0090.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0789.jpg",
+    "nearest_train": "taco_0000.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0799.jpg",
+    "nearest_train": "taco_0673.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0809.jpg",
+    "nearest_train": "taco_0072.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0819.jpg",
+    "nearest_train": "taco_0236.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0829.jpg",
+    "nearest_train": "taco_1496.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0839.jpg",
+    "nearest_train": "taco_0727.jpg",
+    "hamming": 11,
+    "neighbour_hamming": 14
+   },
+   {
+    "image": "taco_0849.jpg",
+    "nearest_train": "taco_0411.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0859.jpg",
+    "nearest_train": "taco_0323.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_0869.jpg",
+    "nearest_train": "taco_1192.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_0879.jpg",
+    "nearest_train": "taco_0090.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 33
+   },
+   {
+    "image": "taco_0889.jpg",
+    "nearest_train": "taco_0036.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0899.jpg",
+    "nearest_train": "taco_0124.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0909.jpg",
+    "nearest_train": "taco_0102.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_0919.jpg",
+    "nearest_train": "taco_1138.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0929.jpg",
+    "nearest_train": "taco_0936.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 36
+   },
+   {
+    "image": "taco_0939.jpg",
+    "nearest_train": "taco_0606.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_0949.jpg",
+    "nearest_train": "taco_0595.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_0959.jpg",
+    "nearest_train": "taco_1036.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_0969.jpg",
+    "nearest_train": "taco_0633.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_0979.jpg",
+    "nearest_train": "taco_0336.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_0989.jpg",
+    "nearest_train": "taco_0991.jpg",
+    "hamming": 5,
+    "neighbour_hamming": 5
+   },
+   {
+    "image": "taco_0999.jpg",
+    "nearest_train": "taco_0221.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_1009.jpg",
+    "nearest_train": "taco_0063.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1019.jpg",
+    "nearest_train": "taco_1225.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_1029.jpg",
+    "nearest_train": "taco_0444.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_1039.jpg",
+    "nearest_train": "taco_0897.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_1049.jpg",
+    "nearest_train": "taco_0805.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 22
+   },
+   {
+    "image": "taco_1059.jpg",
+    "nearest_train": "taco_0322.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1069.jpg",
+    "nearest_train": "taco_0777.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_1079.jpg",
+    "nearest_train": "taco_0090.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 26
+   },
+   {
+    "image": "taco_1089.jpg",
+    "nearest_train": "taco_0124.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1099.jpg",
+    "nearest_train": "taco_1273.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 34
+   },
+   {
+    "image": "taco_1109.jpg",
+    "nearest_train": "taco_0040.jpg",
+    "hamming": 21,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1119.jpg",
+    "nearest_train": "taco_1118.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 17
+   },
+   {
+    "image": "taco_1129.jpg",
+    "nearest_train": "taco_1192.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1139.jpg",
+    "nearest_train": "taco_0908.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_1149.jpg",
+    "nearest_train": "taco_0352.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 21
+   },
+   {
+    "image": "taco_1159.jpg",
+    "nearest_train": "taco_0332.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_1169.jpg",
+    "nearest_train": "taco_1055.jpg",
+    "hamming": 14,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_1179.jpg",
+    "nearest_train": "taco_0127.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_1189.jpg",
+    "nearest_train": "taco_0253.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_1199.jpg",
+    "nearest_train": "taco_1095.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_1209.jpg",
+    "nearest_train": "taco_0542.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_1219.jpg",
+    "nearest_train": "taco_0216.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_1229.jpg",
+    "nearest_train": "taco_1022.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 25
+   },
+   {
+    "image": "taco_1239.jpg",
+    "nearest_train": "taco_0707.jpg",
+    "hamming": 11,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_1249.jpg",
+    "nearest_train": "taco_0475.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_1259.jpg",
+    "nearest_train": "taco_0765.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 33
+   },
+   {
+    "image": "taco_1269.jpg",
+    "nearest_train": "taco_1021.jpg",
+    "hamming": 21,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_1279.jpg",
+    "nearest_train": "taco_0191.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_1289.jpg",
+    "nearest_train": "taco_0227.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_1299.jpg",
+    "nearest_train": "taco_0812.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_1309.jpg",
+    "nearest_train": "taco_0314.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1319.jpg",
+    "nearest_train": "taco_0637.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 29
+   },
+   {
+    "image": "taco_1329.jpg",
+    "nearest_train": "taco_0090.jpg",
+    "hamming": 12,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_1339.jpg",
+    "nearest_train": "taco_0354.jpg",
+    "hamming": 17,
+    "neighbour_hamming": 18
+   },
+   {
+    "image": "taco_1349.jpg",
+    "nearest_train": "taco_0542.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_1359.jpg",
+    "nearest_train": "taco_0534.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 24
+   },
+   {
+    "image": "taco_1369.jpg",
+    "nearest_train": "taco_1180.jpg",
+    "hamming": 13,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1379.jpg",
+    "nearest_train": "taco_0010.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 23
+   },
+   {
+    "image": "taco_1389.jpg",
+    "nearest_train": "taco_0052.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_1399.jpg",
+    "nearest_train": "taco_0352.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_1409.jpg",
+    "nearest_train": "taco_0874.jpg",
+    "hamming": 15,
+    "neighbour_hamming": 31
+   },
+   {
+    "image": "taco_1419.jpg",
+    "nearest_train": "taco_0721.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 28
+   },
+   {
+    "image": "taco_1429.jpg",
+    "nearest_train": "taco_1293.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1439.jpg",
+    "nearest_train": "taco_0536.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_1449.jpg",
+    "nearest_train": "taco_0323.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1459.jpg",
+    "nearest_train": "taco_0035.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 32
+   },
+   {
+    "image": "taco_1469.jpg",
+    "nearest_train": "taco_0818.jpg",
+    "hamming": 16,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1479.jpg",
+    "nearest_train": "taco_0928.jpg",
+    "hamming": 19,
+    "neighbour_hamming": 30
+   },
+   {
+    "image": "taco_1489.jpg",
+    "nearest_train": "taco_0694.jpg",
+    "hamming": 18,
+    "neighbour_hamming": 27
+   },
+   {
+    "image": "taco_1499.jpg",
+    "nearest_train": "taco_0176.jpg",
+    "hamming": 20,
+    "neighbour_hamming": 28
+   }
+  ]
+ }
 }

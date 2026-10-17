@@ -14,7 +14,7 @@
  * The CPU detector's second opinion (YOLO26s) is drawn alongside in a
  * distinct style: dashed outline, "YOLO" tag under the box. Only the boxes
  * the gate acts on are drawn: metal at/above the hard threshold, glass and
- * organic at/above the light one (the backend's ``thresholds``, else 0.25);
+ * organic at/above the light one (the record's ``thresholds``, else 0.25);
  * feedstock detections (paper, plastic, textile) never flag a load.
  */
 
@@ -24,7 +24,8 @@ import { cn } from "@/lib/utils";
 /** Detector classes the gate acts on (backend detector.HARD/LIGHT_LABELS). */
 const DETECTOR_HARD_LABELS = new Set(["metal"]);
 const DETECTOR_LIGHT_LABELS = new Set(["glass", "organic"]);
-/** Backend default thresholds, for records written before they were sent. */
+/** Records written before the backend sent ``thresholds`` were all judged at
+    0.25 (the first model's defaults); newer records carry their own. */
 const DEFAULT_DETECTOR_CONF = 0.25;
 
 /** A detector box the gate would act on: a hard class at/above the hard
@@ -75,7 +76,7 @@ function captionFor({
   return `Located by ${model || "the vision model"}`;
 }
 
-/** "yolo26s-realwaste" → "YOLO26s"; unknown ids are shown as sent. */
+/** "yolo26s-realwaste-taco" → "YOLO26s"; unknown ids are shown as sent. */
 export function detectorName(model: string | null | undefined): string {
   if (!model) return "the detector";
   return /^yolo26s/i.test(model) ? "YOLO26s" : model;

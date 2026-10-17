@@ -44,6 +44,7 @@ __all__ = [
     "HARD_LABELS",
     "LIGHT_LABELS",
     "MAX_PIXELS",
+    "MAX_PNG_PIXELS",
     "DetectorImageError",
     "detect",
     "enabled",
@@ -56,7 +57,7 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
-MODEL_NAME = "yolo26s-realwaste"
+MODEL_NAME = "yolo26s-realwaste-taco"
 #: The runtime of the CPU provider (the only provider).
 RUNTIME = "onnxruntime-cpu"
 CPU_PROVIDER = "CPUExecutionProvider"
@@ -71,6 +72,8 @@ _PAD_GREY = (114, 114, 114)
 #: Photos above this many pixels are refused before any decode (a 40 MP
 #: photo is already far above any gate camera; the model sees 640 px).
 MAX_PIXELS = 40_000_000
+#: PNGs cannot be decoded at a reduced scale, so they get a lower cap.
+MAX_PNG_PIXELS = 16_000_000
 #: JPEGs are decoded at a reduced DCT scale no smaller than this.
 _DRAFT_SIZE = (1280, 1280)
 #: Detector runs (decode + inference) allowed at once.
@@ -78,6 +81,9 @@ MAX_CONCURRENT_RUNS = 2
 #: How long a run waits for a free slot before giving up (seconds).
 _SLOT_WAIT_S = 30.0
 _RUN_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
+#: No-wait runs (scripted demo requests) take this first: at most one of them
+#: holds a run slot, so live inspections always keep the other.
+_NO_WAIT_SLOT = threading.BoundedSemaphore(1)
 
 
 class DetectorImageError(ValueError):
@@ -86,7 +92,7 @@ class DetectorImageError(ValueError):
 
 def model_name(path: str) -> str:
     """The reported model name: the ONNX file stem without the ``lynceus-``
-    prefix (``yolo26s-realwaste`` for the bundled file)."""
+    prefix (``yolo26s-realwaste-taco`` for the bundled file)."""
     stem = Path(path).stem
     return stem.removeprefix("lynceus-") or stem
 
@@ -286,11 +292,13 @@ def _decode(photo_bytes: bytes) -> Any:
     """The photo as an upright RGB image, refused before decoding when it is
     over :data:`MAX_PIXELS` (below Pillow's own bomb-warning limit, so the
     header check fires first); Pillow's hard bomb error is refused too."""
-    from PIL import Image, ImageOps  # noqa: PLC0415
+    from PIL import Image, ImageOps, UnidentifiedImageError  # noqa: PLC0415
 
     try:
-        raw = Image.open(io.BytesIO(photo_bytes))
-    except Image.DecompressionBombError as exc:
+        # JPEG and PNG only (phone MPO files open through the JPEG plugin).
+        raw = Image.open(io.BytesIO(photo_bytes), formats=["JPEG", "PNG"])
+    except (Image.DecompressionBombError, UnidentifiedImageError) as exc:
+        # Not a JPEG/PNG Pillow can read (GIF, garbage, ...), or a bomb.
         raise DetectorImageError(f"image refused: {exc}") from exc
     with raw:
         width, height = raw.size
@@ -298,7 +306,12 @@ def _decode(photo_bytes: bytes) -> Any:
             raise DetectorImageError(
                 f"image refused: {width}x{height} is over {MAX_PIXELS:,} pixels"
             )
-        if raw.format == "JPEG":
+        if raw.format == "PNG" and width * height > MAX_PNG_PIXELS:
+            # A PNG decodes at full size (no DCT scaling): a lower cap.
+            raise DetectorImageError(
+                f"image refused: PNG {width}x{height} is over {MAX_PNG_PIXELS:,} pixels"
+            )
+        if raw.format in ("JPEG", "MPO"):
             raw.draft("RGB", _DRAFT_SIZE)  # decode at a reduced scale
         # EXIF orientation applied: boxes land on the photo as browsers show it.
         return ImageOps.exif_transpose(raw).convert("RGB")
@@ -336,6 +349,7 @@ def detect(
     photo_bytes: bytes,
     settings: Optional[Settings] = None,
     min_conf: Optional[float] = None,
+    slot_wait_s: float = _SLOT_WAIT_S,
 ) -> Optional[Dict[str, Any]]:
     """Run the detector on one JPEG/PNG; ``None`` when the stage is disabled.
 
@@ -343,8 +357,9 @@ def detect(
     of the two gate thresholds, so the boxes are exactly what the gate can
     act on); ``hard_contaminants`` / ``light_contaminants`` apply the
     configured thresholds.  Raises when the bytes are not a readable image,
-    when the image is over :data:`MAX_PIXELS`, or when no run slot frees up
-    within 30 s.
+    when the image is over :data:`MAX_PIXELS` (PNG: :data:`MAX_PNG_PIXELS`),
+    or when no run slot frees up within ``slot_wait_s`` (30 s; 0 = only an
+    idle slot, as scripted demo requests use).
     """
     settings = settings or get_settings()
     if not photo_bytes or not enabled(settings):
@@ -358,14 +373,25 @@ def detect(
         if min_conf is None
         else min_conf
     )
-    if not _RUN_SLOTS.acquire(timeout=_SLOT_WAIT_S):
-        raise RuntimeError(f"detector busy: no free run slot within {_SLOT_WAIT_S:g} s")
+    no_wait = slot_wait_s <= 0
+    if no_wait and not _NO_WAIT_SLOT.acquire(blocking=False):
+        raise RuntimeError("detector busy: a no-wait run is already in flight")
     try:
-        started = time.perf_counter()
-        boxes = model(_decode(photo_bytes), floor)
-        latency_ms = (time.perf_counter() - started) * 1000.0
+        acquired = (
+            _RUN_SLOTS.acquire(blocking=False) if no_wait
+            else _RUN_SLOTS.acquire(timeout=slot_wait_s)
+        )
+        if not acquired:
+            raise RuntimeError(f"detector busy: no free run slot within {slot_wait_s:g} s")
+        try:
+            started = time.perf_counter()
+            boxes = model(_decode(photo_bytes), floor)
+            latency_ms = (time.perf_counter() - started) * 1000.0
+        finally:
+            _RUN_SLOTS.release()
     finally:
-        _RUN_SLOTS.release()
+        if no_wait:
+            _NO_WAIT_SLOT.release()
     return summarize(
         boxes,
         latency_ms,

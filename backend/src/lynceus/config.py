@@ -55,7 +55,7 @@ VLM_FALLBACK_MODELS_ENV = "VLM_FALLBACK_MODELS"
 #: Comma-separated vision models with a benchmark run behind them.  A
 #: fallback model outside this list may hold a load, never accept or reject it.
 VLM_BENCHMARKED_MODELS_ENV = "VLM_BENCHMARKED_MODELS"
-#: VLM reads per inspection, merged by majority vote (1..4; malformed = 3).
+#: VLM reads per inspection, merged by majority vote (1..3; malformed = 3).
 VLM_VOTES_ENV = "VLM_VOTES"
 #: Optional bearer key for the vLLM endpoints (empty = no auth header).
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
@@ -100,18 +100,22 @@ _DEFAULT_AUDIT_FORMAT_VERSION = 1
 #: site-packages install cannot see it; the container sets
 #: ``DETECTOR_MODEL_PATH`` instead.
 BUNDLED_DETECTOR_MODEL = (
-    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26s-realwaste.onnx"
+    Path(__file__).resolve().parents[2] / "models" / "lynceus-yolo26s-realwaste-taco.onnx"
 )
-#: Read off the 80-image RealWaste test set itself (no calibration split):
-#: 0.10-0.25 gave 18/20 metal and 0/60 false metal flags there.
-_DEFAULT_DETECTOR_HARD_CONF = 0.25
-_DEFAULT_DETECTOR_LIGHT_CONF = 0.25
+#: The detector defaults (decision.py uses these too).  Picked on the val split
+#: (RealWaste val + TACO val: not trained on, but used for checkpoint selection)
+#: by the rule in ml/eval_val.py: the lowest threshold whose false-metal rate is
+#: <= 2% (RealWaste) and <= 5% (TACO); light likewise with false escalations on
+#: clean images <= 5% / 10%.  ml/results/val_yolo26s_e26l.json.
+DEFAULT_DETECTOR_HARD_CONF = 0.35
+DEFAULT_DETECTOR_LIGHT_CONF = 0.05
 _DEFAULT_DETECTOR_THREADS = 2
 _DEFAULT_DETECTOR_PROVIDERS: Tuple[str, ...] = ("CPUExecutionProvider",)
 #: VLM reads per inspection, merged by majority vote (pipeline._vote_majority).
 _DEFAULT_VLM_VOTES = 3
-#: The reads run concurrently and share pipeline._OUTBOUND_SLOTS (4) with the LLM call.
-_MAX_VLM_VOTES = 4
+#: The reads run concurrently on pipeline._VLM_READ_SLOTS (3), which leaves
+#: one of the four outbound slots for the waybill / assist calls.
+_MAX_VLM_VOTES = 3
 #: The vision model of the committed live benchmark run (2026-10-13).
 _DEFAULT_VLM_BENCHMARKED_MODELS: Tuple[str, ...] = ("MiniCPM-V-4.7-35B-A3B",)
 
@@ -135,8 +139,8 @@ class Settings:
     version: str
     vlm_fallback_models: Tuple[str, ...] = ()
     detector_model_path: str = ""
-    detector_hard_conf: float = _DEFAULT_DETECTOR_HARD_CONF
-    detector_light_conf: float = _DEFAULT_DETECTOR_LIGHT_CONF
+    detector_hard_conf: float = DEFAULT_DETECTOR_HARD_CONF
+    detector_light_conf: float = DEFAULT_DETECTOR_LIGHT_CONF
     detector_escalate_light: bool = True
     vlm_benchmarked_models: Tuple[str, ...] = _DEFAULT_VLM_BENCHMARKED_MODELS
     detector_threads: int = _DEFAULT_DETECTOR_THREADS
@@ -262,8 +266,8 @@ def get_settings() -> Settings:
         audit_format_version=audit_format_version,
         version=__version__,
         detector_model_path=_detector_model_path(),
-        detector_hard_conf=_env_conf(DETECTOR_HARD_CONF_ENV, _DEFAULT_DETECTOR_HARD_CONF),
-        detector_light_conf=_env_conf(DETECTOR_LIGHT_CONF_ENV, _DEFAULT_DETECTOR_LIGHT_CONF),
+        detector_hard_conf=_env_conf(DETECTOR_HARD_CONF_ENV, DEFAULT_DETECTOR_HARD_CONF),
+        detector_light_conf=_env_conf(DETECTOR_LIGHT_CONF_ENV, DEFAULT_DETECTOR_LIGHT_CONF),
         detector_escalate_light=os.environ.get(DETECTOR_ESCALATE_LIGHT_ENV, "1")
         .strip()
         .lower()
