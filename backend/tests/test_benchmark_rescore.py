@@ -160,6 +160,14 @@ def test_summary_kind_framing_and_disclosure(replayed):
     assert s["provenance"] == ["replay"] and s["source_provenance"] == ["live"]
     assert s["latency_ms"] == {"p50": None, "p95": None}
     assert s["rescored_on"] == "2026-10-14"
+    # The LLM note matches today's rules: ocr_confidence is the waybill photo
+    # read (not run on the typed benchmark waybills) and the LLM never moves
+    # the verdict.
+    assert "only fills the ocr_confidence gate value" not in s["llm_note"]
+    assert "The LLM result never moves the verdict" in s["llm_note"]
+    assert "waybill photo read" in s["llm_note"]
+    assert all(r["gates"]["ocr_confidence"] == "not_run"
+               for r in replayed["rows"].values() if r.get("gates"))
     written = json.loads((replayed["results"] / "2026-10-13.rescore.summary.json").read_text(
         encoding="utf-8"))
     assert written == s

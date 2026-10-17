@@ -17,7 +17,12 @@ pattern 14):
    add a contract-breach notice.
 3. ``escalate_human`` — anything a person must look at, never a reject:
 
+   * an ANPR plate observation that differs from the waybill plate: verify
+     the truck (R3);
+   * an ``image_quality`` observation marked poor: retake the photo (R2);
    * VLM confidence < 0.3: the photo is unreadable, retake it;
+   * some vision reads (``votes``) saw a hard contaminant the majority
+     dropped: check by hand (R1);
    * weighbridge vs declared weight beyond 5 %: ticket correction;
    * the waybill photo read below 0.6 confidence: check the fields;
    * the load looks wetter than declared (waybill field: visual moisture
@@ -29,6 +34,10 @@ pattern 14):
    * an engine ranking whose top two routes are tied within 0.02.
 4. ``accept`` — no red flags and the engine recommendation is actionable
    and not tied.
+
+:func:`rule_trace` returns the decision receipt: every rule above, in
+priority order, with whether it fired and its evidence.  A declared moisture
+above the contract spec is listed there but never moves the verdict.
 
 The LLM's own cross-check verdict (``crosscheck_failed``) no longer moves
 the verdict: its notes stay in the audit as a narrative.  The
@@ -84,7 +93,17 @@ __all__ = [
     "MOISTURE_CONFLICT_MARKER",
     "ARITHMETIC_MARKER",
     "DETECTOR_MISSED_MARKER",
+    "PHOTO_QUALITY_MARKER",
+    "VOTE_SPLIT_MARKER",
+    "PLATE_MISMATCH_MARKER",
+    "RULES",
     "confident_hard_contaminants",
+    "contract_moisture_spec_pct",
+    "plate_mismatch",
+    "poor_image_notes",
+    "vote_agreement",
+    "vote_split",
+    "rule_trace",
     "light_contaminant_hits",
     "declares_processed_rdf",
     "declared_moisture_fraction",
@@ -134,6 +153,12 @@ ARITHMETIC_MARKER = "Waybill arithmetic"
 #: Marker in the ``detector_second_opinion`` reason when the detector did not
 #: flag a hard contaminant the vision model confidently found.
 DETECTOR_MISSED_MARKER = "Second look did not find it"
+#: Wave-2 markers: a poor photo and a vision-vote split (``vlm_confidence``
+#: reason), a plate mismatch (``weight_plausibility`` reason: the truck at
+#: the weighbridge is not the one on the waybill).
+PHOTO_QUALITY_MARKER = "Photo quality poor"
+VOTE_SPLIT_MARKER = "Reads split"
+PLATE_MISMATCH_MARKER = "Plate mismatch"
 #: Load-type / remarks wording that declares processed (sorted) RDF.
 _PROCESSED_RDF_RE = re.compile(
     r"\b(?:rdf|srf|fluff)\b|pemilahan|hasil proses", re.IGNORECASE
@@ -280,6 +305,149 @@ def confident_hard_contaminants(
     if hits and confidence is not None and confidence >= HARD_CONTAMINANT_CONFIDENCE:
         return sorted(set(hits))
     return []
+
+
+def _listed_hard(vlm_result: Optional[Dict[str, Any]]) -> List[str]:
+    """Allowlisted hard contaminants the merged vision read lists (any confidence)."""
+    detected = (vlm_result or {}).get("detected") if isinstance(vlm_result, dict) else None
+    listed = detected.get("hard_contaminants") if isinstance(detected, dict) else None
+    if not isinstance(listed, list):
+        return []
+    return sorted({n for n in listed if isinstance(n, str) and n in HARD_CONTAMINANTS})
+
+
+def _votes(vlm_result: Optional[Dict[str, Any]]) -> List[set]:
+    """Each vision read's allowlisted hard contaminants (``vlm_result["votes"]``)."""
+    votes = (vlm_result or {}).get("votes") if isinstance(vlm_result, dict) else None
+    if not isinstance(votes, list):
+        return []
+    out = []
+    for vote in votes:
+        if not isinstance(vote, dict):
+            continue
+        hard = vote.get("hard") if isinstance(vote.get("hard"), list) else []
+        out.append({n for n in hard if isinstance(n, str) and n in HARD_CONTAMINANTS})
+    return out
+
+
+def vote_split(vlm_result: Optional[Dict[str, Any]]) -> Dict[str, Tuple[int, int]]:
+    """Hard contaminants some vision reads saw but the merged read dropped:
+    ``{name: (reads that saw it, reads)}``.  Needs two or more reads (R1)."""
+    votes = _votes(vlm_result)
+    if len(votes) < 2:
+        return {}
+    merged = set(_listed_hard(vlm_result))
+    names = set().union(*votes) - merged
+    return {name: (sum(name in v for v in votes), len(votes)) for name in sorted(names)}
+
+
+def vote_agreement(vlm_result: Optional[Dict[str, Any]]) -> Optional[str]:
+    """"Reads 3/3 agree" or "Reads split 1/3" (hard contaminants), else None
+    with fewer than two reads.  An early majority whose third read came late
+    or failed (``vlm_result["third_read"]``): "2 of 3 reads (third late)"."""
+    votes = _votes(vlm_result)
+    if len(votes) < 2:
+        return None
+    n = len(votes)
+    counts = [sum(name in v for v in votes) for name in sorted(set().union(*votes))]
+    disagree = [c for c in counts if 0 < c < n]
+    if disagree:
+        return f"Reads split {min(disagree)}/{n}"
+    third = (vlm_result or {}).get("third_read")
+    if n == 2 and third in ("late", "failed"):
+        return f"2 of 3 reads (third {third})"
+    return f"Reads {n}/{n} agree"
+
+
+def _observations(inputs: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    obs = (inputs or {}).get("observations")
+    return [o for o in obs if isinstance(o, dict)] if isinstance(obs, list) else []
+
+
+def poor_image_notes(inputs: Optional[Dict[str, Any]]) -> List[str]:
+    """Notes of the ``image_quality`` observations whose status is poor (R2)."""
+    return [
+        str(o.get("note") or "The image-quality check marked the photo poor.")
+        for o in _observations(inputs)
+        if o.get("kind") == "image_quality" and o.get("status") == "poor"
+    ]
+
+
+def _norm_plate(plate: Any) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(plate or "").upper())
+
+
+def plate_mismatch(inputs: Optional[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
+    """``(camera plate, waybill plate)`` when an ANPR ``plate`` observation
+    disagrees with the waybill plate (spaces and case ignored), else None (R3)."""
+    waybill_plate = str(_waybill_fields(inputs).get("plate") or "").strip()
+    for obs in _observations(inputs):
+        if obs.get("kind") != "plate":
+            continue
+        read = str(obs.get("value") or "").strip()
+        differs = bool(read and waybill_plate) and _norm_plate(read) != _norm_plate(waybill_plate)
+        if differs or (obs.get("status") == "mismatch" and read):
+            return read, waybill_plate or "another plate"
+    return None
+
+
+def contract_moisture_spec_pct() -> float:
+    """The contract's moisture spec (``contracts.SPECS``), 20 % without it."""
+    try:
+        from lynceus import contracts  # lazy: an optional module
+
+        return float(contracts.DEFAULT_CONTRACT["specs"]["moisture_pct_max"])
+    except Exception:  # absent or reshaped: the stated default
+        return 20.0
+
+
+#: The decision receipt's rules, in priority order: ``(id, rule, effect)``.
+RULES: Tuple[Tuple[str, str, str], ...] = (
+    ("inputs", "Photo, waybill and a vision read are present, or refuse", "refuse"),
+    ("hard_contaminant",
+     f"A hard contaminant seen at VLM confidence >= {HARD_CONTAMINANT_CONFIDENCE:.2f} rejects",
+     "reject"),
+    ("declared_sorted",
+     "Waybill declares sorted RDF but a hard contaminant is seen: contract breach", "reject"),
+    ("unbenchmarked_model",
+     "A fallback vision model without a benchmark run cannot accept or reject", "hold"),
+    ("plate_mismatch", "The ANPR plate must match the waybill plate", "hold"),
+    ("image_quality", "A poor photo (blur, exposure, size) is retaken", "hold"),
+    ("vlm_confidence",
+     f"VLM confidence below {UNSAFE_VLM_CONFIDENCE:.2f}: retake the photo", "hold"),
+    ("vote_split", "A hard item seen by only some vision reads is checked by hand", "hold"),
+    ("weight_tolerance",
+     f"Scale within {WEIGHT_TOLERANCE:.0%} of the waybill net, else ticket correction", "hold"),
+    ("waybill_read",
+     f"Waybill read confidence >= {WAYBILL_READ_MIN_CONFIDENCE:.2f}, else check the fields",
+     "hold"),
+    ("moisture_declared",
+     "The load looks no wetter than declared (+15 points), else grab sample", "hold"),
+    ("arithmetic",
+     f"Gross - tare = net within {ARITHMETIC_TOLERANCE:.0%}, else correct the ticket", "hold"),
+    ("light_contaminant", "Glass, organic residue or a wet mix go to the pre-sort line", "hold"),
+    ("detector", "An unconfirmed second-look finding holds the truck", "hold"),
+    ("moisture_spec",
+     "Declared moisture above the contract spec: sample to settle the price", "none"),
+    ("engine_actionable", "The engine must give an actionable route, or refuse", "refuse"),
+    ("engine_tie", "Tied engine routes are held for the supervisor", "hold"),
+    ("accept", "Nothing above fired: accept", "accept"),
+)
+
+
+def _receipt(evidence: Dict[str, Tuple[bool, str]]) -> List[Dict[str, Any]]:
+    """The receipt rows from ``{rule id: (fired, evidence)}``."""
+    rows = []
+    for rule_id, rule, effect in RULES:
+        fired, text = evidence[rule_id]
+        rows.append({
+            "id": rule_id,
+            "rule": rule,
+            "fired": bool(fired),
+            "evidence": text,
+            "effect": effect if fired else "none",
+        })
+    return rows
 
 
 def _findings_text(findings: Dict[str, float]) -> str:
@@ -502,13 +670,51 @@ def decide(
     llm_result: Optional[Dict[str, Any]],
     engine_result: Optional[Dict[str, Any]],
     detector_result: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+) -> Tuple[str, Dict[str, Any], List[str]]:
+    """Fuse all pipeline outputs into ``(verdict, gates, reasons)``.
+
+    The keyword arguments are those of :func:`_fuse` (detector thresholds,
+    light escalation, the benchmarked vision models).
+    """
+    verdict, gates, reasons, _ = _fuse(
+        inputs, vlm_result, llm_result, engine_result, detector_result, **kwargs
+    )
+    return verdict, gates, reasons
+
+
+def rule_trace(
+    inputs: Dict[str, Any],
+    vlm_result: Optional[Dict[str, Any]],
+    llm_result: Optional[Dict[str, Any]],
+    engine_result: Optional[Dict[str, Any]],
+    detector_result: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+) -> List[Dict[str, Any]]:
+    """The decision receipt: every rule of :func:`decide`, in priority order.
+
+    Each entry is ``{"id", "rule", "fired", "evidence", "effect"}``; ``effect``
+    is what the rule does when it fires (``refuse``, ``reject``, ``hold``,
+    ``accept``) and ``none`` when it did not fire (or, like ``moisture_spec``,
+    never moves the verdict).  Pure: the same inputs and keyword arguments as
+    :func:`decide` give the same receipt.
+    """
+    return _fuse(inputs, vlm_result, llm_result, engine_result, detector_result, **kwargs)[3]
+
+
+def _fuse(
+    inputs: Dict[str, Any],
+    vlm_result: Optional[Dict[str, Any]],
+    llm_result: Optional[Dict[str, Any]],
+    engine_result: Optional[Dict[str, Any]],
+    detector_result: Optional[Dict[str, Any]] = None,
     *,
     detector_hard_conf: float = DETECTOR_HARD_CONFIDENCE,
     detector_light_conf: float = DETECTOR_LIGHT_CONFIDENCE,
     detector_escalate_light: bool = True,
     benchmarked_vlm_models: Sequence[str] = BENCHMARKED_VLM_MODELS,
-) -> Tuple[str, Dict[str, Any], List[str]]:
-    """Fuse all pipeline outputs into ``(verdict, gates, reasons)``.
+) -> Tuple[str, Dict[str, Any], List[str], List[Dict[str, Any]]]:
+    """``(verdict, gates, reasons, receipt)``: :func:`decide` plus its receipt.
 
     A VLM result that came from a fallback model (non-empty
     ``fallback_from``) whose ``model`` is not in ``benchmarked_vlm_models``
@@ -597,7 +803,10 @@ def decide(
             f"Mandatory input missing: {name}. The inspection cannot proceed without it."
             for name in missing
         ]
-        return Decision.REFUSE_INSUFFICIENT_INPUT, gates, reasons
+        skipped = (False, "Not evaluated: input incomplete.")
+        evidence = {rule_id: skipped for rule_id, _, _ in RULES}
+        evidence["inputs"] = (True, f"Missing: {', '.join(missing)}.")
+        return Decision.REFUSE_INSUFFICIENT_INPUT, gates, reasons, _receipt(evidence)
 
     # ----- Weight plausibility (a ticket problem, never a reject) ----------
     fields = _waybill_fields(inputs)
@@ -649,24 +858,48 @@ def decide(
             ),
         )
 
-    # ----- VLM confidence gate (an unreadable photo is retaken) -----------
+    weight_evidence = str(weight_gate.get("reason") or "No weighbridge weight.")
+
+    # ----- Plate (ANPR) vs waybill: a wrong truck is held (R3) -------------
+    plate = plate_mismatch(inputs)
+    plate_reason = (
+        f"{PLATE_MISMATCH_MARKER}: the camera reads {plate[0]}, the waybill says "
+        f"{plate[1]}; verify the truck."
+        if plate
+        else None
+    )
+    if plate_reason:
+        prior = weight_gate.get("reason")
+        weight_gate = dict(weight_gate, state=GateState.FAILED)
+        weight_gate["reason"] = plate_reason + (f" {prior}" if prior else "")
+
+    # ----- VLM confidence gate (unreadable or poor photo: retake, R2) -----
     assert vlm_confidence is not None  # refused above, kept for type checkers
     unreadable = vlm_confidence < UNSAFE_VLM_CONFIDENCE
-    vlm_gate = _gate(
-        GateState.FAILED if unreadable else GateState.PASSED,
-        value=vlm_confidence,
-        threshold=UNSAFE_VLM_CONFIDENCE,
-        reason=(
-            f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
-            f"{UNSAFE_VLM_CONFIDENCE:.2f}: photo unreadable, retake it."
-            if unreadable
-            else f"VLM confidence {vlm_confidence:.2f} is within the safe range."
-        ),
+    poor_photo = poor_image_notes(inputs)
+    vlm_reason = (
+        f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
+        f"{UNSAFE_VLM_CONFIDENCE:.2f}: photo unreadable, retake it."
+        if unreadable
+        else f"VLM confidence {vlm_confidence:.2f} is within the safe range."
     )
-
+    if poor_photo:
+        vlm_reason = f"{PHOTO_QUALITY_MARKER}: {' '.join(poor_photo)} " + vlm_reason
     # ----- Contamination scan (hard: shared helper; light: VLM detections) --
     light_hits = light_contaminant_hits(vlm_result)
     confident_hard = confident_hard_contaminants(inputs, vlm_result, llm_result)
+    # A hard item some vision reads saw but the majority dropped (R1).
+    split = vote_split(vlm_result)
+    if split:
+        vlm_reason += f" {VOTE_SPLIT_MARKER}: " + "; ".join(
+            f"{seen} of {of} saw {name}" for name, (seen, of) in sorted(split.items())
+        ) + "."
+    vlm_gate = _gate(
+        GateState.FAILED if unreadable or poor_photo else GateState.PASSED,
+        value=vlm_confidence,
+        threshold=UNSAFE_VLM_CONFIDENCE,
+        reason=vlm_reason,
+    )
 
     # ----- Waybill read gate (the waybill photo read's own confidence) ------
     waybill_read = inputs.get("waybill_read")
@@ -871,26 +1104,21 @@ def decide(
         else None
     )
 
-    if reasons:  # a confident hard contaminant → reject
-        if unbenchmarked:
-            if detector_reasons:
-                detector_gate["reason"] += _DETECTOR_HELD
-            return (
-                Decision.ESCALATE_HUMAN,
-                gates,
-                [unbenchmarked, *reasons, *detector_reasons],
-            )
-        if detector_reasons:  # the gate failed, but the reject outranks it
-            detector_gate["reason"] += _DETECTOR_OUTRANKED
-        return Decision.REJECT, gates, reasons
-
     # Amber flags → escalate (a person looks; never a reject)
     escalate_reasons: List[str] = []
+    if plate_reason:
+        escalate_reasons.append(plate_reason)
+    if poor_photo:
+        escalate_reasons.append(
+            f"{PHOTO_QUALITY_MARKER}: {' '.join(poor_photo)} Retake the photo."
+        )
     if unreadable:
         escalate_reasons.append(
             f"Photo unreadable: VLM confidence {vlm_confidence:.2f} is below the safe "
             f"minimum of {UNSAFE_VLM_CONFIDENCE:.2f}; retake the photo."
         )
+    for name, (seen, of) in sorted(split.items()):
+        escalate_reasons.append(f"{seen} of {of} vision reads saw {name}: check by hand.")
     if weight_off:
         assert declared_weight_kg is not None and actual_weight_kg is not None
         escalate_reasons.append(
@@ -922,40 +1150,162 @@ def decide(
         )
     # The detector's unconfirmed findings: never a reject, never an accept.
     escalate_reasons.extend(detector_reasons)
-    if detector_reasons:
-        detector_gate["reason"] += _DETECTOR_HELD
 
-    if escalate_reasons:
-        return Decision.ESCALATE_HUMAN, gates, escalate_reasons
-
-    # Engine actionability (engine refuse-to-answer, pattern 14)
     recommendation = (engine_result or {}).get("recommendation") or {}
-    if recommendation.get("insufficient") or not recommendation.get("actionable", True):
-        reasons.append(
+    engine_unusable = bool(
+        recommendation.get("insufficient") or not recommendation.get("actionable", True)
+    )
+    engine_tied = bool(recommendation.get("tied"))
+
+    if reasons:  # a confident hard contaminant → reject
+        if unbenchmarked:
+            if detector_reasons:
+                detector_gate["reason"] += _DETECTOR_HELD
+            verdict, out = Decision.ESCALATE_HUMAN, [unbenchmarked, *reasons, *detector_reasons]
+        else:
+            if detector_reasons:  # the gate failed, but the reject outranks it
+                detector_gate["reason"] += _DETECTOR_OUTRANKED
+            verdict, out = Decision.REJECT, reasons
+    elif escalate_reasons:
+        if detector_reasons:
+            detector_gate["reason"] += _DETECTOR_HELD
+        verdict, out = Decision.ESCALATE_HUMAN, escalate_reasons
+    elif engine_unusable:
+        # Engine actionability (engine refuse-to-answer, pattern 14)
+        out = [
             "The engine recommendation is not actionable: "
             + str(recommendation.get("headline") or "insufficient data for routing.")
-        )
-        if recommendation.get("missing"):
-            for item in recommendation["missing"]:
-                reasons.append(f"Engine missing input: {item}.")
-        return Decision.REFUSE_INSUFFICIENT_INPUT, gates, reasons
+        ]
+        out += [f"Engine missing input: {item}." for item in recommendation.get("missing") or []]
+        verdict = Decision.REFUSE_INSUFFICIENT_INPUT
+    elif engine_tied:
+        # A tied engine ranking cannot pick a route, so a clean load is not
+        # waved through: the audit route is hold_for_review and the verdict
+        # must say the same (reject/refuse above keep their precedence).
+        verdict, out = Decision.ESCALATE_HUMAN, [
+            "Engine routes tied within 0.02; hold for supervisor review."
+        ]
+    elif unbenchmarked:
+        verdict, out = Decision.ESCALATE_HUMAN, [unbenchmarked]
+    else:
+        verdict, out = Decision.ACCEPT, [
+            (
+                "No red flags: no hard contamination, weight within tolerance, VLM confidence "
+                "in the safe range, and the engine recommendation is actionable "
+                f"(route: {recommendation.get('route', Route.HOLD_FOR_REVIEW)})."
+            )
+        ]
 
-    # A tied engine ranking cannot pick a route, so a clean load is not
-    # waved through: the audit route is hold_for_review and the verdict
-    # must say the same (reject/refuse above keep their precedence).
-    if recommendation.get("tied"):
-        return (
-            Decision.ESCALATE_HUMAN,
-            gates,
-            ["Engine routes tied within 0.02; hold for supervisor review."],
-        )
-
-    if unbenchmarked:
-        return Decision.ESCALATE_HUMAN, gates, [unbenchmarked]
-
-    reasons.append(
-        "No red flags: no hard contamination, weight within tolerance, VLM confidence "
-        "in the safe range, and the engine recommendation is actionable "
-        f"(route: {recommendation.get('route', Route.HOLD_FOR_REVIEW)})."
-    )
-    return Decision.ACCEPT, gates, reasons
+    # ----- Decision receipt: every rule, in priority order ----------------
+    listed_hard = _listed_hard(vlm_result)
+    spec_pct = contract_moisture_spec_pct()
+    declared_pct = None if moisture_claim is None else round(moisture_claim * 100.0, 6)
+    above_spec = declared_pct is not None and declared_pct > spec_pct
+    observations = _observations(inputs)
+    agreement = vote_agreement(vlm_result)
+    evidence: Dict[str, Tuple[bool, str]] = {
+        "inputs": (False, "Photo, waybill text and a vision read with a confidence are present."),
+        "hard_contaminant": (
+            bool(confident_hard),
+            f"{', '.join(confident_hard)} at VLM confidence {vlm_confidence:.2f} "
+            f"(bar {HARD_CONTAMINANT_CONFIDENCE:.2f})."
+            if confident_hard
+            else f"{', '.join(listed_hard)} listed at VLM confidence {vlm_confidence:.2f}, "
+            f"below the {HARD_CONTAMINANT_CONFIDENCE:.2f} bar."
+            if listed_hard
+            else "No hard contaminant in the vision read.",
+        ),
+        "declared_sorted": (
+            bool(declared_sorted and confident_hard),
+            (
+                f"Waybill declares sorted RDF ({fields.get('load_type') or 'per the remarks'}); "
+                + ("a hard contaminant is seen." if confident_hard else "nothing hard seen.")
+            )
+            if declared_sorted
+            else "The waybill does not declare sorted RDF.",
+        ),
+        "unbenchmarked_model": (
+            bool(unbenchmarked),
+            unbenchmarked or f"Read by {answered_by}.",
+        ),
+        "plate_mismatch": (
+            bool(plate_reason),
+            plate_reason
+            or (
+                "The ANPR plate matches the waybill."
+                if any(o.get("kind") == "plate" for o in observations)
+                else "No ANPR plate reading."
+            ),
+        ),
+        "image_quality": (
+            bool(poor_photo),
+            " ".join(poor_photo)
+            if poor_photo
+            else "Image quality ok."
+            if any(o.get("kind") == "image_quality" for o in observations)
+            else "No image-quality observation.",
+        ),
+        "vlm_confidence": (
+            unreadable,
+            f"VLM confidence {vlm_confidence:.2f} (minimum {UNSAFE_VLM_CONFIDENCE:.2f}).",
+        ),
+        "vote_split": (
+            bool(split),
+            "; ".join(f"{seen} of {of} reads saw {name}" for name, (seen, of) in sorted(split.items()))
+            + "."
+            if split
+            else f"{agreement}."
+            if agreement
+            else "One vision read: no votes to compare.",
+        ),
+        "weight_tolerance": (weight_off, weight_evidence),
+        "waybill_read": (read_uncertain, str(ocr_gate.get("reason") or "")),
+        "moisture_declared": (
+            bool(moisture_conflict),
+            "No declared moisture."
+            if moisture_claim is None
+            else "No visual moisture estimate."
+            if visual_moisture is None
+            else f"Declared {moisture_claim:.0%}, the load looks like {visual_moisture:.0%}.",
+        ),
+        "arithmetic": (
+            arithmetic_off,
+            f"Gross {gross:,.0f} - tare {tare:,.0f} = {gross - tare:,.0f} kg vs net {net:,.0f} kg."
+            if arithmetic_gap is not None and gross is not None and tare is not None
+            and net is not None
+            else "No gross, tare and net on the waybill.",
+        ),
+        "light_contaminant": (
+            bool(light_hits),
+            f"Seen: {', '.join(light_hits)}."
+            if light_hits
+            else "No glass, organic residue or wet mix seen.",
+        ),
+        "detector": (bool(detector_reasons), str(detector_gate.get("reason") or "")),
+        "moisture_spec": (
+            above_spec,
+            "No declared moisture."
+            if declared_pct is None
+            else f"Declared moisture {declared_pct:g} % vs the {spec_pct:g} % contract spec"
+            + (": sample to settle the price." if above_spec else ": within spec."),
+        ),
+        "engine_actionable": (
+            engine_unusable,
+            str(recommendation.get("headline") or "insufficient data for routing.")
+            if engine_unusable
+            else "No engine assessment; it does not block the verdict."
+            if not recommendation
+            else f"Engine route {recommendation.get('route', Route.HOLD_FOR_REVIEW)} is actionable.",
+        ),
+        "engine_tie": (
+            engine_tied,
+            "Engine routes tied within 0.02." if engine_tied else "Engine routes not tied.",
+        ),
+        "accept": (
+            verdict == Decision.ACCEPT,
+            "No rule above holds or rejects the load."
+            if verdict == Decision.ACCEPT
+            else f"Verdict {verdict}: a rule above decided.",
+        ),
+    }
+    return verdict, gates, out, _receipt(evidence)

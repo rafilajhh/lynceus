@@ -9,6 +9,8 @@ rows for that verdict in table order, deduplicated by ``sop_ref`` (the first
 occurrence wins, so a clause is cited once) and renumbered from 1.  An
 unmatched reject yields the single manual-check fallback; every escalate
 ends with the supervisor review (the only step when nothing else matched).
+A plate mismatch (``weight_plausibility`` failed with the plate marker) is
+verified first; a poor photo or a vision-vote split each add their own step.
 The risk-based lab-sample row is appended for an accept or escalate when
 ``sampling["sample_this_truck"]`` is true (a rejected load is not tipped).
 The gas row is appended last whenever ``gas_plausibility`` failed, for any
@@ -24,6 +26,15 @@ from lynceus.decision import (
     DECLARED_SORTED_MARKER,
     LIGHT_CONTAMINANTS,
     MOISTURE_CONFLICT_MARKER,
+)
+from lynceus.decision import (
+    PHOTO_QUALITY_MARKER as _PHOTO_QUALITY_MARKER,
+)
+from lynceus.decision import (
+    PLATE_MISMATCH_MARKER as _PLATE_MISMATCH_MARKER,
+)
+from lynceus.decision import (
+    VOTE_SPLIT_MARKER as _VOTE_SPLIT_MARKER,
 )
 
 __all__ = ["next_steps"]
@@ -44,6 +55,11 @@ _LAB_SAMPLE_STEP = (
         "the supplier's risk tier sets the rate."
     ),
     "SOP-RDF-5.4",
+)
+
+_PLATE_STEP = (
+    "Plate does not match the waybill: verify the truck and its papers first.",
+    "SOP-RDF-3.3",
 )
 
 _GAS_STEP = (
@@ -77,6 +93,26 @@ def _crosscheck_says(gates: Dict[str, Any], marker: str) -> bool:
 
 def _moisture_conflict(gates: Dict[str, Any]) -> bool:
     return _crosscheck_says(gates, _MOISTURE_CONFLICT_MARKER)
+
+
+def _reason(gates: Dict[str, Any], name: str) -> str:
+    gate = (gates or {}).get(name)
+    return str(gate.get("reason") or "") if isinstance(gate, dict) else ""
+
+
+def _plate_mismatch(gates: Dict[str, Any]) -> bool:
+    """The weighbridge gate failed because the truck's plate is not the waybill's."""
+    return _failed(gates, "weight_plausibility") and (
+        _PLATE_MISMATCH_MARKER in _reason(gates, "weight_plausibility")
+    )
+
+
+def _weight_off(gates: Dict[str, Any]) -> bool:
+    """The weighbridge gate failed on the weight itself (not only the plate)."""
+    if not _failed(gates, "weight_plausibility"):
+        return False
+    reason = _reason(gates, "weight_plausibility")
+    return _PLATE_MISMATCH_MARKER not in reason or "ticket correction" in reason.lower()
 
 
 def _names(value: Any) -> List[str]:
@@ -129,7 +165,9 @@ def next_steps(
                     + " and the sealed photo; apply the breach fee per contract.",
                     "SOP-RDF-4.5",
                 ))
-        if _failed(gates, "weight_plausibility"):
+        if _plate_mismatch(gates):
+            steps.append(_PLATE_STEP)
+        if _weight_off(gates):
             steps += [
                 ("Hold the ticket and re-weigh the truck.", "SOP-RDF-3.2"),
                 ("Ask the driver for the original waybill and notify the supplier.", "SOP-RDF-4.3"),
@@ -137,10 +175,23 @@ def next_steps(
         if not steps:
             steps.append(_FALLBACK)
     elif verdict == Decision.ESCALATE_HUMAN:
+        if _plate_mismatch(gates):
+            steps.append(_PLATE_STEP)
         if _failed(gates, "vlm_confidence"):
-            steps.append(
-                ("Photo unreadable: retake the load photo from the top platform.", "SOP-RDF-2.1")
-            )
+            steps.append((
+                "Photo quality poor: retake the load photo from the top platform."
+                if _PHOTO_QUALITY_MARKER in _reason(gates, "vlm_confidence")
+                else "Photo unreadable: retake the load photo from the top platform.",
+                "SOP-RDF-2.1",
+            ))
+        if _VOTE_SPLIT_MARKER in _reason(gates, "vlm_confidence"):
+            steps.append((
+                (
+                    "Vision reads disagree on a hard item: the supervisor checks the load "
+                    "by hand and records the call."
+                ),
+                "SOP-RDF-5.2",
+            ))
         if _moisture_conflict(gates):
             steps += [
                 ("Hold the ticket; supervisor takes a grab sample for moisture.", "SOP-RDF-5.1"),
@@ -148,7 +199,7 @@ def next_steps(
             ]
         if light:
             steps.append(("Tip to the pre-sort line, not direct feed.", "SOP-RDF-4.4"))
-        if _failed(gates, "weight_plausibility"):
+        if _weight_off(gates):
             steps += [
                 (
                     (
@@ -191,7 +242,15 @@ def next_steps(
         and isinstance(sampling, dict)
         and sampling.get("sample_this_truck") is True
     ):
-        steps.append(_LAB_SAMPLE_STEP)
+        reason = str(sampling.get("reason") or "").strip()
+        steps.append(
+            (
+                "Take a lab sample as the load is tipped (moisture, NCV, chlorine): " + reason,
+                _LAB_SAMPLE_STEP[1],
+            )
+            if reason
+            else _LAB_SAMPLE_STEP
+        )
 
     if _failed(gates, "gas_plausibility"):
         steps.append(_GAS_STEP)

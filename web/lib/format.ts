@@ -1,25 +1,28 @@
 /**
  * Presentation formatters: mono figures for money, honest relative time.
+ * Every figure uses en-US separators ("Rp 1,234,567", "16,340 kg"), the
+ * same as the backend's notices: the readers are international.
  */
 
-/** "Rp 1.234.567": Indonesian grouping, no decimals. */
+/** "Rp 1,234,567": en-US grouping, no decimals. */
 export function formatRupiah(idr: number): string {
   if (!Number.isFinite(idr) || idr <= 0) return "Rp 0";
-  return `Rp ${new Intl.NumberFormat("id-ID", {
+  return `Rp ${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(idr)}`;
 }
 
-/** "Rp 16,0 M" / "Rp 350 jt": compact headline figure. The full grouped value
-    stays in the title; compact only ever shortens, never changes the value. */
+/** "Rp 16.0B" / "Rp 350M": compact headline figure (English billion /
+    million, not the Indonesian "M" = miliar). The full grouped value stays
+    in the title; compact only ever shortens, never changes the value. */
 export function formatRupiahCompact(idr: number): string {
   if (!Number.isFinite(idr) || idr <= 0) return "Rp 0";
-  const M = 1_000_000_000; // miliar
-  const JT = 1_000_000; // juta
+  const B = 1_000_000_000;
+  const M = 1_000_000;
   const oneDecimal = (n: number) =>
-    new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(n);
-  if (idr >= M) return `Rp ${oneDecimal(idr / M)} M`;
-  if (idr >= JT) return `Rp ${oneDecimal(idr / JT)} jt`;
+    new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(n);
+  if (idr >= B) return `Rp ${oneDecimal(idr / B)}B`;
+  if (idr >= M) return `Rp ${oneDecimal(idr / M)}M`;
   return formatRupiah(idr);
 }
 
@@ -47,15 +50,15 @@ export function formatUsdCompact(idr: number): string {
   return `${sign}US$${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(usd)}`;
 }
 
-/** "5.200 kg" / "5,2 t": weighbridge register. */
+/** "520 kg" / "5.2 t": weighbridge register. */
 export function formatWeight(kg: number): string {
   if (!Number.isFinite(kg) || kg <= 0) return "—";
   if (kg >= 1000) {
-    return `${new Intl.NumberFormat("id-ID", {
+    return `${new Intl.NumberFormat("en-US", {
       maximumFractionDigits: 1,
     }).format(kg / 1000)} t`;
   }
-  return `${new Intl.NumberFormat("id-ID", {
+  return `${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(kg)} kg`;
 }

@@ -73,6 +73,19 @@ export interface ContractBreach {
   value: number;
   limit: number;
   effect: string;
+  /** "warning" (chlorine near the limit) has no price effect: never shown as a breach. */
+  severity?: "penalty" | "refusal" | "warning" | string;
+}
+
+/** Example settlement tier (contracts.evaluate): A premium, B base, C deductions. */
+export type SettlementTier = "A" | "B" | "C";
+
+export interface Iso21640Class {
+  /** "NCV 4; Cl 2; Hg n/a". */
+  code?: string;
+  /** Always shown with the code: a single sample is only indicative. */
+  label?: string;
+  classes?: Record<string, number | null>;
 }
 
 export interface ContractEval {
@@ -84,6 +97,15 @@ export interface ContractEval {
   net_t: number;
   payable_idr: number;
   deduction_idr: number;
+  /** Chlorine above the refusal limit: price 0. */
+  refused?: boolean;
+  tier?: SettlementTier | string;
+  tier_reason?: string;
+  settlement_price_idr_per_t?: number;
+  settlement_idr?: number;
+  premium_idr?: number;
+  iso21640?: Iso21640Class | null;
+  note?: string;
 }
 
 export interface LabBody {

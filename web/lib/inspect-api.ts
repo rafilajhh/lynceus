@@ -318,6 +318,54 @@ export function parseVotes(raw: unknown): VisionVote[] {
   }));
 }
 
+/** One gate sensor plug-in (GET /sensors). */
+export interface SensorPlugin {
+  kind: string;
+  name: string;
+  status: "installed" | "simulated" | "not_installed";
+  source: string | null;
+  unit: string | null;
+  note: string;
+}
+
+export interface SensorsResponse {
+  sensors: SensorPlugin[];
+  integration_note: string | null;
+}
+
+const PLUGIN_STATUSES: readonly SensorPlugin["status"][] = ["installed", "simulated", "not_installed"];
+
+/** The gate's sensor plug-ins; null when this backend has no /sensors. */
+export async function fetchSensors(): Promise<SensorsResponse | null> {
+  try {
+    const resp = await fetch("/sensors", { headers: { Accept: "application/json" }, cache: "no-store" });
+    if (!resp.ok) return null;
+    const raw = (await resp.json()) as Record<string, unknown>;
+    return {
+      sensors: objects(raw.sensors)
+        .filter((p) => typeof p.kind === "string")
+        .map((p) => ({
+          kind: p.kind as string,
+          name: str(p.name) ?? (p.kind as string),
+          status: PLUGIN_STATUSES.includes(p.status as SensorPlugin["status"])
+            ? (p.status as SensorPlugin["status"])
+            : "not_installed",
+          source: str(p.source),
+          unit: str(p.unit),
+          note: str(p.note) ?? "",
+        })),
+      integration_note: str(raw.integration_note),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Same-origin link to a sealed record's dispute evidence (zip download). */
+export function evidencePackUrl(recordId: string): string {
+  return `/inspections/${encodeURIComponent(recordId)}/evidence-pack?format=zip`;
+}
+
 const TIERS: readonly SupplierTier[] = ["low", "medium", "high", "new"];
 
 function parseSampling(raw: unknown): Sampling | null {

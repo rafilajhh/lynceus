@@ -112,7 +112,9 @@ export function WorkspaceClient() {
         : "manual_entry";
 
     const payload: InspectPayload = {
-      truck_id: values.plate.trim(),
+      // The truck is who the scale registered; the plate camera compares it
+      // with the waybill's plate.
+      truck_id: (scale.status === "live" && scale.reading?.plate?.trim()) || values.plate.trim(),
       supplier: values.carrier.trim() || null,
       photo_base64: photos[0].photo.base64,
       photo_filename: photos[0].photo.filename,
@@ -134,6 +136,7 @@ export function WorkspaceClient() {
             provenance: read.provenance ?? "live",
             latency_ms: read.latency_ms ?? null,
             edited_fields: now.editedFields,
+            field_confidences: w.confidence,
           }
         : undefined,
       weight_kg: now.scaleNetKg,
@@ -165,7 +168,7 @@ export function WorkspaceClient() {
         const [photo, waybill] = await Promise.all([demoFile(p.photo), demoFile(SAMPLE_WAYBILL)]);
         if (mine !== flow.current) return;
         intake.setPhoto(0, photo);
-        await intake.setWaybillPhoto(waybill, SAMPLE_WAYBILL_PRINTED);
+        await intake.setWaybillPhoto(waybill, SAMPLE_WAYBILL_PRINTED, p.truckPlate);
         if (mine !== flow.current) return;
         setLoadingPreset(null);
         if (thenInspect) {

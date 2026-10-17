@@ -150,6 +150,9 @@ def test_post_lab_returns_contract_eval(records):
     assert effect["net_t"] == 16.34
     assert effect["deduction_idr"] == 588_240
     assert [b["param"] for b in effect["breaches"]] == ["moisture_pct"]
+    # 16.34 t x 324,000 = 5,294,160: tier C settles at the adjusted price.
+    assert (effect["tier"], effect["settlement_idr"], effect["premium_idr"]) == (
+        "C", 5_294_160, 0)
 
 
 @pytest.mark.parametrize("override", [

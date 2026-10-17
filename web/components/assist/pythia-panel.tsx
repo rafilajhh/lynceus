@@ -107,7 +107,7 @@ function argsText(args: AssistStep["args"]): string {
 
 const CHIP = "figure rounded-[4px] border border-seam-strong bg-raised px-1.5 py-0.5 text-[12px] text-ink";
 
-function SourceChip({ source }: { source: AssistSource }) {
+export function SourceChip({ source }: { source: AssistSource }) {
   const href = sourceHref(source);
   const text = source.kind === "sop" ? source.id : source.label || source.id;
   return href ? (
@@ -121,7 +121,7 @@ function SourceChip({ source }: { source: AssistSource }) {
   );
 }
 
-function GroundedBadge({ grounded }: { grounded: boolean }) {
+export function GroundedBadge({ grounded }: { grounded: boolean }) {
   return grounded ? (
     <span
       title="Every number in this answer appears in a record Pythia looked up, and it cites those records."

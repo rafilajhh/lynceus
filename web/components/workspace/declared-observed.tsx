@@ -8,7 +8,7 @@ import type { InspectResponse } from "@/lib/inspect-api";
 import type { Sampling } from "@/lib/ops-api";
 import { cn } from "@/lib/utils";
 import { parseFieldNumber } from "@/lib/waybill-api";
-import { visionHard, visionLight } from "./checks-strip";
+import { visionHard, visionLight } from "./vision-findings";
 import { IconCheck, IconDash, IconInfo, IconWarn, IconCross } from "./gate-icons";
 import type { RunSnapshot } from "./use-inspection";
 import { formatKg, formatPct, formatPercent } from "./units";

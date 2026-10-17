@@ -89,7 +89,7 @@ const optionalCount = z.number().nonnegative().nullish().catch(null);
  * in `notes`. Every figure is nullable: an absent one is left out, never
  * shown as 0.
  */
-const improvementSchema = z.object({
+export const improvementSchema = z.object({
   trucks: optionalCount,
   auto_cleared: optionalCount,
   held: optionalCount,
@@ -165,7 +165,7 @@ const nullableNumber = z.number().nullish().catch(null);
 
 /** One supplier's scorecard row (backend suppliers.SupplierProfile). The
     transport and types live in ops-api.ts; this is the runtime guard. */
-const supplierProfileSchema = z.object({
+export const supplierProfileSchema = z.object({
   supplier: z.string().min(1),
   trucks: count,
   accepted: count,

@@ -88,11 +88,12 @@ def disclosure_for(source_run: str) -> str:
 LLM_NOTE = (
     "The live rows recorded the LLM's gate outcome, not its text, so the replayed LLM "
     "result is rebuilt from the recorded manifest_crosscheck state with a fixed confidence "
-    "of {confidence}. That confidence only fills the ocr_confidence gate value, which has "
-    "no threshold and never moves the verdict. The VLM prompt was not changed for this "
-    "re-score; latency is not re-measured (no model was called)."
+    "of {confidence}. The LLM result never moves the verdict: ocr_confidence is the "
+    "waybill photo read's own confidence (not run here: the benchmark waybills are typed "
+    "text). The VLM prompt was not changed for this re-score; latency is not re-measured "
+    "(no model was called)."
 )
-#: Fills the ocr_confidence gate value only (see LLM_NOTE).
+#: The replayed LLM confidence (recorded only; see LLM_NOTE).
 REPLAY_LLM_CONFIDENCE = 0.95
 REPLAY_PROVENANCE = "replay"
 #: Detector settings (``lynceus.config``), named here so this module imports

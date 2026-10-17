@@ -410,17 +410,36 @@ def test_vlm_vote_reads_run_concurrently(monkeypatch):
 def test_vlm_one_failed_vote_fails_the_model_and_falls_back(monkeypatch):
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
+    import concurrent.futures
+
     lock = threading.Lock()
     calls: list[str] = []
+    all_a_started = threading.Event()
+    failure_seen = threading.Event()
+    real_wait = concurrent.futures.wait
+
+    def watched(fs, timeout=None, return_when=concurrent.futures.ALL_COMPLETED):
+        done, pending = real_wait(fs, timeout=timeout, return_when=return_when)
+        if any(f.exception() is not None for f in done):
+            failure_seen.set()
+        return done, pending
 
     def _fake(self, base_url, model, messages, max_tokens=512):
         with lock:
             calls.append(model)
             first_a = calls.count("vlm-a") == 1 and model == "vlm-a"
+            if calls.count("vlm-a") == 3:
+                all_a_started.set()
         if first_a:
+            all_a_started.wait(5)
             raise httpx.HTTPStatusError("503", request=None, response=None)
+        if model == "vlm-a":
+            # The vote sees the failure first: two agreeing reads ahead of
+            # it would decide by early majority instead of failing the model.
+            failure_seen.wait(5)
         return _VLM_JSON
 
+    monkeypatch.setattr(pipeline, "wait", watched)
     monkeypatch.setattr(VLLMClient, "_chat_once", _fake)
     result = VLLMClient(settings=get_settings()).vlm("aGVsbG8=")
     assert result["model"] == "vlm-b"
@@ -514,8 +533,13 @@ def test_a_chain_ending_failure_wins_over_a_model_failure_among_votes(monkeypatc
     monkeypatch.setenv("VLM_VOTES", "2")
     monkeypatch.setenv("VLM_MODEL", "vlm-a")
     monkeypatch.setenv("VLM_FALLBACK_MODELS", "vlm-b")
-    monkeypatch.setattr(pipeline, "wait", lambda fs, return_when=None: concurrent.futures.wait(
-        fs, return_when=concurrent.futures.ALL_COMPLETED))
+    monkeypatch.setattr(
+        pipeline,
+        "wait",
+        lambda fs, timeout=None, return_when=None: concurrent.futures.wait(
+            fs, return_when=concurrent.futures.ALL_COMPLETED
+        ),
+    )
     lock = threading.Lock()
     calls: list[str] = []
 

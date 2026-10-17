@@ -204,12 +204,13 @@ def test_console_pages_redirect_to_login(client, monkeypatch, tmp_path):
     web_dir.mkdir()
     (web_dir / "app.html").write_text("<html>app</html>", encoding="utf-8")
     (web_dir / "shift.html").write_text("<html>shift</html>", encoding="utf-8")
+    (web_dir / "control.html").write_text("<html>control</html>", encoding="utf-8")
     monkeypatch.setenv("LYNCEUS_WEB_DIR", str(web_dir))
     # The module-level _WEB_DIR was read at import; point the routes at it.
     import lynceus.api as api_mod
 
     monkeypatch.setattr(api_mod, "_WEB_DIR", web_dir)
-    for path in ("/app", "/shift", "/validation"):
+    for path in ("/app", "/shift", "/validation", "/control"):
         response = client.get(
             path, headers={"accept": "text/html"}, follow_redirects=False
         )
@@ -219,6 +220,8 @@ def test_console_pages_redirect_to_login(client, monkeypatch, tmp_path):
     client.post("/auth/login", json={"username": _USERNAME, "password": _PASSWORD})
     response = client.get("/app", headers={"accept": "text/html"})
     assert response.status_code == 200
+    response = client.get("/control", headers={"accept": "text/html"})
+    assert (response.status_code, response.text) == (200, "<html>control</html>")
 
 
 def test_landing_page_stays_public(client, monkeypatch, tmp_path):

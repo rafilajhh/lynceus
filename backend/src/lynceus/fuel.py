@@ -48,6 +48,7 @@ ROLLING_SAMPLES = 5
 #: 3,000 kg is about 500 t of RDF a shift at 0.7 % dry chlorine.
 CHLORINE_BUDGET_ENV = "LYNCEUS_CL_BUDGET_KG_PER_SHIFT"
 CHLORINE_BUDGET_KG_PER_SHIFT = 3_000.0
+CHLORINE_BUDGET_LABEL = "Example plant budget; set per kiln (bypass capacity)"
 CHLORINE_WARN_SHARE = 0.8
 
 #: Biogenic share of the RDF's carbon: a default until an ISO 21644 (C-14)
@@ -193,7 +194,7 @@ def kiln_intake(
         "chlorine_budget_pct": share,
         "chlorine_status": status,
         "chlorine_budget_note": (
-            f"Example plant budget; set per kiln (bypass capacity): {per_shift:g} kg "
+            f"{CHLORINE_BUDGET_LABEL}: {per_shift:g} kg "
             f"chlorine per 8 h shift. Warns at {CHLORINE_WARN_SHARE * 100:g} %."
         ),
         "weighted": weighted,

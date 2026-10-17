@@ -129,6 +129,9 @@ export function useIntake() {
   /** Bumped by every new waybill, scale request or reset. */
   const waybillGen = useRef(0);
   const scaleGen = useRef(0);
+  /** The plate the truck registered under at the weighbridge, when it is
+      not the waybill's (the "Wrong truck" preset); "" = use the waybill's. */
+  const registeredPlate = useRef("");
   const urls = useRef(new Set<string>());
 
   const track = useCallback((file: File): PhotoSlot => {
@@ -182,8 +185,9 @@ export function useIntake() {
   // ---- Weighbridge -------------------------------------------------------
 
   const captureScale = useCallback(
-    async (plate: string, declaredNet: number | null) => {
+    async (waybillPlate: string, declaredNet: number | null) => {
       const gen = ++scaleGen.current;
+      const plate = registeredPlate.current || waybillPlate;
       if (!plate.trim()) {
         setScale((s) => ({
           ...s,
@@ -233,11 +237,13 @@ export function useIntake() {
    * Show a waybill photo and read it. `fallback` (the bundled sample's
    * printed values) is used only when this backend has no reader at all,
    * and is then labelled as typed. Resolves once the fields are on screen
-   * and the weighbridge was asked for its reading.
+   * and the weighbridge was asked for its reading. `truckPlate` registers
+   * the truck at the scale under a plate other than the waybill's.
    */
   const setWaybillPhoto = useCallback(
-    async (file: File | null, fallback?: WaybillValues) => {
+    async (file: File | null, fallback?: WaybillValues, truckPlate?: string) => {
       const gen = ++waybillGen.current;
+      registeredPlate.current = truckPlate?.trim() ?? "";
       release(waybillRef.current.photo);
       if (!file) {
         waybillJob.current = null;
@@ -333,6 +339,7 @@ export function useIntake() {
   const reset = useCallback(() => {
     waybillGen.current++;
     scaleGen.current++;
+    registeredPlate.current = "";
     waybillJob.current = null;
     photosRef.current.forEach(release);
     release(waybillRef.current.photo);

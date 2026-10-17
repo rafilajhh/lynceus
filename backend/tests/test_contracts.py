@@ -109,6 +109,49 @@ def test_bad_input_raises_value_error(lab, net):
 
 
 # ---------------------------------------------------------------------------
+# Settlement tiers
+# ---------------------------------------------------------------------------
+
+
+def test_tier_a_pays_ten_percent_premium():
+    # 15 MJ/kg, 15 % moisture, 0.6 % Cl: tier A -> 396,000/t; 10 t -> 3,960,000.
+    result = contracts.evaluate(
+        {"moisture_pct": 15.0, "ncv_mj_kg": 15.0, "chlorine_pct": 0.6}, 10_000)
+    assert result["tier"] == "A"
+    assert result["settlement_price_idr_per_t"] == 396_000
+    assert result["settlement_idr"] == 3_960_000
+    assert result["payable_idr"] == 3_600_000
+    assert result["premium_idr"] == 360_000
+
+
+@pytest.mark.parametrize("lab", [
+    GOOD,  # 18 % moisture: in spec, not 5 points under
+    {"moisture_pct": 15.0, "ncv_mj_kg": 14.9, "chlorine_pct": 0.5},
+    {"moisture_pct": 15.0, "ncv_mj_kg": 15.0, "chlorine_pct": 0.61},
+    {"moisture_pct": 15.0, "ncv_mj_kg": 15.0, "chlorine_pct": 0.9},  # warning
+])
+def test_tier_b_pays_base(lab):
+    result = contracts.evaluate(lab, 10_000)
+    assert result["tier"] == "B"
+    assert result["settlement_idr"] == 3_600_000
+    assert result["premium_idr"] == 0
+
+
+def test_tier_c_settles_at_the_adjusted_price():
+    result = contracts.evaluate(_lab(moisture_pct=25.0), 10_000)
+    assert (result["tier"], result["settlement_idr"], result["premium_idr"]) == (
+        "C", 3_240_000, 0)
+    assert result["tier_reason"] == "Out of spec: moisture_pct."
+    refused = contracts.evaluate(_lab(chlorine_pct=1.2), 10_000)
+    assert (refused["tier"], refused["settlement_idr"]) == ("C", 0)
+    assert refused["tier_reason"].startswith("Refused")
+
+
+def test_contract_lists_the_example_tiers():
+    assert [t["tier"] for t in contracts.DEFAULT_CONTRACT["settlement_tiers"]] == ["A", "B", "C"]
+
+
+# ---------------------------------------------------------------------------
 # ISO 21640 indicative class
 # ---------------------------------------------------------------------------
 

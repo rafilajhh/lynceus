@@ -223,11 +223,11 @@ DEFINITIONS = {
     "metal_let_through": "Metal photos the gate accepted (passed with no human check).",
     "metal_rejected": "Metal photos the gate rejected on its own.",
     "clean_passed": "Clean-load photos the gate accepted.",
-    "held_for_human": "Photos of any class the gate held for a human; held_by_class "
-    "splits them into metal, glass/organic (where a hold is the intended outcome) "
-    "and clean (a hold there is a false alarm).",
-    "classes": "RealWaste photos: metal = 20 Metal, glass/organic = Glass, Food "
-    "Organics, Vegetation, clean = Cardboard, Paper, Plastic, Textile Trash.",
+    "held_for_human": "Photos of any class the gate held for a human. They are also "
+    "counted per class: metal, glass or organic (where a hold is the intended "
+    "outcome) and clean (where a hold is a false alarm).",
+    "classes": "RealWaste photos. Metal: 20 Metal photos. Glass or organic: Glass, "
+    "Food Organics and Vegetation. Clean: Cardboard, Paper, Plastic and Textile Trash.",
 }
 
 

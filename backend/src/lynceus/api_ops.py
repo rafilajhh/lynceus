@@ -12,6 +12,8 @@ Routes (all behind ``auth.require_auth``):
     GET  /contract                           — example contract + tier rules
     GET  /kiln/intake?window=shift           — accepted fuel energy and chlorine input
     GET  /carbon?window=shift                — CO2 view of the accepted fuel
+    GET  /alerts                             — deterministic alarm feed
+    GET  /control/summary                    — the control room in one call
 
 Errors: 422 for a malformed record id or body, 404 for an unknown record,
 409 for a record that is not completed or a chain that fails verification.
@@ -29,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from lynceus import audit, auth, contracts, followups, fuel, pipeline, suppliers
+from lynceus import audit, auth, contracts, control, followups, fuel, pipeline, suppliers
 from lynceus.config import get_settings
 
 router = APIRouter()
@@ -231,3 +233,15 @@ def get_carbon(
     window: str = "shift", _user: str | None = Depends(auth.require_auth)
 ) -> Dict[str, Any]:
     return _window(fuel.carbon, window)
+
+
+@router.get("/alerts")
+def get_alerts(_user: str | None = Depends(auth.require_auth)) -> Dict[str, Any]:
+    now = audit.now_utc()
+    return {"generated_at_utc": now, "rules": control.ALERT_RULES,
+            "alerts": control.alerts(_storage(), now=now)}
+
+
+@router.get("/control/summary")
+def get_control_summary(_user: str | None = Depends(auth.require_auth)) -> Dict[str, Any]:
+    return control.control_summary(_storage())

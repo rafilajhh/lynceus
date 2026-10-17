@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { LIVE_LATENCY_COPY } from "@/lib/format";
+import { LIVE_LATENCY_COPY, formatRupiahCompact } from "@/lib/format";
 
 export const metadata = {
   title: "Incoming-fuel quality control for RDF reception gates",
@@ -24,7 +24,7 @@ export const metadata = {
 
 const PROOF_FIGURES = [
   {
-    value: "Rp 350 jt",
+    value: formatRupiahCompact(350_000_000),
     label: "One industrial shredder: the asset a single metal contaminant can wreck",
     aside: "≈ US$22k",
     source: "RDI 2024, Lampiran 2A, Banyumas RDF plant unit cost",
@@ -32,7 +32,7 @@ const PROOF_FIGURES = [
   {
     value: "US$28k/h",
     label: "Cement kiln unplanned downtime, per hour of lost clinker",
-    aside: "≈ Rp 450 jt",
+    aside: `≈ ${formatRupiahCompact(450_000_000)}`,
     source: "oxmaint US cement benchmark at Rp 16,000/USD",
   },
   {

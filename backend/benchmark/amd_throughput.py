@@ -1,4 +1,5 @@
-"""Live throughput of the Lynceus vision call on AMD Token Factory.
+"""Live throughput of the Lynceus vision call on AMD Token Factory (``--base-url``
+points the same benchmark at another OpenAI-compatible endpoint).
 
 Sends the production vision request (``pipeline._VLM_PROMPT``, the same
 body: temperature 0.1, seed 0, max_tokens 1024, the photo as a JPEG data URI
@@ -19,6 +20,16 @@ the endpoint host is.
 Usage (from ``backend/``)::
 
     PYTHONPATH=src python -m benchmark.amd_throughput --model DeepSeek-V4-Flash-Vision-Exp
+
+    # another OpenAI-compatible endpoint:
+    PYTHONPATH=src python -m benchmark.amd_throughput \
+        --base-url http://<host>:8000/v1 --model <model> --label "<provider label>"
+
+The key is read from ``VLLM_API_KEY`` (environment or ``backend/.env``), as
+the backend reads it; an empty key sends no Authorization header.  A run
+labelled other than :data:`HOSTED_LABEL` writes
+``results/<date>.<label-slug>.amd-throughput.json`` so it never overwrites the
+hosted run.
 
 Budget: at most :data:`CALLS_PER_MODE` HTTP calls per mode (JSON retries and
 429/503 back-off retries included), a 1 s pause between batches.  A mode
@@ -76,8 +87,10 @@ ABORT_AFTER_FAILED = 3
 #: Benchmark photos picked per ground-truth class (first in manifest order).
 BENCH_PER_CLASS = 2
 DETECTOR_REPEATS = 3
-#: AMD Developer Cloud MI300X on-demand list price used for the projection.
-MI300X_USD_PER_HOUR = 1.99
+#: The provider label of a Token Factory run (and of summaries written before
+#: labels existed); its result files keep the plain ``<date>`` stem.
+HOSTED_LABEL = "AMD Token Factory (hosted)"
+HOSTED_PROVIDER = "amd-token-factory"
 
 MODES = ("sequential", "parallel", "concurrent")
 HARD = ("metal", "rock", "concrete", "tire", "e-waste")
@@ -161,20 +174,14 @@ def per_minute(completed: int, wall_s: float) -> Optional[float]:
     return round(completed * 60.0 / wall_s, 2)
 
 
-def projection(inspections_per_min: Optional[float], usd_per_hour: float = MI300X_USD_PER_HOUR) -> Optional[Dict[str, Any]]:
-    """$ per 1,000 inspections if one MI300X at ``usd_per_hour`` sustained the
-    measured rate.  A projection: nothing ran on a self-hosted MI300X."""
-    if not inspections_per_min:
-        return None
-    per_hour = inspections_per_min * 60.0
-    return {
-        "label": "projection, not measured on MI300X",
-        "usd_per_hour": usd_per_hour,
-        "inspections_per_hour": round(per_hour, 1),
-        "usd_per_1k_inspections": round(usd_per_hour / per_hour * 1000.0, 2),
-        "basis": "AMD Developer Cloud MI300X list price / inspections per hour "
-        "measured on Token Factory in the concurrent mode",
-    }
+def label_slug(label: str) -> str:
+    """``"Local vLLM, 1 GPU"`` -> ``"local-vllm-1-gpu"``."""
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "endpoint"
+
+
+def result_stem(run_date: str, label: str) -> str:
+    """File stem of a run: the hosted run keeps ``<date>``, others add a slug."""
+    return run_date if label == HOSTED_LABEL else f"{run_date}.{label_slug(label)}"
 
 
 def mode_metrics(calls: List[Dict[str, Any]], inspections: List[Dict[str, Any]], wall_s: float) -> Dict[str, Any]:
@@ -187,7 +194,10 @@ def mode_metrics(calls: List[Dict[str, Any]], inspections: List[Dict[str, Any]],
     completion = [i["tokens"]["completion"] for i in done if i["tokens"]["completion"] is not None]
     statuses: Dict[str, int] = {}
     for c in calls:
-        key = str(c.get("status") if c.get("status") is not None else "transport_error")
+        if c.get("error") == "budget_exhausted":
+            key = "not_sent_budget"
+        else:
+            key = str(c.get("status") if c.get("status") is not None else "transport_error")
         statuses[key] = statuses.get(key, 0) + 1
     return {
         "inspections": {"attempted": len(inspections), "completed": len(done)},
@@ -205,7 +215,8 @@ def mode_metrics(calls: List[Dict[str, Any]], inspections: List[Dict[str, Any]],
         "inspections_per_min": per_minute(len(done), wall_s),
         "agreement": agreement_buckets(done),
         "statuses": statuses,
-        "errors": sum(1 for c in calls if c.get("error")),
+        # Reads that were sent and failed; a read the budget never sent is not one.
+        "errors": sum(1 for c in calls if c.get("error") and c["error"] != "budget_exhausted"),
         "json_retries": sum(1 for c in calls if c.get("json_retry")),
         "backoff_retries": sum(len(c.get("backoffs") or []) for c in calls),
         "rate_limited": sum(1 for c in calls for b in (c.get("backoffs") or []) if b["status"] == 429),
@@ -490,9 +501,10 @@ def run_inspection(endpoint: Endpoint, photo: Dict[str, Any], mode: str, index: 
 
 
 def run_mode(endpoint: Endpoint, photos: List[Dict[str, Any]], mode: str,
-             log: Callable[[str], None], pause: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
+             log: Callable[[str], None], pause: Callable[[float], None] = time.sleep,
+             calls_per_mode: Optional[int] = None) -> Dict[str, Any]:
     """Every photo once in ``mode``; stops early if the endpoint looks down."""
-    budget = Budget(CALLS_PER_MODE)
+    budget = Budget(CALLS_PER_MODE if calls_per_mode is None else calls_per_mode)
     inspections: List[Dict[str, Any]] = []
     calls: List[Dict[str, Any]] = []
     wall_s = 0.0
@@ -582,19 +594,34 @@ def build_summary(run: Dict[str, Any]) -> Dict[str, Any]:
     tokens = spread([i["tokens"]["total"] for i in all_done if i["tokens"]["total"] is not None])
     usage_reported = any(c.get("usage", {}).get("total") is not None for c in all_calls)
     production = modes.get("parallel", {})
+    provider = run.get("provider") or HOSTED_PROVIDER
+    if provider == HOSTED_PROVIDER:
+        cost: Dict[str, Any] = {
+            "token_factory": {
+                "basis": "quota-based",
+                "tokens_per_inspection": tokens,
+                "note": "AMD Token Factory is a free tier with a usage quota "
+                "(about $10/day per third-party sources; the terms are not published), "
+                "so no per-call price is claimed.",
+            },
+        }
+    else:
+        cost = {"tokens_per_inspection": tokens}
     return {
         "kind": "amd_throughput",
         "run_date": run["run_date"],
         "started_at_utc": run["started_at_utc"],
         "finished_at_utc": run["finished_at_utc"],
-        "provider": "amd-token-factory",
+        "provider": provider,
+        "provider_label": run.get("provider_label") or HOSTED_LABEL,
         "endpoint_host": run["endpoint_host"],
         "model": run["model"],
         "settings": {
             "votes": VOTES, "temperature": TEMPERATURE, "seed": SEED, "max_tokens": MAX_TOKENS,
             "timeout_s": TIMEOUT_S, "image_max_edge_px": MAX_PHOTO_EDGE_PX,
             "jpeg_quality": PHOTO_JPEG_QUALITY, "concurrent_inspections": CONCURRENT_INSPECTIONS,
-            "max_in_flight": MAX_IN_FLIGHT, "calls_per_mode_budget": CALLS_PER_MODE,
+            "max_in_flight": run.get("max_in_flight") or MAX_IN_FLIGHT,
+            "calls_per_mode_budget": run.get("calls_per_mode") or CALLS_PER_MODE,
             "pause_between_batches_s": PAUSE_S, "prompt": "lynceus.pipeline._VLM_PROMPT",
             "json_retry": "one, as production", "stream": "not requested (as production)",
         },
@@ -612,16 +639,7 @@ def build_summary(run: Dict[str, Any]) -> Dict[str, Any]:
         },
         "modes": modes,
         "detector_cpu": run.get("detector"),
-        "cost": {
-            "token_factory": {
-                "basis": "quota-based",
-                "tokens_per_inspection": tokens,
-                "note": "AMD Token Factory is a free tier with a usage quota "
-                "(about $10/day per third-party sources; the terms are not published), "
-                "so no per-call price is claimed.",
-            },
-            "mi300x_projection": projection(per_min),
-        },
+        "cost": cost,
         "usage_reported": usage_reported,
         "aborted": next((r["aborted"] for r in run["modes"].values() if r.get("aborted")), None),
         "caveats": caveats(run, usage_reported),
@@ -630,27 +648,41 @@ def build_summary(run: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def caveats(run: Dict[str, Any], usage_reported: bool) -> List[str]:
+    hosted = (run.get("provider") or HOSTED_PROVIDER) == HOSTED_PROVIDER
+    in_flight = run.get("max_in_flight") or MAX_IN_FLIGHT
     out = [
         "One run on a shared, hosted endpoint (AMD Token Factory): latency includes "
-        "network and queueing and moves with the endpoint's load at the time.",
+        "network and queueing and moves with the endpoint's load at the time."
+        if hosted else
+        f"One run against {run.get('provider_label')} ({run['endpoint_host']}): latency "
+        "includes the network between the benchmark machine and the server.",
         f"{len(run['photos'])} photos per mode (6 demo photos + 6 RealWaste benchmark "
         "images), 3 reads per inspection; small n, so p95 is close to the slowest call.",
         f"Concurrent mode runs {CONCURRENT_INSPECTIONS} inspections at once with at most "
-        f"{MAX_IN_FLIGHT} calls in flight (the shared key allows 8). The production "
+        f"{in_flight} calls in flight"
+        + (" (the shared key allows 8)." if hosted else ".") + " The production "
         "server caps vision reads at 3 in flight process-wide, so one server's "
         "throughput is the parallel mode's, not this one's.",
         "The modes ran one after another, not interleaved: endpoint load may differ "
         "between them, which moves the speed-up.",
         "Read agreement compares the allow-listed hard contaminants of each read; "
         "temperature 0.1 and seed 0 as production.",
-        "The MI300X cost is a projection from Token Factory throughput, not a "
-        "measurement on a self-hosted MI300X.",
         "The CPU detector was timed on the benchmark machine, not the deployment host.",
         f"Each call here fails at {TIMEOUT_S:g} s wall clock. Production gives the whole "
         f"vote (every read and retry) one {TIMEOUT_S:g} s budget, so an inspection "
         "counted in over_production_budget would have gone to the fallback model or "
         "the detector-only hold in production.",
     ]
+    out.append(
+        f"Measured {run['started_at_utc']} to {run['finished_at_utc']} (UTC). Read latency "
+        "in this window had a heavy tail (see read_latency_ms p95 vs p50); it is "
+        "reported as measured.")
+    if any(r.get("aborted") or any(c.get("error") == "budget_exhausted" for c in r["calls"])
+           for r in run["modes"].values()):
+        out.append("The per-mode call budget ran out before every inspection was sent "
+                   "(429 back-offs and JSON retries spend it); budget_skipped counts the "
+                   "reads never sent, and inspections_per_min counts completed "
+                   "inspections over the whole mode's wall time.")
     if not usage_reported:
         out.append("The endpoint returned no usage block, so token counts are not available.")
     if run.get("model_note"):
@@ -664,7 +696,10 @@ def rebuild_run(summary: Dict[str, Any], rows: List[Dict[str, Any]]) -> Dict[str
     times, the detector block and the photo list come from the summary."""
     run: Dict[str, Any] = {k: summary.get(k) for k in (
         "run_date", "started_at_utc", "finished_at_utc", "endpoint_host", "model",
-        "photos", "raw_rows")}
+        "photos", "raw_rows", "provider", "provider_label")}
+    settings = summary.get("settings") or {}
+    run["max_in_flight"] = settings.get("max_in_flight")
+    run["calls_per_mode"] = settings.get("calls_per_mode_budget")
     run["detector"] = summary.get("detector_cpu")
     run["model_note"] = next((c for c in summary.get("caveats") or []
                               if c.startswith("Model set on the command line")), None)
@@ -681,7 +716,16 @@ def rebuild_run(summary: Dict[str, Any], rows: List[Dict[str, Any]]) -> Dict[str
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--base-url", default=None,
+                        help="OpenAI-compatible base URL ending in /v1 (default: VLLM_VLM_URL)")
     parser.add_argument("--model", default=None, help="vision model (default: VLM_MODEL)")
+    parser.add_argument("--label", default=None,
+                        help=f"provider label shown in the console (default: {HOSTED_LABEL!r} "
+                        "on Token Factory, else 'OpenAI-compatible endpoint (<host>)')")
+    parser.add_argument("--max-in-flight", type=int, default=MAX_IN_FLIGHT,
+                        help="calls in flight in the concurrent mode")
+    parser.add_argument("--calls-per-mode", type=int, default=CALLS_PER_MODE,
+                        help="HTTP call budget per mode (retries included)")
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--out-dir", type=Path, default=RESULTS_DIR)
     parser.add_argument("--skip-detector", action="store_true")
@@ -690,7 +734,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.from_raw:
-        out = args.out_dir / f"{args.date}.amd-throughput.json"
+        stem = result_stem(args.date, args.label or HOSTED_LABEL)
+        out = args.out_dir / f"{stem}.amd-throughput.json"
         old = json.loads(out.read_text(encoding="utf-8"))
         raw = args.out_dir / old["raw_rows"]
         rows = [json.loads(line) for line in raw.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -704,20 +749,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     from lynceus import config, pipeline
 
     settings = config.get_settings()
+    base_url = args.base_url or settings.vllm_vlm_url
     model = args.model or settings.vlm_model
-    host = urlparse(settings.vllm_vlm_url).hostname or ""
+    host = urlparse(base_url).hostname or ""
+    provider = config.provider_for_url(base_url)
+    label = args.label or (HOSTED_LABEL if provider == HOSTED_PROVIDER
+                           else f"OpenAI-compatible endpoint ({host})")
     log = lambda msg: print(msg, flush=True)  # noqa: E731
-    if not settings.vllm_api_key:
+    if not settings.vllm_api_key and provider == HOSTED_PROVIDER:
         log("VLLM_API_KEY is not set (backend/.env); nothing measured.")
         return 2
-    log(f"AMD throughput: model={model} host={host}")
+    log(f"AMD throughput: model={model} host={host} label={label!r} "
+        f"auth={'bearer' if settings.vllm_api_key else 'none'}")
 
     photos = pick_photos()
     log(f"photos: {len(photos)}")
-    endpoint = Endpoint(settings.vllm_vlm_url, settings.vllm_api_key, model,
+    endpoint = Endpoint(base_url, settings.vllm_api_key, model,
                         pipeline._VLM_PROMPT, pipeline._extract_json)
     run: Dict[str, Any] = {
         "run_date": args.date, "endpoint_host": host, "model": model,
+        "provider": provider, "provider_label": label,
+        "max_in_flight": args.max_in_flight, "calls_per_mode": args.calls_per_mode,
         "started_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "photos": [{k: p.get(k) for k in ("name", "source", "expected", "category", "sent_px",
                                           "sent_bytes", "reencoded")} for p in photos],
@@ -730,9 +782,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         for i, mode in enumerate(MODES):
             if i:
                 time.sleep(PAUSE_S)
-            endpoint.in_flight = threading.BoundedSemaphore(MAX_IN_FLIGHT) if mode == "concurrent" else None
+            endpoint.in_flight = (threading.BoundedSemaphore(args.max_in_flight)
+                                  if mode == "concurrent" else None)
             log(f"mode {mode}")
-            run["modes"][mode] = run_mode(endpoint, photos, mode, log)
+            run["modes"][mode] = run_mode(endpoint, photos, mode, log,
+                                          calls_per_mode=args.calls_per_mode)
             if run["modes"][mode]["aborted"] and not any(x["ok"] for x in run["modes"][mode]["inspections"]):
                 log(f"stopping: {run['modes'][mode]['aborted']}")
                 break
@@ -742,14 +796,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     run["finished_at_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    raw = args.out_dir / f"{args.date}.amd-throughput.jsonl"
+    stem = result_stem(args.date, label)
+    raw = args.out_dir / f"{stem}.amd-throughput.jsonl"
     run["raw_rows"] = raw.name
     with raw.open("w", encoding="utf-8") as fh:
         for r in run["modes"].values():
             for row in r["calls"] + r["inspections"]:
                 fh.write(json.dumps(row, sort_keys=True) + "\n")
     summary = build_summary(run)
-    out = args.out_dir / f"{args.date}.amd-throughput.json"
+    out = args.out_dir / f"{stem}.amd-throughput.json"
     out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     log(f"summary -> {out}")
     log(json.dumps(summary["headline"], indent=2))

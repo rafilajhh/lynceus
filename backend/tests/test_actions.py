@@ -525,3 +525,76 @@ def test_confident_hard_contaminants_unit():
         {"manifest_text": "contains Metal"}, {"detected": {}, "confidence": 0.9}, {}
     ) == []
     assert decision.confident_hard_contaminants(None, None, None) == []
+
+
+# ---------------------------------------------------------------------------
+# Wave 2: plate (R3), photo quality (R2), vote split (R1), sampling reason
+# ---------------------------------------------------------------------------
+
+_WAVE2_INPUTS = {
+    "photo_filename": "p.jpg",
+    "manifest_text": "SURAT JALAN 007842",
+    "weight_kg": 16340.0,
+    "waybill_fields": {"plate": "B 9723 KXW", "net_kg": 16340, "load_type": "RDF fluff"},
+}
+_CLEAN_VLM = {"detected": {"contamination": "none", "moisture": 0.2,
+                           "hard_contaminants": [], "light_contaminants": []},
+              "confidence": 0.85}
+
+
+def _obs(kind, status, value=None, note=None):
+    return {"kind": kind, "status": status, "value": value, "note": note}
+
+
+def test_plate_mismatch_from_real_decide_verifies_the_truck_first():
+    inputs = dict(_WAVE2_INPUTS, observations=[_obs("plate", "mismatch", "B 9406 KXW")])
+    verdict, steps = _decide_and_steps(inputs, _CLEAN_VLM, None)
+    assert verdict == D.ESCALATE_HUMAN
+    assert steps[0]["text"] == (
+        "Plate does not match the waybill: verify the truck and its papers first.")
+    # The weight itself is fine: no ticket-correction rows.
+    assert _refs(steps) == ["SOP-RDF-3.3", "SOP-RDF-5.2"]
+
+
+def test_plate_mismatch_and_weight_gap_keep_the_ticket_correction():
+    inputs = dict(_WAVE2_INPUTS, weight_kg=20000.0,
+                  observations=[_obs("plate", "mismatch", "B 9406 KXW")])
+    verdict, steps = _decide_and_steps(inputs, _CLEAN_VLM, None)
+    assert verdict == D.ESCALATE_HUMAN
+    assert _refs(steps) == ["SOP-RDF-3.3", "SOP-RDF-3.2", "SOP-RDF-5.2"]
+
+
+def test_plate_mismatch_on_a_reject_follows_the_do_not_tip_rows():
+    inputs = dict(_WAVE2_INPUTS, observations=[_obs("plate", "mismatch", "B 9406 KXW")])
+    vlm = {**_CLEAN_VLM, "detected": {**_CLEAN_VLM["detected"], "hard_contaminants": ["metal"]}}
+    verdict, steps = _decide_and_steps(inputs, vlm, None)
+    assert verdict == D.REJECT
+    assert _refs(steps) == ["SOP-RDF-4.1", "SOP-RDF-4.2", "SOP-RDF-4.3", "SOP-RDF-4.5",
+                            "SOP-RDF-3.3"]
+
+
+def test_poor_photo_from_real_decide_retakes():
+    inputs = dict(_WAVE2_INPUTS, observations=[_obs("image_quality", "poor", note="Blurred.")])
+    verdict, steps = _decide_and_steps(inputs, _CLEAN_VLM, None)
+    assert verdict == D.ESCALATE_HUMAN
+    assert steps[0] == {"order": 1, "sop_ref": "SOP-RDF-2.1",
+                        "text": "Photo quality poor: retake the load photo from the top platform."}
+
+
+def test_vote_split_from_real_decide_is_a_hand_check():
+    vlm = {**_CLEAN_VLM, "votes": [{"hard": ["metal"]}, {"hard": []}, {"hard": []}]}
+    verdict, steps = _decide_and_steps(dict(_WAVE2_INPUTS), vlm, None)
+    assert verdict == D.ESCALATE_HUMAN
+    assert _texts(steps) == [(
+        "Vision reads disagree on a hard item: the supervisor checks the load by hand and "
+        "records the call.")]
+    assert _refs(steps) == ["SOP-RDF-5.2"]
+
+
+def test_lab_sample_step_quotes_the_sampling_reason():
+    reason = "Declared moisture 28 % is above the 20 % spec."
+    steps = actions.next_steps(D.ACCEPT, _gates(), _detected(), [],
+                               sampling={"sample_this_truck": True, "reason": reason})
+    assert steps[-1] == {
+        "order": 2, "sop_ref": "SOP-RDF-5.4",
+        "text": "Take a lab sample as the load is tipped (moisture, NCV, chlorine): " + reason}

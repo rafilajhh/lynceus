@@ -5,9 +5,9 @@
  */
 
 import Link from "next/link";
-import type { InspectResponse } from "@/lib/inspect-api";
+import { evidencePackUrl, type InspectResponse } from "@/lib/inspect-api";
 import { AuditModal } from "./audit-modal";
-import { IconSeal } from "./gate-icons";
+import { IconDownload, IconSeal } from "./gate-icons";
 import { shortDigest } from "./sealed-line";
 
 export function recordDigest(data: InspectResponse): string | null {
@@ -36,10 +36,20 @@ export function SealedRecord({ data }: { data: InspectResponse }) {
         {digest ? <span title={digest}>sha256 {shortDigest(digest)}</span> : null}
         <span className="font-sans text-faint">every input, model output and rule, sealed</span>
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         <AuditModal recordId={recordId} data={data} />
+        {/* Same-origin, so the session cookie authorises the download. */}
+        <a
+          href={evidencePackUrl(recordId)}
+          download={`${recordId}-evidence.zip`}
+          className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-100 hover:bg-seam"
+          title="Record, photos, waybill and every follow-up in one zip, for a supplier dispute"
+        >
+          <IconDownload size={14} />
+          Evidence pack (.zip)
+        </a>
         <Link
-          href="/inspections"
+          href={`/inspections?record=${encodeURIComponent(recordId)}`}
           className="rounded-[6px] px-3 py-1.5 text-xs font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
         >
           Open the audit trail

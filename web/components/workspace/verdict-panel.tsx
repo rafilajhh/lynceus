@@ -14,23 +14,50 @@
  * 5. The sealed record itself, the rule notes, and Pythia.
  */
 
-import { forwardRef, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useMemo, useState, type ReactNode } from "react";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
-import { ChecksStrip, checksOf } from "./checks-strip";
+import { ChecksStrip } from "@/components/checks/checks-strip";
+import { DecisionReceipt } from "./decision-receipt";
 import { DeclaredObserved } from "./declared-observed";
 import { EngineNotes, ProvenanceNote } from "./engine-notes";
 import { EvidenceFrames } from "./evidence-frames";
 import { LabSample } from "./lab-sample";
 import { NextSteps } from "./next-steps";
 import { SealedRecord } from "./sealed-record";
+import { SensorsRow } from "./sensors-row";
 import { SupervisorActions } from "./supervisor-actions";
 import { SupplierNotice } from "./supplier-notice";
 import { cn } from "@/lib/utils";
 import type { RunState } from "./use-inspection";
 import { ValueStrip } from "./value-strip";
 import { VerdictBanner, verdictTone } from "./verdict-banner";
+import { checksOf, voteAgreement, type VoteAgreement } from "./vision-findings";
+
+const THIRD_READ: Record<string, string> = {
+  arrived: "the third arrived in time",
+  late: "the third did not return in time",
+  failed: "the third failed",
+};
+
+/** "Vision reads 3/3 agree" or the split, and early-majority honesty. */
+function VoteLine({ votes }: { votes: VoteAgreement | null }) {
+  if (!votes) return null;
+  return (
+    <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-[13px]">
+      <span className="font-semibold text-muted">Vision</span>
+      <span className={cn("font-semibold", votes.split ? "text-amber" : "text-ink")}>{votes.label}</span>
+      {votes.split ? <span className="text-muted">A split vote is never a reject on its own: a person checks.</span> : null}
+      {votes.early && votes.early.thirdRead !== "arrived" ? (
+        <span className="text-muted">
+          Decided on {votes.early.votesUsed} agreeing reads
+          {votes.early.thirdRead ? `; ${THIRD_READ[votes.early.thirdRead] ?? votes.early.thirdRead}` : ""}.
+        </span>
+      ) : null}
+    </p>
+  );
+}
 
 function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
@@ -51,9 +78,13 @@ export const VerdictPanel = forwardRef<HTMLElement, { run: RunState; onNextTruck
     const decision = data.verdict?.decision ?? data.decision;
     const tone = verdictTone(decision);
     const checks = useMemo(() => checksOf(data), [data]);
-    const [lit, setLit] = useState(false);
-    useEffect(() => setLit(false), [run.runId]);
-    const onAllLit = useCallback(() => setLit(true), []);
+    const votes = useMemo(() => voteAgreement(data), [data]);
+    // Lit per run id, not reset by an effect: the strip resolves inside its
+    // own effect (at once under reduced motion), which runs before ours.
+    const [litRun, setLitRun] = useState<RunState["runId"] | null>(null);
+    const lit = litRun === run.runId;
+    const runId = run.runId;
+    const onAllLit = useCallback(() => setLitRun(runId), [runId]);
 
     const recordId = data.record_id ?? null;
     const declarationConflict = checks.some((c) => c.key === "declaration" && c.status === "fail");
@@ -79,7 +110,15 @@ export const VerdictPanel = forwardRef<HTMLElement, { run: RunState; onNextTruck
         <div className="flex flex-col gap-4 px-4 py-4">
           <VerdictBanner tone={tone} data={data} lit={lit} recordId={recordId} elapsedMs={run.elapsedMs} />
           <ProvenanceNote data={data} />
-          <ChecksStrip checks={checks} runKey={run.runId} onAllLit={onAllLit} />
+          <ChecksStrip
+            checks={checks}
+            showDetail
+            label="Gate checks"
+            runKey={run.runId}
+            onAllResolved={onAllLit}
+            emptyText="This backend returned no checks for the verdict."
+          />
+          <VoteLine votes={votes} />
         </div>
 
         {lit ? (
@@ -100,6 +139,16 @@ export const VerdictPanel = forwardRef<HTMLElement, { run: RunState; onNextTruck
                 <DeclaredObserved data={data} snapshot={snapshot} />
                 <NextSteps steps={data.actions} emptyText="The backend returned no next steps." />
               </div>
+            </div>
+
+            {data.receipt.length > 0 ? (
+              <div className="border-t border-seam px-4 py-4">
+                <DecisionReceipt receipt={data.receipt} />
+              </div>
+            ) : null}
+
+            <div className="border-t border-seam px-4 py-4">
+              <SensorsRow observations={data.observations} />
             </div>
 
             <Section title="What this decision was worth">

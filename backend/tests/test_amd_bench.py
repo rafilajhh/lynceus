@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -64,17 +65,13 @@ def test_hard_set_keeps_allowlisted_strings_only():
     assert at.hard_set(None) == []
 
 
-def test_speedup_rate_and_projection():
+def test_speedup_and_rate():
     assert at.speedup(30000.0, 10000.0) == 3.0
     assert at.speedup(None, 10000.0) is None
     assert at.speedup(30000.0, 0) is None
     assert at.per_minute(12, 120.0) == 6.0
     assert at.per_minute(0, 120.0) is None
-    p = at.projection(6.0)  # 360 inspections/h
-    assert p["label"] == "projection, not measured on MI300X"
-    assert p["inspections_per_hour"] == 360.0
-    assert p["usd_per_1k_inspections"] == round(1.99 / 360 * 1000, 2) == 5.53
-    assert at.projection(None) is None
+    assert not hasattr(at, "projection")  # no hardware we did not measure on is priced
 
 
 # ---------------------------------------------------------------------------
@@ -251,10 +248,10 @@ def test_run_mode_and_summary_shape():
     assert h["read_agreement"]["n"] == 12
     assert h["read_agreement"]["3/3"]["count"] + h["read_agreement"]["2/3"]["count"] == 12
     assert s["cost"]["token_factory"]["basis"] == "quota-based"
-    assert s["cost"]["mi300x_projection"]["label"] == "projection, not measured on MI300X"
+    assert set(s["cost"]) == {"token_factory"}
     assert s["modes"]["parallel"]["read_latency_ms"]["p50"] == 100.0
     assert s["usage_reported"] is True
-    assert any("projection" in c for c in s["caveats"])
+    assert not any("MI300X" in c or "projection" in c for c in s["caveats"])
 
 
 def test_summary_rebuilds_from_raw_rows_without_calls(tmp_path):
@@ -269,6 +266,78 @@ def test_summary_rebuilds_from_raw_rows_without_calls(tmp_path):
     rows = [json.loads(json.dumps(row)) for row in rows]  # through JSON, as the .jsonl is
     rebuilt = at.build_summary(at.rebuild_run(json.loads(json.dumps(summary)), rows))
     assert rebuilt == json.loads(json.dumps(summary))
+
+
+def _fake_run(**extra):
+    run = {"run_date": "2026-10-18", "started_at_utc": "s", "finished_at_utc": "f",
+           "endpoint_host": "10.0.0.5", "model": "local-vlm", "photos": [{"name": "p"}] * 4,
+           "raw_rows": "x.jsonl", "detector": None,
+           "modes": {m: at.run_mode(_FakeEndpoint(), _photos(), m, lambda s: None, pause=lambda s: None)
+                     for m in at.MODES}}
+    run.update(extra)
+    return run
+
+
+def test_label_slug_and_result_stem():
+    assert at.label_slug("Local vLLM, 1 GPU") == "local-vllm-1-gpu"
+    assert at.result_stem("2026-10-18", at.HOSTED_LABEL) == "2026-10-18"
+    assert at.result_stem("2026-10-18", "Local vLLM, 1 GPU") == "2026-10-18.local-vllm-1-gpu"
+
+
+def test_other_endpoint_summary_claims_no_price():
+    run = _fake_run(provider="openai-compatible", provider_label="Local vLLM, 1 GPU",
+                    max_in_flight=9, calls_per_mode=60)
+    s = at.build_summary(run)
+    assert s["provider"] == "openai-compatible" and s["provider_label"] == "Local vLLM, 1 GPU"
+    assert s["settings"]["max_in_flight"] == 9 and s["settings"]["calls_per_mode_budget"] == 60
+    assert set(s["cost"]) == {"tokens_per_inspection"}
+    rebuilt = at.build_summary(at.rebuild_run(json.loads(json.dumps(s)), json.loads(json.dumps(
+        [row for r in run["modes"].values() for row in r["calls"] + r["inspections"]]))))
+    assert rebuilt == json.loads(json.dumps(s))
+
+
+def test_hosted_summary_defaults_to_the_hosted_label():
+    s = at.build_summary(_fake_run())
+    assert s["provider"] == "amd-token-factory" and s["provider_label"] == at.HOSTED_LABEL
+    assert s["cost"]["token_factory"]["basis"] == "quota-based"
+
+
+def test_main_runs_against_any_base_url_without_leaking_the_key(tmp_path, monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return _json_reply(json.dumps(READ), {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12})
+
+    class MockEndpoint(at.Endpoint):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.chdir(tmp_path)  # main() chdirs into backend/; restored after the test
+    monkeypatch.setenv("VLLM_API_KEY", "k-secret-test")
+    monkeypatch.setattr(at, "Endpoint", MockEndpoint)
+    monkeypatch.setattr(at, "PAUSE_S", 0.0)
+    monkeypatch.setattr(at, "pick_photos", lambda: [
+        {"name": f"p{i}.jpg", "source": "demo", "expected": None, "b64": "QUJD", "bytes": b""}
+        for i in range(3)])
+    out = tmp_path / "results"
+    assert at.main(["--base-url", "http://10.0.0.5:8000/v1", "--model", "local-vlm",
+                    "--label", "Local vLLM, 1 GPU", "--max-in-flight", "9",
+                    "--date", "2026-10-18", "--out-dir", str(out), "--skip-detector"]) == 0
+    assert {r.url.host for r in seen} == {"10.0.0.5"} and len(seen) == 27
+    assert json.loads(seen[0].content)["model"] == "local-vlm"
+    name = "2026-10-18.local-vllm-1-gpu.amd-throughput"
+    s = json.loads((out / f"{name}.json").read_text(encoding="utf-8"))
+    assert s["provider_label"] == "Local vLLM, 1 GPU"
+    assert s["provider"] == "openai-compatible" and s["endpoint_host"] == "10.0.0.5"
+    assert s["raw_rows"] == f"{name}.jsonl"
+    for f in out.iterdir():
+        assert "k-secret-test" not in f.read_text(encoding="utf-8")
+    # The rebuild finds the labelled file and reproduces it.
+    assert at.main(["--from-raw", "--date", "2026-10-18", "--out-dir", str(out),
+                    "--label", "Local vLLM, 1 GPU"]) == 0
+    assert json.loads((out / f"{name}.json").read_text(encoding="utf-8")) == s
 
 
 def test_run_mode_stops_when_the_endpoint_is_down():
@@ -372,6 +441,9 @@ def test_eval_card_from_the_committed_results():
     three = ("metal_let_through", "clean_passed", "held_for_human")
     assert all(set(three) <= set(row) and "gate_correct" not in row for row in lift.values())
     assert set(three) <= set(card["definitions"])
+    # Shown verbatim on /validation: plain English, no snake_case keys.
+    for text in card["definitions"].values():
+        assert not re.search(r"\w+_\w+", text), text
     assert lift["detector_only_degraded"]["held_for_human"] == {"count": 80, "n": 80}
     adv = lift["detector_only_advisory"]
     assert (adv["metal_let_through"]["count"], adv["clean_passed"]["count"],

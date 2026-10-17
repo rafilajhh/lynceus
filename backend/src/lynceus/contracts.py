@@ -33,7 +33,13 @@ the contract effect out.  Rules (applied in this order):
   (actual / min)``; the price never goes below 0.
 
 Each result also carries an indicative ISO 21640:2021 class code
-(:func:`iso21640_class`) from the single sample.
+(:func:`iso21640_class`) from the single sample, and a settlement tier
+(:data:`SETTLEMENT_TIERS`, an example of the market's quality tiering):
+
+* A (premium): better than spec with margin (NCV >= 15 MJ/kg, moisture
+  <= 15 %, chlorine <= 0.6 % dry) and no warning: base price + 10 %.
+* B (base): within spec (a chlorine warning allowed): the base price.
+* C (deductions): any penalty or a refusal: the adjusted price above.
 
 The declared-sorted-but-hard-contaminant breach fee (:data:`BREACH_FEE_IDR`
 per incident) is not a lab effect: it is charged per sealed REJECT whose
@@ -54,6 +60,7 @@ __all__ = [
     "DEFAULT_CONTRACT",
     "ISO21640_LIMITS",
     "PRICE_BAND",
+    "SETTLEMENT_TIERS",
     "SPECS",
     "evaluate",
     "iso21640_class",
@@ -119,6 +126,41 @@ MOISTURE_PENALTY_PER_POINT = 0.02
 #: Flat fee per load declared as sorted RDF that carried a hard contaminant.
 BREACH_FEE_IDR = 1_500_000
 
+#: Tier A thresholds: ISO 21640 NCV class 3 and Cl class 2, moisture 5
+#: points under spec.  Example values, like every term here.
+TIER_A_LIMITS: Dict[str, float] = {
+    "ncv_mj_kg_min": 15.0,
+    "moisture_pct_max": 15.0,
+    "chlorine_pct_max": 0.6,
+}
+TIER_A_PREMIUM = 0.10
+
+#: Example quality-to-price settlement tiers (the market tiers by quality;
+#: the Indocement-Rorotan tier parameters are not public).
+SETTLEMENT_TIERS: list[Dict[str, Any]] = [
+    {
+        "tier": "A",
+        "label": "Premium",
+        "rule": (
+            "NCV >= 15 MJ/kg, moisture <= 15 %, chlorine <= 0.6 % dry and no "
+            "warning: base price + 10 %."
+        ),
+    },
+    {
+        "tier": "B",
+        "label": "Base",
+        "rule": "Within spec (a chlorine warning allowed): the base price.",
+    },
+    {
+        "tier": "C",
+        "label": "Deductions",
+        "rule": (
+            "Any spec breach: the adjusted price (moisture and NCV penalties); "
+            "chlorine above 1.0 % dry is refused at price 0."
+        ),
+    },
+]
+
 #: 1 kcal = 4.184 kJ.
 _KCAL_PER_MJ = 1000.0 / 4.184
 
@@ -159,6 +201,7 @@ DEFAULT_CONTRACT: Dict[str, Any] = {
         },
     ],
     "breach_fee_idr": BREACH_FEE_IDR,
+    "settlement_tiers": SETTLEMENT_TIERS,
     "iso21640": {"limits": ISO21640_LIMITS, "label": ISO21640_LABEL},
 }
 
@@ -284,6 +327,29 @@ def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
     net_t = round(net_kg / 1000.0, 3)
     full = round(base * net_t)
     payable = round(adjusted * net_t)
+
+    if any(b["severity"] != "warning" for b in breaches):
+        tier = "C"
+        tier_reason = (
+            "Refused: chlorine above 1.0 % dry." if refused
+            else "Out of spec: " + ", ".join(
+                b["param"] for b in breaches if b["severity"] == "penalty") + "."
+        )
+        settlement_price = adjusted
+    elif (
+        not breaches
+        and ncv >= TIER_A_LIMITS["ncv_mj_kg_min"]
+        and moisture <= TIER_A_LIMITS["moisture_pct_max"]
+        and chlorine <= TIER_A_LIMITS["chlorine_pct_max"]
+    ):
+        tier = "A"
+        tier_reason = "Better than spec with margin: premium."
+        settlement_price = round(base * (1.0 + TIER_A_PREMIUM))
+    else:
+        tier = "B"
+        tier_reason = "Within spec: base price."
+        settlement_price = base
+    settlement = round(settlement_price * net_t)
     return {
         "spec": dict(SPECS),
         "breaches": breaches,
@@ -294,6 +360,11 @@ def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
         "payable_idr": int(payable),
         "deduction_idr": int(full - payable),
         "refused": refused,
+        "tier": tier,
+        "tier_reason": tier_reason,
+        "settlement_price_idr_per_t": int(settlement_price),
+        "settlement_idr": int(settlement),
+        "premium_idr": int(settlement - payable),
         "iso21640": iso21640_class(ncv, chlorine, hg),
         "note": CONTRACT_NOTE,
     }

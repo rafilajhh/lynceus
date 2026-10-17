@@ -1,8 +1,9 @@
 """Operator checks: what the gate operator reads instead of the raw gates.
 
 :func:`build_checks` turns one inspection (an ``/inspect`` response dict or
-an audit record ``model_dump()``) into six plain checks and one ``why``
-sentence.  Pure and deterministic: no I/O, no AI, no clock.
+an audit record ``model_dump()``) into six plain checks, one ``why``
+sentence and the decision ``receipt`` (:func:`decision.rule_trace`).  Pure
+and deterministic: no I/O, no AI, no clock.
 
 Check shape::
 
@@ -12,6 +13,11 @@ Check shape::
      "finding": "Metal · 0.85",          # at most 28 characters
      "detail": "One plain sentence.",
      "gate": "vlm_confidence|...|None"}
+
+The vision check also carries ``agreement`` ("Reads 3/3 agree", "Reads
+split 1/3", or None with one read).  Sensor observations fold into the
+existing tiles: image quality into the load photo, the ANPR plate into the
+weighbridge.
 
 Rules the operator can rely on:
 
@@ -31,8 +37,9 @@ fields) are read as they are: missing pieces become ``skipped``.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from lynceus import decision
 from lynceus.audit import Decision, GateState
 from lynceus.decision import (
     ARITHMETIC_MARKER,
@@ -40,11 +47,18 @@ from lynceus.decision import (
     DETECTOR_MISSED_MARKER,
     HARD_CONTAMINANTS,
     MOISTURE_CONFLICT_MARKER,
+    PHOTO_QUALITY_MARKER,
+    PLATE_MISMATCH_MARKER,
     WAYBILL_READ_MIN_CONFIDENCE,
     WEIGHT_TOLERANCE,
     confident_hard_contaminants,
+    contract_moisture_spec_pct,
     declared_moisture_fraction,
     light_contaminant_hits,
+    plate_mismatch,
+    poor_image_notes,
+    vote_agreement,
+    vote_split,
 )
 
 __all__ = ["CHECK_KEYS", "FINDING_MAX", "WAYBILL_FIELDS", "WHY_MAX", "build_checks"]
@@ -163,8 +177,9 @@ def _waybill_read(inputs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 class _Record:
     """The parts of one inspection the checks read, from either shape."""
 
-    def __init__(self, rec: Dict[str, Any]) -> None:
+    def __init__(self, rec: Dict[str, Any], sampling: Optional[Dict[str, Any]] = None) -> None:
         audit_record = _dict(rec.get("audit_record"))
+        self.recommendation: Dict[str, Any] = {}
         verdict = rec.get("verdict", audit_record.get("verdict"))
         self.decision: Optional[str] = (
             verdict.get("decision") if isinstance(verdict, dict)
@@ -179,11 +194,26 @@ class _Record:
         self.read = _waybill_read(self.inputs)
         engine = _dict(rec.get("engine_outputs")) or _dict(audit_record.get("engine_outputs"))
         recommendation = _dict(engine.get("recommendation"))
+        self.recommendation = recommendation
         self.missing = [
             str(m) for m in (self.gates.get("missing") or recommendation.get("missing") or [])
         ]
         self.reasons = [str(r) for r in rec.get("reasons") or []]
-        self.sampling = _dict(rec.get("sampling"))
+        self.sampling = _dict(sampling) if isinstance(sampling, dict) else _dict(rec.get("sampling"))
+        self.receipt = rec.get("receipt") if isinstance(rec.get("receipt"), list) else None
+        # Wave-2 evidence: vision votes and the gate's observations.
+        self.observations = [
+            o for o in self.inputs.get("observations") or [] if isinstance(o, dict)
+        ] if isinstance(self.inputs.get("observations"), list) else []
+        self.agreement = vote_agreement(self.vlm)
+        self.split = vote_split(self.vlm)
+        self.poor_photo = poor_image_notes(self.inputs)
+        self.plate = plate_mismatch(
+            {"waybill_fields": self.fields, "observations": self.observations}
+        )
+        fraction, _ = declared_moisture_fraction({"waybill_fields": self.fields})
+        self.declared_moisture_pct = None if fraction is None else round(fraction * 100.0, 6)
+        self.moisture_spec_pct = contract_moisture_spec_pct()
         # Payload: weight_kg / declared_weight_kg; record: weight.value_kg.
         weight = _dict(self.inputs.get("weight"))
         self.weight_kg = _num(self.inputs.get("weight_kg"))
@@ -210,6 +240,28 @@ class _Record:
         """A REJECT without a confident hard contaminant: recorded under an
         older rule (weight > 10 %, VLM confidence < 0.3, prose)."""
         return self.decision == Decision.REJECT and not self.hard
+
+    @property
+    def plate_flagged(self) -> bool:
+        """The weighbridge gate (or the ANPR observation) says wrong truck."""
+        return self.plate is not None or (
+            PLATE_MISMATCH_MARKER in _reason(self.gates.get("weight_plausibility"))
+        )
+
+    @property
+    def weight_off(self) -> bool:
+        """The weighbridge gate failed on the weight itself, not only the plate."""
+        reason = _reason(self.gates.get("weight_plausibility"))
+        return self.failed("weight_plausibility") and (
+            PLATE_MISMATCH_MARKER not in reason or "ticket correction" in reason.lower()
+        )
+
+    @property
+    def above_spec(self) -> bool:
+        return (
+            self.declared_moisture_pct is not None
+            and self.declared_moisture_pct > self.moisture_spec_pct
+        )
 
     def weight_delta(self) -> Optional[float]:
         """Signed (scale - declared) / declared, else the gate's unsigned value."""
@@ -248,23 +300,44 @@ def _check(key: str, status: str, finding: str, detail: str) -> Dict[str, Any]:
 
 
 def _vision(r: _Record) -> Dict[str, Any]:
+    """The load-photo check; ``agreement`` says how the vision reads voted."""
+    check = _vision_check(r)
+    check["agreement"] = r.agreement
+    if r.agreement and r.agreement not in check["detail"]:
+        check["detail"] += f" {r.agreement}."
+    return check
+
+
+def _vision_check(r: _Record) -> Dict[str, Any]:
     gate = r.gate("vlm_confidence")
     state = _state(gate)
     conf = r.vlm_confidence
     if state in (None, GateState.NOT_RUN, GateState.NOT_EVALUATED):
         return _check("vision", "skipped", "Not run",
                       _reason(gate) or "The vision model did not read the photo.")
-    if state == GateState.FAILED:
-        return _check(
-            "vision", "fail" if r.legacy_reject else "warn", "Unreadable · retake",
-            f"The vision model read the photo at {conf or 0:.2f} confidence: retake it "
-            "from the top platform.",
-        )
     if r.hard:
         return _check(
             "vision", "fail", f"{_names(r.hard, compact=True)} · {conf or 0:.2f}",
             f"The vision model sees {_names(r.hard, capital=False)} in the load "
             f"(confidence {conf or 0:.2f}).",
+        )
+    if state == GateState.FAILED:
+        poor = r.poor_photo or PHOTO_QUALITY_MARKER in _reason(gate)
+        return _check(
+            "vision", "fail" if r.legacy_reject else "warn",
+            "Poor photo · retake" if poor else "Unreadable · retake",
+            (" ".join(r.poor_photo) or "The image-quality check marked the photo poor.")
+            + " Retake it from the top platform."
+            if poor
+            else f"The vision model read the photo at {conf or 0:.2f} confidence: retake it "
+            "from the top platform.",
+        )
+    if r.split:
+        _, (seen, of) = min(r.split.items())
+        return _check(
+            "vision", "warn", r.agreement or f"Reads split {seen}/{of}",
+            "; ".join(f"{s} of {o} vision reads saw {_nice(n)}" for n, (s, o) in sorted(r.split.items()))
+            + ": check the load by hand.",
         )
     if r.legacy_reject and not r.failed("weight_plausibility"):
         return _check(
@@ -288,8 +361,9 @@ def _vision(r: _Record) -> Dict[str, Any]:
             f"The vision model lists {_names(listed, capital=False)} below its 0.60 trust "
             "bar: not acted on.",
         )
-    return _check("vision", "pass", "Nothing hard seen",
-                  f"No hard or light contaminant in the photo (confidence {conf or 0:.2f}).")
+    return _check("vision", "pass", r.agreement or "Nothing hard seen",
+                  f"Nothing hard seen: no hard or light contaminant in the photo (confidence "
+                  f"{conf or 0:.2f}).")
 
 
 def _second_look(r: _Record) -> Dict[str, Any]:
@@ -357,7 +431,7 @@ def _declaration(r: _Record) -> Dict[str, Any]:
     reason = _reason(gate)
     if state in (None, GateState.NOT_RUN):
         return _check("declaration", "skipped", "Not run", reason or "Not compared.")
-    if state == GateState.NOT_EVALUATED:
+    if state == GateState.NOT_EVALUATED and not r.above_spec:
         return _check("declaration", "skipped", "Nothing declared",
                       "The waybill declares nothing the load can be compared on.")
     if state == GateState.FAILED:
@@ -370,6 +444,14 @@ def _declaration(r: _Record) -> Dict[str, Any]:
             return _check("declaration", "fail", "Net does not add up", reason)
         # An older record: the LLM's own cross-check.
         return _check("declaration", "warn", "Fields disagree", reason)
+    if r.above_spec:
+        return _check(
+            "declaration", "warn",
+            f"Declared {r.declared_moisture_pct:g} % > {r.moisture_spec_pct:g} % spec",
+            f"Declared moisture {r.declared_moisture_pct:g} % is above the "
+            f"{r.moisture_spec_pct:g} % contract spec: the load is priced on the lab sample "
+            "(SOP-RDF-5.4).",
+        )
     return _check("declaration", "pass", "Matches", reason or "The waybill matches the load.")
 
 
@@ -377,6 +459,16 @@ def _weight(r: _Record) -> Dict[str, Any]:
     gate = r.gate("weight_plausibility")
     state = _state(gate)
     simulated = " (simulated scale feed)" if "simulated" in r.weight_source else ""
+    if r.plate_flagged:
+        read, expected = r.plate or ("another plate", "the waybill plate")
+        weight_note = (
+            f" The scale is also {r.weight_text()} from the waybill net." if r.weight_off else ""
+        )
+        return _check(
+            "weight", "fail", f"Plate {read} ≠ waybill",
+            f"The plate camera reads {read}; the waybill says {expected}: verify the truck."
+            + weight_note,
+        )
     if state in (None, GateState.NOT_RUN):
         return _check("weight", "skipped", "No scale reading", "No weighbridge weight supplied.")
     if state == GateState.NOT_EVALUATED:
@@ -397,6 +489,11 @@ def _weight(r: _Record) -> Dict[str, Any]:
 
 
 def _supplier(r: _Record, profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if r.sampling.get("sample_this_truck") is True:
+        return _check(
+            "supplier", "warn", "Sample this truck",
+            str(r.sampling.get("reason") or "Risk-based lab sample due (SOP-RDF-5.4)."),
+        )
     if not isinstance(profile, dict) or not profile:
         if r.supplier:
             return _check("supplier", "skipped", "New supplier",
@@ -408,15 +505,14 @@ def _supplier(r: _Record, profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     every_n = _num(sampling.get("every_n"))
     trucks = _num(profile.get("trucks"))
     name = str(profile.get("supplier") or r.supplier or "this supplier")
-    sample_now = r.sampling.get("sample_this_truck") is True or tier == "high"
     rate = str(sampling.get("label") or (f"1 in {every_n:.0f}" if every_n else "")).strip()
-    detail = f"{trucks or 0:.0f} trucks on record for {name}" + (f"; sampling {rate}." if rate else ".")
+    count = int(trucks or 0)
+    detail = (f"{count} truck{'' if count == 1 else 's'} on record for {name}"
+              + (f"; sampling {rate}." if rate else "."))
     if tier == "new":
-        if sample_now:
-            return _check("supplier", "info", "New · lab sample", detail)
         return _check("supplier", "skipped", "New supplier", detail)
     label = f"{tier.capitalize()} risk"
-    if sample_now:
+    if tier == "high":
         finding = f"{label} · lab sample"
     elif every_n:
         finding = f"{label} · 1 in {every_n:.0f} sampled"
@@ -464,11 +560,22 @@ def _why(r: _Record) -> str:
                 return (f"Vision model unavailable; the second look flags {_nice(flag[0])}: "
                         "inspect the load before tipping.")
             return "Vision model unavailable: a person inspects the load before tipping."
-        if vlm_state == GateState.FAILED:
-            return "Photo unreadable: retake it from the top platform before deciding."
+        if r.plate_flagged:
+            if r.plate:
+                return (f"Plate {r.plate[0]} does not match the waybill ({r.plate[1]}): verify "
+                        "the truck before tipping.")
+            return "Plate does not match the waybill: verify the truck before tipping."
         if r.hard:
             return (f"{_names(r.hard)} seen by a fallback vision model: the supervisor checks "
                     "the load before tipping.")
+        if vlm_state == GateState.FAILED:
+            if r.poor_photo or PHOTO_QUALITY_MARKER in _reason(r.gates.get("vlm_confidence")):
+                return "Photo quality is poor: retake it from the top platform before deciding."
+            return "Photo unreadable: retake it from the top platform before deciding."
+        if r.split:
+            name, (seen, of) = min(r.split.items())
+            return (f"{seen} of {of} vision reads saw {_nice(name)}: check the load by hand "
+                    "before tipping.")
         detector_failed = r.failed("detector_second_opinion")
         if detector_failed and flag and flag[0] in HARD_CONTAMINANTS:
             return (f"Second look flags {flag[0]} the vision model did not confirm: the "
@@ -478,7 +585,7 @@ def _why(r: _Record) -> str:
         if cross_failed and MOISTURE_CONFLICT_MARKER.lower() in cross.lower():
             return (f"Load looks wetter than {_moisture_words(r)}: take a grab sample before "
                     "tipping.")
-        if r.failed("weight_plausibility"):
+        if r.weight_off:
             return (f"Scale reads {r.weight_text()} vs the waybill: re-weigh or correct the "
                     "ticket before tipping.")
         if cross_failed and ARITHMETIC_MARKER in cross:
@@ -496,6 +603,10 @@ def _why(r: _Record) -> str:
             return "Engine routes tied: the supervisor picks the route before tipping."
         return "Held for the supervisor: review the record before tipping."
     if d == Decision.ACCEPT:
+        if r.above_spec:
+            return (f"Accept for tipping: nothing hard seen; declared moisture "
+                    f"{r.declared_moisture_pct:g} % is above the {r.moisture_spec_pct:g} % "
+                    "spec, so sample it to settle the price.")
         parts = ["nothing hard seen"]
         if _state(r.gates.get("weight_plausibility")) == GateState.PASSED:
             parts.append(f"weight within {WEIGHT_TOLERANCE * 100:.0f} %")
@@ -505,17 +616,102 @@ def _why(r: _Record) -> str:
     return "No verdict recorded yet."
 
 
+# ---------------------------------------------------------------------------
+# The decision receipt
+# ---------------------------------------------------------------------------
+
+#: Verdict → the receipt's effect word.
+_EFFECT = {
+    Decision.REJECT: "reject",
+    Decision.ESCALATE_HUMAN: "hold",
+    Decision.ACCEPT: "accept",
+    Decision.REFUSE_INSUFFICIENT_INPUT: "refuse",
+}
+
+
+def _replay_args(r: _Record) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Best-effort ``decide`` payload and keyword arguments from a record.
+
+    A sealed record keeps the waybill text only as a digest, so a typed
+    waybill's "declared weight" / "moisture" text cannot be re-read.
+    """
+    inputs = r.inputs
+    manifest = inputs.get("manifest_text")
+    photo = bool(
+        inputs.get("photo") or inputs.get("photo_base64") or inputs.get("photo_filename")
+        or inputs.get("demo_case") or r.vlm
+    )
+    weight_ran = _state(r.gates.get("weight_plausibility")) not in (None, GateState.NOT_RUN)
+    payload: Dict[str, Any] = {
+        "photo_filename": "sealed-photo" if photo else None,
+        "manifest_text": manifest if isinstance(manifest, str)
+        else "(sealed waybill text)" if isinstance(manifest, dict) else "",
+        "waybill_fields": r.fields or None,
+        "waybill_read": dict(r.read) if r.read else None,
+        "weight_kg": r.weight_kg if weight_ran or "weight_kg" in inputs else None,
+        "declared_weight_kg": r.declared_kg,
+        "moisture": inputs.get("moisture"),
+        "gas": inputs.get("gas"),
+        "observations": r.observations,
+    }
+    thresholds = _dict(_dict(r.detector).get("thresholds"))
+    kwargs: Dict[str, Any] = {}
+    if _num(thresholds.get("hard")) is not None:
+        kwargs["detector_hard_conf"] = float(thresholds["hard"])
+    if _num(thresholds.get("light")) is not None:
+        kwargs["detector_light_conf"] = float(thresholds["light"])
+    if isinstance(thresholds.get("escalate_light"), bool):
+        kwargs["detector_escalate_light"] = thresholds["escalate_light"]
+    return payload, kwargs
+
+
+def _receipt(r: _Record) -> List[Dict[str, Any]]:
+    """The receipt the response carries, else :func:`decision.rule_trace`
+    replayed on the record.  When the replay disagrees with the sealed
+    verdict (older rules, or inputs kept only as digests) a last row says so:
+    the sealed verdict stands."""
+    if r.receipt is not None:
+        return [row for row in r.receipt if isinstance(row, dict)]
+    payload, kwargs = _replay_args(r)
+    engine = {"recommendation": r.recommendation} if r.recommendation else None
+    vlm = r.vlm or None
+    replayed, _, _ = decision.decide(payload, vlm, None, engine, r.detector, **kwargs)
+    rows = decision.rule_trace(payload, vlm, None, engine, r.detector, **kwargs)
+    if r.decision and r.decision != replayed:
+        degraded = not r.vlm and _state(r.gates.get("vlm_confidence")) in (None, GateState.NOT_RUN)
+        rows.append({
+            "id": "recorded_verdict",
+            "rule": "The sealed verdict stands as recorded",
+            "fired": True,
+            "evidence": (
+                f"Recorded {r.decision} in degraded mode: the vision model was unavailable, "
+                "so a person inspects the load."
+                if degraded and r.decision == Decision.ESCALATE_HUMAN
+                else f"Recorded {r.decision}; today's rules on the stored outputs give "
+                f"{replayed} (decided under older rules, or on inputs the record keeps "
+                "only as digests)."
+            ),
+            "effect": _EFFECT.get(r.decision, "none"),
+        })
+    return rows
+
+
 def build_checks(
-    response_like: Dict[str, Any], supplier_profile: Optional[Dict[str, Any]] = None
+    response_like: Dict[str, Any],
+    supplier_profile: Optional[Dict[str, Any]] = None,
+    sampling: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """``{"why": str, "checks": [check, ...]}`` for one inspection.
+    """``{"why": str, "checks": [check, ...], "receipt": [rule, ...]}``.
 
     ``response_like`` is an ``/inspect`` response dict or an audit record
     ``model_dump()``; any part may be missing.  ``supplier_profile`` is the
     supplier's ``suppliers.profile`` dict (``tier``, ``sampling``, ``trucks``),
-    or None when there is none.
+    or None when there is none.  ``sampling`` is this truck's
+    ``suppliers.sampling_for`` call (default: ``response_like["sampling"]``).
+    ``receipt`` is ``response_like["receipt"]`` when the caller computed it
+    with :func:`decision.rule_trace`, else replayed from the record.
     """
-    r = _Record(response_like if isinstance(response_like, dict) else {})
+    r = _Record(response_like if isinstance(response_like, dict) else {}, sampling)
     return {
         "why": _clip(_why(r), WHY_MAX),
         "checks": [
@@ -526,4 +722,5 @@ def build_checks(
             _weight(r),
             _supplier(r, supplier_profile),
         ],
+        "receipt": _receipt(r),
     }

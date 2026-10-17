@@ -46,6 +46,17 @@ export function IconAuditTrail({ size }: { size?: number }) {
   );
 }
 
+/** Control room: a dial with its needle over a baseline. */
+export function IconControl({ size }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="M4 16a8 8 0 0 1 16 0" />
+      <path d="m12 16 3.6-4.4" />
+      <path d="M4 19.5h16" />
+    </Svg>
+  );
+}
+
 /** Shift: a clock over a baseline. */
 export function IconShift({ size }: { size?: number }) {
   return (

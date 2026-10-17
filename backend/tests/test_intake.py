@@ -362,7 +362,8 @@ def test_inspect_with_waybill_fields_records_the_read(client, tmp_path, monkeypa
     real_decide = decision.decide
 
     def spy(inputs, *args, **kwargs):
-        seen["inputs"] = dict(inputs)
+        # The first call is the gate's; the decision receipt may replay it.
+        seen.setdefault("inputs", dict(inputs))
         return real_decide(inputs, *args, **kwargs)
 
     monkeypatch.setattr(decision, "decide", spy)

@@ -7,11 +7,13 @@
  * - Metal: a steel pipe elbow in a load declared as sorted RDF fluff.
  * - Clean: dry shredded feedstock; matches its declaration.
  * - Wet:   damp mixed waste with organic clumps, declared at 28 % moisture.
+ * - Wrong truck: the clean load, but the truck on the scale is B 9406 KXW
+ *   while its waybill belongs to B 9723 KXW (the plate camera catches it).
  */
 
 import type { WaybillValues } from "./waybill-api";
 
-export type PresetKey = "metal" | "clean" | "wet";
+export type PresetKey = "metal" | "clean" | "wet" | "wrong_truck";
 
 export interface GatePreset {
   key: PresetKey;
@@ -20,12 +22,22 @@ export interface GatePreset {
   hint: string;
   /** Main load photo (public /demo path name). */
   photo: string;
+  /** Plate the truck registers under at the weighbridge, when it is not
+      the waybill's. */
+  truckPlate?: string;
 }
 
 export const PRESETS: readonly GatePreset[] = [
   { key: "metal", label: "Metal", hint: "Pipe elbow in the load", photo: "t-metal-1.jpg" },
   { key: "clean", label: "Clean", hint: "Dry shredded RDF", photo: "t-clean-1.jpg" },
   { key: "wet", label: "Wet", hint: "Damp mixed waste", photo: "t-ambiguous-1.jpg" },
+  {
+    key: "wrong_truck",
+    label: "Wrong truck",
+    hint: "Truck B 9406 KXW, another truck's waybill",
+    photo: "t-clean-1.jpg",
+    truckPlate: "B 9406 KXW",
+  },
 ];
 
 /** The demo truck runs the Metal story: the most expensive miss. */

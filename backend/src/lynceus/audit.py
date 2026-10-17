@@ -570,6 +570,14 @@ def _validate_frame(value: Optional[int], field: str) -> Optional[int]:
     return value
 
 
+#: Vision reads one inspection votes over (config._MAX_VLM_VOTES).
+MAX_VLM_READS = 3
+#: ``ai_outputs.vlm.third_read`` under early majority (pipeline's
+#: VLLMClient._vote_reads): the last read came back within the grace window,
+#: did not, or failed inside it.
+THIRD_READ_STATES = ("arrived", "late", "failed")
+
+
 class ContaminantBox(_StrictModel):
     """One localised contaminant: normalised image coordinates in 0..1,
     top-left ``(x0, y0)`` strictly before bottom-right ``(x1, y1)``."""
@@ -688,11 +696,34 @@ class VLMOutput(_StrictModel):
     #: Every read's own answer (``vlm_votes`` reads, or one per angle);
     #: absent on records written before votes were kept.
     votes: Optional[List[VLMVote]] = None
+    #: Early majority: the reads the verdict used, and whether the last read
+    #: arrived within the grace window ("arrived"), did not ("late") or
+    #: failed inside it ("failed").  Absent when every read was waited for.
+    votes_used: Optional[int] = None
+    third_read: Optional[str] = None
 
     @field_validator("latency_ms")
     @classmethod
     def _v_latency(cls, v: Optional[float]) -> Optional[float]:
         return _validate_latency_ms(v, "ai_outputs.vlm.latency_ms")
+
+    @field_validator("votes_used")
+    @classmethod
+    def _v_votes_used(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (isinstance(v, bool) or not 1 <= v <= MAX_VLM_READS):
+            raise _err(
+                _ERR_FORMAT,
+                "ai_outputs.vlm.votes_used",
+                f"must be 1..{MAX_VLM_READS} (got {v!r})",
+            )
+        return v
+
+    @field_validator("third_read")
+    @classmethod
+    def _v_third_read(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_closed_enum(v, THIRD_READ_STATES, "ai_outputs.vlm.third_read")
 
     @field_validator("localisation")
     @classmethod

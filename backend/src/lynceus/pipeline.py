@@ -32,7 +32,7 @@ import math
 import re
 import threading
 import time
-from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
@@ -83,12 +83,9 @@ def progress_emitter(on_progress: Optional[ProgressFn]) -> ProgressFn:
 #: summaries to :meth:`VLLMClient._vlm_result` (never part of raw_output).
 _VOTES_KEY = "__votes__"
 #: Key under which it reports an early-majority decision
-#: (``{votes_used, third_read}``); absent when every read was waited for.
+#: (``{votes_used, third_read}``, third_read one of audit.THIRD_READ_STATES);
+#: absent when every read was waited for.
 _EARLY_KEY = "__early_majority__"
-#: ``third_read`` values: the last read came back within the grace window,
-#: did not, or failed inside it.  Either of the last two decides on the
-#: agreeing reads alone.
-THIRD_READ_STATES = ("arrived", "late", "failed")
 
 
 class _ReadProgress:
@@ -647,9 +644,20 @@ class VLLMClient:
         :data:`_VLM_READ_SLOTS` slot and an outbound slot, so N votes cost
         about one read of wall time.  The first failed read fails the model
         at once, as a single read would: the chain does not wait for the
-        other reads (they end at the deadline and their answers are dropped).
+        other reads (their answers are dropped).
         ``votes`` overrides the setting (multi-angle frames get one read
         each); ``progress`` hears of every read that returned.
+
+        Early majority: a read takes 25-45 s on Token Factory, and waiting
+        for the slowest of three is most of an inspection.  Once a majority
+        of the reads returned and agree on the hard contaminants, the rest
+        get ``vlm_vote_grace_s`` more.  A read that arrives in time is
+        counted as usual, so its minority hard sighting stays in ``votes``
+        for the rules; one that does not is dropped and the merge is made
+        from the agreeing reads, reported under :data:`_EARLY_KEY`.  Reads
+        no longer waited for give back their read slot at once; their HTTP
+        call holds its outbound slot until the endpoint replies or the
+        budget ends (a blocking read cannot be interrupted).
         """
         # Settings built in code skip the env clamp: never more reads than slots.
         votes = min(
@@ -658,38 +666,81 @@ class VLLMClient:
         )
         url = self._settings.vllm_vlm_url
         abandoned = threading.Event()
+        slot_lock = threading.Lock()
+        holding: set = set()
 
-        def read() -> Dict[str, Any]:
+        def release(index: int) -> None:
+            # Exactly once per read: by the read itself, or by the vote
+            # when it stops waiting for that read.
+            with slot_lock:
+                if index not in holding:
+                    return
+                holding.discard(index)
+            _VLM_READ_SLOTS.release()
+
+        def read(index: int) -> Dict[str, Any]:
             if not _VLM_READ_SLOTS.acquire(timeout=max(deadline - time.monotonic(), 0.0)):
                 raise _deadline_error(self._timeout_s)
+            with slot_lock:
+                holding.add(index)
             try:
-                if abandoned.is_set():  # the model already failed: spend nothing
+                if abandoned.is_set():  # the vote is over: spend nothing
                     raise _deadline_error(self._timeout_s)
                 parsed = self._remaining(deadline)._chat_json(url, model, messages)
             finally:
-                _VLM_READ_SLOTS.release()
+                release(index)
             if progress is not None and not abandoned.is_set():
                 progress.read_done(parsed, frame)
             return parsed
 
         if votes == 1:
-            parsed = read()
+            parsed = read(0)
             return {**parsed, _VOTES_KEY: [vote_summary(parsed)]}
+        majority = votes // 2 + 1
+        grace_s = max(0.0, self._settings.vlm_vote_grace_s)
         pool = ThreadPoolExecutor(max_workers=votes, thread_name_prefix="lynceus-vote")
         try:
-            reads = [pool.submit(read) for _ in range(votes)]
-            done, _ = wait(reads, return_when=FIRST_EXCEPTION)
-            errors = [f.exception() for f in done if f.exception() is not None]
-            if errors:
-                # A failure that ends the chain (refused key, spent 429s,
-                # timeout) wins over one that would move to the next model.
-                raise next((e for e in errors if not _model_specific_failure(e)), errors[0])
-            answers = [future.result() for future in reads]
+            futures = {pool.submit(read, index): index for index in range(votes)}
+            pending = set(futures)
+            answers: Dict[int, Dict[str, Any]] = {}
+            grace_until: Optional[float] = None
+            last_read = "arrived"
+            while pending:
+                timeout = None
+                if grace_until is not None:
+                    timeout = max(grace_until - time.monotonic(), 0.0)
+                done, pending = wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
+                if not done:
+                    last_read = "late"
+                    break
+                errors = [f.exception() for f in done if f.exception() is not None]
+                answers.update({futures[f]: f.result() for f in done if f.exception() is None})
+                if errors:
+                    if grace_until is not None:
+                        last_read = "failed"
+                        break
+                    # A failure that ends the chain (refused key, spent 429s,
+                    # timeout) wins over one that would move to the next model.
+                    raise next((e for e in errors if not _model_specific_failure(e)), errors[0])
+                hard_sets = {
+                    frozenset(_strings(a.get("hard_contaminants"))) for a in answers.values()
+                }
+                agreed = len(answers) >= majority and len(hard_sets) == 1
+                if grace_until is None and pending and agreed:
+                    grace_until = min(time.monotonic() + grace_s, deadline)
+            ordered = [answers[index] for index in sorted(answers)]
             # Every read's own answer travels with the merge: a minority
             # sighting the vote dropped is still visible to the rules.
-            return {**_vote_majority(answers), _VOTES_KEY: [vote_summary(a) for a in answers]}
+            merged = {**_vote_majority(ordered), _VOTES_KEY: [vote_summary(a) for a in ordered]}
+            if grace_until is not None:
+                merged[_EARLY_KEY] = {"votes_used": len(ordered), "third_read": last_read}
+            return merged
         finally:
             abandoned.set()
+            with slot_lock:
+                still_reading = list(holding)
+            for index in still_reading:
+                release(index)
             pool.shutdown(wait=False, cancel_futures=True)
 
     @staticmethod
@@ -850,6 +901,7 @@ class VLLMClient:
     ) -> Dict[str, Any]:
         parsed = dict(parsed)
         votes = parsed.pop(_VOTES_KEY, None)
+        early = parsed.pop(_EARLY_KEY, None)
         result = {
             "detected": {
                 "contamination": parsed.get("contamination", "unknown"),
@@ -869,6 +921,8 @@ class VLLMClient:
         }
         if votes is not None:
             result["votes"] = votes
+        if early is not None:
+            result.update(early)
         return result
 
     def llm(self, manifest_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -1593,7 +1647,12 @@ def run_inspection(
 
     def vision_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         merged = merge_frame_reads(results)
-        return {"model": merged.get("model"), "latency_ms": merged.get("latency_ms")}
+        summary = {"model": merged.get("model"), "latency_ms": merged.get("latency_ms")}
+        # Early majority: the vision verdict did not wait for every read.
+        summary.update(
+            {k: merged[k] for k in ("votes_used", "third_read") if merged.get(k) is not None}
+        )
+        return summary
 
     votes = min(max(1, settings.vlm_votes), _VLM_READ_SLOT_COUNT)
     emit(

@@ -586,18 +586,24 @@ def _sampling_for(
         return None
 
 
-def _checks_for(record_like: dict[str, Any], profile: dict[str, Any] | None) -> dict[str, Any]:
-    """``{"checks", "why"}`` from :func:`checks.build_checks` (empty when the
-    module is absent; ``None`` values when it failed on this record)."""
+def _checks_for(
+    record_like: dict[str, Any],
+    profile: dict[str, Any] | None,
+    sampling: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """``{"checks", "why", "receipt"}`` from :func:`checks.build_checks` (empty
+    when the module is absent; ``None`` values when it failed on this record,
+    except a live receipt the record already carries).  ``receipt`` is the
+    record's own when it carries one, else replayed from its sealed outputs."""
     checks = _optional_module("checks")
     if checks is None:
         return {}
     try:
-        built = checks.build_checks(record_like, profile)
+        built = checks.build_checks(record_like, profile, sampling)
     except Exception as exc:  # noqa: BLE001 — the sealed verdict still answers
         _log.warning("operator checks skipped: %s: %s", type(exc).__name__, exc)
-        return {"checks": None, "why": None}
-    return {"checks": built.get("checks"), "why": built.get("why")}
+        return {"checks": None, "why": None, "receipt": record_like.get("receipt")}
+    return {key: built.get(key) for key in ("checks", "why", "receipt")}
 
 
 def _vlm_block(vlm_result: dict[str, Any], no_model: str) -> dict[str, Any]:
@@ -622,6 +628,12 @@ def _vlm_block(vlm_result: dict[str, Any], no_model: str) -> dict[str, Any]:
         "fallback_from": vlm_result.get("fallback_from"),
         # Each read's own answer (absent on results that kept none).
         **({"votes": vlm_result["votes"]} if vlm_result.get("votes") is not None else {}),
+        # Early majority: the reads used and what became of the last one.
+        **{
+            k: vlm_result[k]
+            for k in ("votes_used", "third_read")
+            if vlm_result.get(k) is not None
+        },
     }
 
 
@@ -875,6 +887,9 @@ def _run_inspection_with_audit(
         ):
             engine_result = None
 
+    # The decision receipt: every rule, fired or not (degraded runs: rebuilt
+    # by checks.build_checks from the sealed outputs).
+    receipt: list[dict[str, Any]] | None = None
     if degraded:
         verdict, gates, reasons = decision.decide_degraded(
             detector_result,
@@ -886,17 +901,15 @@ def _run_inspection_with_audit(
             failed_stage=failed_stage,
         )
     else:
-        verdict, gates, reasons = decision.decide(
-            payload,
-            ai.get("vlm"),
-            llm_result,
-            engine_result,
-            detector_result,
-            detector_hard_conf=settings.detector_hard_conf,
-            detector_light_conf=settings.detector_light_conf,
-            detector_escalate_light=settings.detector_escalate_light,
-            benchmarked_vlm_models=settings.vlm_benchmarked_models,
-        )
+        rule_args = (payload, ai.get("vlm"), llm_result, engine_result, detector_result)
+        rule_kwargs = {
+            "detector_hard_conf": settings.detector_hard_conf,
+            "detector_light_conf": settings.detector_light_conf,
+            "detector_escalate_light": settings.detector_escalate_light,
+            "benchmarked_vlm_models": settings.vlm_benchmarked_models,
+        }
+        verdict, gates, reasons = decision.decide(*rule_args, **rule_kwargs)
+        receipt = decision.rule_trace(*rule_args, **rule_kwargs)
 
     # No engine run (missing batch inputs): the audit record states so with a
     # hold-for-review route rather than a guessed one.
@@ -935,6 +948,21 @@ def _run_inspection_with_audit(
             engine_recommendation["caveats"].append(
                 f"Waste age was not entered: the engine assumed {DEFAULT_AGE_H:g} h (defaulted)."
             )
+    third_read = vlm_result.get("third_read")
+    if third_read in ("late", "failed") and not degraded:
+        # Early majority (pipeline.VLLMClient._vote_reads): a read the
+        # verdict never saw is stated, not hidden.
+        used = int(vlm_result.get("votes_used") or 0)
+        what = (
+            f"did not return within {settings.vlm_vote_grace_s:g} s"
+            if third_read == "late"
+            else "failed"
+        )
+        engine_recommendation["caveats"].append(
+            f"Vision decided on {used} of {used + 1} reads (third {third_read}): the "
+            f"first {used} agreed and the last {what}; the detector second opinion "
+            "still applied."
+        )
     if verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT:
         # The gate-level refusal (no photo, no weight, ...) also makes the
         # recommendation unusable; keep whatever the engine itself listed.
@@ -1108,6 +1136,7 @@ def _run_inspection_with_audit(
         "waybill": waybill_block,
         "sampling": sampling,
         "supplier_profile": supplier_profile,
+        "receipt": receipt,
     }
     if record is not None:
         response["audit_record"] = record.model_dump()
@@ -1132,7 +1161,9 @@ def _run_inspection_with_audit(
             else value
             for name, value in payload["waybill_fields"].items()
         }
-    response.update(_checks_for({**response, "inputs": check_inputs}, supplier_profile))
+    response.update(
+        _checks_for({**response, "inputs": check_inputs}, supplier_profile, sampling)
+    )
     return response
 
 
@@ -1649,6 +1680,22 @@ def create_app() -> FastAPI:
             )
         return FileResponse(page, media_type="text/html")
 
+    @app.get("/control", include_in_schema=False, response_model=None)
+    def serve_control_page(request: Request) -> FileResponse | RedirectResponse:
+        """Flat ``control.html`` on ``/control`` (same fix as ``/shift``)."""
+        if (redirect := _guard_console_page(request)) is not None:
+            return redirect
+        page = _web_file("control.html")
+        if not page.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "control_page_not_found",
+                    "message": "web/out/control.html is missing — build the web export.",
+                },
+            )
+        return FileResponse(page, media_type="text/html")
+
     def _benchmark_summaries(kind: str) -> Iterator[dict[str, Any]]:
         """Readable summaries of ``kind``, newest first (allow-listed by the
         summary's own ``kind``; see :func:`impact.benchmark_summaries`), so a
@@ -1786,7 +1833,8 @@ def create_app() -> FastAPI:
         before it ever reaches the filesystem — ``../etc/passwd`` and
         friends are rejected with 422, not probed on disk.
 
-        The record's fields stay at the top level; ``checks``, ``why`` and
+        The record's fields stay at the top level; ``checks``, ``why``,
+        ``receipt`` (the decision rules replayed on the sealed outputs) and
         ``supplier_profile`` (the supplier's current scorecard) are added
         beside them.
         """

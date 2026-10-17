@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -94,6 +94,12 @@ function LedgerViewInner() {
     dir: "desc",
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const recordParam = (searchParams.get("record") ?? "").trim();
+  // ?record=<id> (from the control room): open that record once the ledger
+  // loads, on whichever page holds it, and scroll it into view.
+  const [pendingRecord, setPendingRecord] = useState<string | null>(null);
+  const [missingRecord, setMissingRecord] = useState<string | null>(null);
+  const handledRecord = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -182,6 +188,48 @@ function LedgerViewInner() {
   const pagedRows = rows.slice(startIdx, endIdx);
   const followupKinds = useFollowupKinds(pagedRows);
 
+  // Deep link, step 1: find the record and clear any filter that hides it.
+  useEffect(() => {
+    if (!recordParam || state.kind !== "ready" || handledRecord.current === recordParam) return;
+    handledRecord.current = recordParam;
+    const target = state.inspections.find((item) => item.record_id === recordParam);
+    if (!target) {
+      setMissingRecord(recordParam);
+      return;
+    }
+    setMissingRecord(null);
+    setFilter("all");
+    setSearch("");
+    if (supplierFilter && (target.supplier ?? "").trim() !== supplierFilter) setSupplierFilter("");
+    setSelectedId(recordParam);
+    setPendingRecord(recordParam);
+  }, [recordParam, state, supplierFilter]);
+
+  // Step 2, once the filters have applied: turn to its page and scroll to it.
+  useEffect(() => {
+    if (!pendingRecord) return;
+    const index = rows.findIndex((item) => item.record_id === pendingRecord);
+    if (index < 0) return;
+    setPage(Math.floor(index / PAGE_SIZE) + 1);
+    setPendingRecord(null);
+    const id = pendingRecord;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const row = [...document.querySelectorAll<HTMLElement>(`[data-record-id="${CSS.escape(id)}"]`)].find(
+          (el) => el.getClientRects().length > 0,
+        );
+        if (!row) return;
+        row.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+        row.focus({ preventScroll: true });
+        // Follow-up badges landing above the row shift it: settle once more.
+        window.setTimeout(() => {
+          if (row.getBoundingClientRect().top < 0) row.scrollIntoView({ block: "start" });
+        }, 700);
+      }),
+    );
+  }, [pendingRecord, rows]);
+
   const onFilterChange = (nextFilter: FilterKey) => {
     setFilter(nextFilter);
     setPage(1);
@@ -209,6 +257,12 @@ function LedgerViewInner() {
   const closeDetail = useCallback(() => {
     const closingId = selectedId;
     setSelectedId(null);
+    // Keep the address bar honest: a refresh should not reopen a closed record.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("record")) {
+      url.searchParams.delete("record");
+      window.history.replaceState(null, "", url.toString());
+    }
     if (closingId) {
       const focusRow = () => {
         const targets = document.querySelectorAll<HTMLElement>(
@@ -281,6 +335,12 @@ function LedgerViewInner() {
                 rejected
               </span>
             </div>
+
+            {missingRecord ? (
+              <p role="status" className="m-0 border-b border-seam px-4 py-2.5 text-[13px] text-muted">
+                Record <span className="figure text-ink">{missingRecord}</span> is not in this ledger.
+              </p>
+            ) : null}
 
             {/* ---- search + verdict filter ---- */}
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">

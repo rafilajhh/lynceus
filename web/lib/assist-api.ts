@@ -217,3 +217,106 @@ export async function askPythiaStreaming(
   }
   return result ?? fallback();
 }
+
+// ---------------------------------------------------------------------------
+// Shift handover briefing (POST /shift/briefing, /shift/briefing/seal)
+// ---------------------------------------------------------------------------
+
+export type BriefingWindow = "shift" | "day" | "all";
+
+const briefingItemSchema = z.object({
+  text: z.string(),
+  citations: listOf(sourceSchema),
+});
+
+const briefingSchema = z.object({
+  sections: z.array(z.object({ title: z.string(), items: listOf(briefingItemSchema) })),
+  generated_at_utc: z.string().catch(""),
+  window: z
+    .object({
+      name: z.string().catch("shift"),
+      hours: z.number().nullish().catch(null),
+      since: z.string().nullish().catch(null),
+      until: z.string().nullish().catch(null),
+    })
+    .catch({ name: "shift", hours: null, since: null, until: null }),
+  model: z.string().nullish().catch(null),
+  provider: z.string().nullish().catch(null),
+  mode: z.enum(["live", "template"]).catch("template"),
+  grounded: z.boolean().catch(false),
+  latency_ms: z.number().nullish().catch(null),
+  note: z.string().nullish().catch(null),
+  facts_digest: z.string().catch(""),
+});
+
+export type Briefing = z.infer<typeof briefingSchema>;
+
+/** The parsed briefing plus the response exactly as sent: sealing posts the raw one back. */
+export interface BriefingDraft {
+  briefing: Briefing;
+  raw: unknown;
+}
+
+async function postJson(path: string, body: unknown, what: string, signal?: AbortSignal): Promise<unknown> {
+  let resp: Response;
+  try {
+    resp = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new AssistError("Backend unreachable: is the Lynceus API running?");
+  }
+  if (!resp.ok) throw new AssistError(`${what} failed (HTTP ${resp.status}).`);
+  return resp.json().catch(() => null);
+}
+
+export async function draftBriefing(
+  window: BriefingWindow = "shift",
+  signal?: AbortSignal,
+): Promise<BriefingDraft> {
+  const raw = await postJson("/shift/briefing", { window }, "Drafting the handover", signal);
+  const parsed = briefingSchema.safeParse(raw);
+  if (!parsed.success) throw new AssistError("The handover came back unreadable.");
+  return { briefing: parsed.data, raw };
+}
+
+export interface SealedBriefing {
+  briefing_id: string;
+  sealed_at_utc: string;
+  actor: string;
+  digest: string;
+}
+
+export async function sealBriefing(draft: BriefingDraft): Promise<SealedBriefing> {
+  const raw = (await postJson("/shift/briefing/seal", { briefing: draft.raw }, "Sealing the handover")) as
+    | Partial<SealedBriefing>
+    | null;
+  if (!raw || typeof raw.briefing_id !== "string" || typeof raw.digest !== "string") {
+    throw new AssistError("The sealed handover came back unreadable.");
+  }
+  return {
+    briefing_id: raw.briefing_id,
+    sealed_at_utc: String(raw.sealed_at_utc ?? ""),
+    actor: String(raw.actor ?? ""),
+    digest: raw.digest,
+  };
+}
+
+/** Plain text of a briefing, for the clipboard (mirrors briefing.as_text on the backend). */
+export function briefingText(b: Briefing): string {
+  const lines = [`Shift handover · ${b.window.since ?? "start"} to ${b.window.until ?? ""} UTC`];
+  for (const s of b.sections) {
+    lines.push("", s.title);
+    if (s.items.length === 0) lines.push("- Nothing to report.");
+    for (const i of s.items) lines.push(`- ${i.text}`);
+  }
+  lines.push(
+    "",
+    `${b.mode === "live" ? `Drafted by ${b.model ?? "the assist model"}` : "Template briefing"} · facts ${b.facts_digest}`,
+  );
+  return lines.join("\n");
+}

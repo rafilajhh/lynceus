@@ -7,6 +7,7 @@ import {
   type Followup,
   type FollowupsResponse,
 } from "@/lib/ops-api";
+import { formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -56,9 +57,10 @@ function when(iso: string): string {
   return `${Number(m[3])} ${months[Number(m[2]) - 1] ?? m[2]} ${m[4]}:${m[5]} UTC`;
 }
 
-function rp(idr: number): string {
-  return `Rp ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(idr)}`;
-}
+const rp = formatRupiah;
+
+/** Example settlement tiers (GET /contract settlement_tiers). */
+const SETTLEMENT_NAME: Record<string, string> = { A: "Premium", B: "Base", C: "Deductions" };
 
 export function FollowupChain({ recordId }: { recordId: string }) {
   const [state, setState] = useState<ChainLoad>({ kind: "loading" });
@@ -196,19 +198,45 @@ function FollowupBody({ followup }: { followup: Followup }) {
   if (followup.kind === "lab_result") {
     const b = followup.body;
     const ev = b.contract_eval;
+    // A "warning" breach (chlorine near the limit) has no price effect: it is
+    // listed as a warning, never as a breach.
+    const penalties = ev ? ev.breaches.filter((br) => br.severity !== "warning") : [];
+    const warnings = ev ? ev.breaches.filter((br) => br.severity === "warning") : [];
+    const isoCode = ev?.iso21640?.code ?? null;
+    const isoLabel = ev?.iso21640?.label ?? null;
+    const tier = ev?.tier ? (SETTLEMENT_NAME[ev.tier] ? `${ev.tier} · ${SETTLEMENT_NAME[ev.tier]}` : ev.tier) : null;
     return (
       <div className="flex flex-col gap-1 text-[13px] text-muted">
         <span className="figure text-[12.5px] text-ink">
           Moisture {b.moisture_pct} % · NCV {b.ncv_mj_kg} MJ/kg · Chlorine {b.chlorine_pct} %
           {typeof b.ash_pct === "number" ? ` · Ash ${b.ash_pct} %` : ""}
         </span>
+        {isoCode ? (
+          <span className="text-[12.5px]">
+            ISO 21640 class <span className="figure text-ink">{isoCode}</span>
+            {isoLabel ? <span className="text-faint">: {isoLabel}</span> : null}
+          </span>
+        ) : null}
+        {tier ? (
+          <span className="text-[12.5px]">
+            Settlement tier <span className="font-semibold text-ink">{tier}</span>
+            {typeof ev?.settlement_idr === "number" ? (
+              <>
+                {" "}· settles at <span className="figure text-ink">{rp(ev.settlement_idr)}</span>
+              </>
+            ) : null}
+            {ev?.tier_reason ? <span className="block text-faint">{ev.tier_reason}</span> : null}
+          </span>
+        ) : null}
         {ev ? (
-          ev.breaches.length === 0 ? (
+          ev.refused === true ? (
+            <span className="font-semibold text-verdict-red">Refused under the contract.</span>
+          ) : penalties.length === 0 ? (
             <span>Within contract spec: paid at {rp(ev.base_price_idr_per_t)}/t.</span>
           ) : (
             <>
               <ul className="m-0 list-disc pl-5 text-[12.5px]">
-                {ev.breaches.map((br) => (
+                {penalties.map((br) => (
                   <li key={br.param}>{br.effect}</li>
                 ))}
               </ul>
@@ -225,6 +253,11 @@ function FollowupBody({ followup }: { followup: Followup }) {
             </>
           )
         ) : null}
+        {warnings.map((br) => (
+          <span key={`warn-${br.param}`} className="text-[12.5px] text-verdict-amber">
+            {br.effect}
+          </span>
+        ))}
         <span className="figure text-[11.5px] text-faint">
           {[b.sample_id, b.lab].filter(Boolean).join(" · ")}
         </span>

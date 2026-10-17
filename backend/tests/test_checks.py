@@ -96,6 +96,8 @@ def _as_record(response):
         "gas": {"readings_ppm": {}, "source": "not_measured",
                 "measured_at_utc": "2026-10-17T08:00:00Z"},
     }
+    if "observations" in inputs:
+        record_inputs["observations"] = inputs["observations"]
     gates = {k: v for k, v in response["gates"].items() if k != "missing"}
     return {
         "format_version": 2,
@@ -116,10 +118,11 @@ def _by_key(result):
 
 
 def _both(response, profile=None):
-    """build_checks on both shapes; the checks and why must be the same."""
+    """build_checks on both shapes; the checks and why must be the same (the
+    receipt may not: a record keeps the waybill text only as a digest)."""
     a = checks.build_checks(response, profile)
     b = checks.build_checks(_as_record(response), profile)
-    assert a == b
+    assert (a["why"], a["checks"]) == (b["why"], b["checks"])
     return a
 
 
@@ -138,7 +141,8 @@ def test_six_checks_in_order_with_the_contract_shape():
         "vlm_confidence", "detector_second_opinion", "ocr_confidence",
         "manifest_crosscheck", "weight_plausibility", None]
     for c in result["checks"]:
-        assert set(c) == {"key", "label", "status", "finding", "detail", "gate"}
+        extra = {"agreement"} if c["key"] == "vision" else set()
+        assert set(c) == {"key", "label", "status", "finding", "detail", "gate"} | extra
         assert c["status"] in {"pass", "warn", "fail", "info", "skipped"}
         assert len(c["finding"]) <= checks.FINDING_MAX
 
@@ -164,7 +168,8 @@ def test_robust_to_missing_pieces(garbage):
 
 
 def test_accept_clean_rdf():
-    result = _both(_response(det=_det(("paper", 0.8))))
+    dry = dict(WAYBILL, moisture_pct=18)
+    result = _both(_response(_inputs(waybill_fields=dry), det=_det(("paper", 0.8))))
     c = _by_key(result)
     assert result["why"] == (
         "Clean RDF: nothing hard seen, weight within 5 %, waybill matches the load.")
@@ -305,11 +310,11 @@ def test_weight_ticket_correction_and_missing():
     ({"tier": "medium", "sampling": {"every_n": 3}, "trucks": 12},
      {"sample_this_truck": False}, "warn", "Medium risk · 1 in 3 sampled"),
     ({"tier": "medium", "sampling": {"every_n": 3}, "trucks": 11},
-     {"sample_this_truck": True}, "warn", "Medium risk · lab sample"),
+     {"sample_this_truck": True}, "warn", "Sample this truck"),
     ({"tier": "high", "sampling": {"every_n": 1}, "trucks": 9},
      None, "warn", "High risk · lab sample"),
     ({"tier": "new", "sampling": {"every_n": 3}, "trucks": 2},
-     {"sample_this_truck": True}, "info", "New · lab sample"),
+     {"sample_this_truck": True}, "warn", "Sample this truck"),
     ({"tier": "new", "sampling": {"every_n": 3}, "trucks": 1},
      None, "skipped", "New supplier"),
 ])
@@ -487,4 +492,166 @@ def test_response_with_embedded_audit_record_reads_its_inputs():
     response = _response(vlm=_vlm(hard=["metal"]))
     embedded = {k: v for k, v in response.items() if k != "inputs"}
     embedded["audit_record"] = _as_record(response)
-    assert checks.build_checks(embedded) == checks.build_checks(response)
+    a, b = checks.build_checks(embedded), checks.build_checks(response)
+    assert (a["why"], a["checks"]) == (b["why"], b["checks"])
+
+
+# ---------------------------------------------------------------------------
+# Wave 2: vote agreement, poor photo, plate, moisture spec, sampling
+# ---------------------------------------------------------------------------
+
+
+def _voted(votes, hard=()):
+    return {**_vlm(hard=hard), "votes": [{"hard": list(v), "light": []} for v in votes]}
+
+
+def _obs(kind, status, value=None, note=None):
+    return {"kind": kind, "status": status, "value": value, "note": note, "simulated": True}
+
+
+def test_load_photo_shows_the_vote_agreement():
+    c = _by_key(_both(_response(vlm=_voted([[], [], []]))))
+    assert (c["vision"]["status"], c["vision"]["finding"]) == ("pass", "Reads 3/3 agree")
+    assert c["vision"]["agreement"] == "Reads 3/3 agree"
+    result = _both(_response(vlm=_voted([["metal"], [], []])))
+    c = _by_key(result)
+    assert (c["vision"]["status"], c["vision"]["finding"]) == ("warn", "Reads split 1/3")
+    assert result["why"] == "1 of 3 vision reads saw metal: check the load by hand before tipping."
+    assert _by_key(_both(_response()))["vision"]["agreement"] is None
+
+
+def test_poor_photo_is_on_the_load_photo_tile():
+    inputs = _inputs(observations=[_obs("image_quality", "poor", note="Too dark.")])
+    result = _both(_response(inputs))
+    c = _by_key(result)
+    assert (c["vision"]["status"], c["vision"]["finding"]) == ("warn", "Poor photo · retake")
+    assert result["why"] == "Photo quality is poor: retake it from the top platform before deciding."
+    assert [ch["key"] for ch in result["checks"]] == KEYS  # no new tile
+
+
+def test_plate_mismatch_is_on_the_weighbridge_tile():
+    inputs = _inputs(observations=[_obs("plate", "mismatch", "B 9406 KXW")])
+    result = _both(_response(inputs))
+    c = _by_key(result)
+    assert c["weight"]["status"] == "fail"
+    assert c["weight"]["finding"] == "Plate B 9406 KXW ≠ waybill"
+    assert len(c["weight"]["finding"]) <= checks.FINDING_MAX
+    assert "verify the truck" in c["weight"]["detail"]
+    assert result["why"] == (
+        "Plate B 9406 KXW does not match the waybill (B 9723 KXW): verify the truck before "
+        "tipping.")
+    assert [ch["key"] for ch in result["checks"]] == KEYS
+
+
+def test_declared_moisture_above_spec_warns_and_does_not_hold():
+    result = _both(_response(det=_det(("paper", 0.8))))
+    assert result["receipt"][-1]["id"] == "accept"
+    c = _by_key(result)
+    assert (c["declaration"]["status"], c["declaration"]["finding"]) == (
+        "warn", "Declared 28 % > 20 % spec")
+    assert "priced on the lab sample" in c["declaration"]["detail"]
+    assert result["why"] == (
+        "Accept for tipping: nothing hard seen; declared moisture 28 % is above the 20 % "
+        "spec, so sample it to settle the price.")
+    assert len(result["why"]) <= checks.WHY_MAX
+
+
+def test_wetter_than_declared_outranks_the_spec_warning():
+    c = _by_key(_both(_response(vlm=_vlm(moisture=0.5))))
+    assert (c["declaration"]["status"], c["declaration"]["finding"]) == (
+        "fail", "Wetter than declared")
+
+
+def test_sampling_argument_or_response_field_sets_the_supplier_warn():
+    sampling = {"sample_this_truck": True, "tier": "low", "reason": "Every 10th truck."}
+    profile = {"tier": "low", "sampling": {"every_n": 10}, "trucks": 40}
+    via_arg = _by_key(checks.build_checks(_response(), profile, sampling))["supplier"]
+    via_response = _by_key(checks.build_checks(_response(sampling=sampling), profile))["supplier"]
+    assert via_arg == via_response
+    assert (via_arg["status"], via_arg["finding"], via_arg["detail"]) == (
+        "warn", "Sample this truck", "Every 10th truck.")
+    # The argument wins over the response field.
+    not_now = checks.build_checks(_response(sampling=sampling), profile,
+                                  {"sample_this_truck": False})
+    assert _by_key(not_now)["supplier"]["finding"] == "Low risk · 1 in 10 sampled"
+
+
+@pytest.mark.parametrize("trucks,words", [(1, "1 truck on record"), (2, "2 trucks on record")])
+def test_supplier_truck_count_grammar(trucks, words):
+    profile = {"tier": "low", "sampling": {"every_n": 10}, "trucks": trucks}
+    assert words in _by_key(checks.build_checks(_response(), profile))["supplier"]["detail"]
+
+
+# ---------------------------------------------------------------------------
+# The decision receipt
+# ---------------------------------------------------------------------------
+
+
+def test_receipt_from_the_response_is_passed_through():
+    rows = [{"id": "accept", "rule": "r", "fired": True, "evidence": "e", "effect": "accept"}]
+    assert checks.build_checks(_response(receipt=rows))["receipt"] == rows
+
+
+def test_receipt_rebuilt_for_a_live_response_matches_rule_trace():
+    inputs, vlm = _inputs(), _vlm(hard=["metal"])
+    expected = decision.rule_trace(inputs, vlm, None, ENGINE, None)
+    response = _response(inputs, vlm, engine_outputs=ENGINE)
+    assert checks.build_checks(response)["receipt"] == expected
+
+
+def test_receipt_rebuilt_for_a_record_keeps_the_sealed_verdict():
+    record = _as_record(_response(vlm=_vlm(hard=["metal"])))
+    rows = checks.build_checks(record)["receipt"]
+    assert [row["id"] for row in rows] == [rule_id for rule_id, _, _ in decision.RULES]
+    assert next(row for row in rows if row["id"] == "hard_contaminant")["fired"]
+
+
+def test_old_record_receipt_notes_when_todays_rules_disagree():
+    record = _old_record("reject", {"weight_plausibility": {
+        "state": "failed", "value": 0.245, "threshold": 0.1,
+        "reason": "Weighbridge weight deviates 24.5% from the declared weight (threshold 10%)."}},
+        {"contamination": "none", "hard_contaminants": []})
+    rows = checks.build_checks(record)["receipt"]
+    last = rows[-1]
+    assert last["id"] == "recorded_verdict"
+    assert (last["fired"], last["effect"]) == (True, "reject")
+    assert last["evidence"].startswith("Recorded reject; today's rules on the stored outputs give")
+
+
+def test_degraded_record_receipt_says_the_vision_model_was_unavailable():
+    verdict, gates, reasons = decision.decide_degraded(_det(("metal", 0.9)), "ReadTimeout",
+                                                       inputs=_inputs())
+    response = {"verdict": {"decision": verdict}, "gates": gates, "reasons": reasons,
+                "ai_outputs": {"vlm": {}, "detector": _det(("metal", 0.9))}, "inputs": _inputs()}
+    last = checks.build_checks(response)["receipt"][-1]
+    assert (last["id"], last["effect"]) == ("recorded_verdict", "hold")
+    assert "degraded mode: the vision model was unavailable" in last["evidence"]
+
+
+@pytest.mark.parametrize("third,finding", [
+    ("late", "2 of 3 reads (third late)"),
+    ("failed", "2 of 3 reads (third failed)"),
+    ("arrived", "Reads 2/2 agree"),
+    (None, "Reads 2/2 agree"),
+])
+def test_early_majority_names_the_third_read(third, finding):
+    vlm = {**_voted([[], []]), "votes_used": 2, "third_read": third}
+    c = _by_key(_both(_response(vlm=vlm)))
+    assert (c["vision"]["status"], c["vision"]["finding"]) == ("pass", finding)
+    assert len(finding) <= checks.FINDING_MAX
+
+
+def test_early_majority_third_read_arrived_with_metal_still_holds():
+    vlm = {**_voted([[], [], ["metal"]]), "votes_used": 3, "third_read": "arrived"}
+    response = _response(vlm=vlm)
+    assert response["verdict"]["decision"] == D.ESCALATE_HUMAN
+    assert _by_key(_both(response))["vision"]["finding"] == "Reads split 1/3"
+
+
+@pytest.mark.parametrize("garbage", [{}, None, {"verdict": None, "gates": "x"},
+                                     {"verdict": "accept", "ai_outputs": {"vlm": None}},
+                                     {"receipt": "x"}])
+def test_receipt_is_robust_to_missing_pieces(garbage):
+    rows = checks.build_checks(garbage)["receipt"]
+    assert isinstance(rows, list) and rows
+    assert all(set(row) == {"id", "rule", "fired", "evidence", "effect"} for row in rows)

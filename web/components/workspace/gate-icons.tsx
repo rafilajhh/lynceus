@@ -117,6 +117,14 @@ export function IconSeal({ size }: IconProps) {
   );
 }
 
+export function IconDownload({ size }: IconProps) {
+  return (
+    <Svg size={size}>
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
+    </Svg>
+  );
+}
+
 export function IconPlay({ size }: IconProps) {
   return (
     <Svg size={size}>

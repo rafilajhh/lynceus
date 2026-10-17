@@ -169,6 +169,12 @@ class ContractEval(_Strict):
     note: str
     #: Indicative class code; absent on lab results sealed before it existed.
     iso21640: Optional[Iso21640] = None
+    #: Settlement tier A/B/C; absent on lab results sealed before it existed.
+    tier: Optional[Literal["A", "B", "C"]] = None
+    tier_reason: Optional[str] = None
+    settlement_price_idr_per_t: Optional[int] = None
+    settlement_idr: Optional[int] = None
+    premium_idr: Optional[int] = None
 
 
 class LabBody(_Strict):

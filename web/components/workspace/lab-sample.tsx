@@ -151,10 +151,39 @@ export function LabSample({ recordId, sampling }: { recordId: string; sampling: 
   );
 }
 
-function ContractResult({ evalResult: e }: { evalResult: ContractEval }) {
+const TIER_NAME: Record<string, string> = { A: "Premium", B: "Base", C: "Deductions" };
+const TIER_TONE: Record<string, string> = {
+  A: "border-verdict-green text-verdict-green",
+  B: "border-seam-strong text-ink",
+  C: "border-amber-line text-amber",
+};
+
+function ContractResult({ evalResult }: { evalResult: ContractEval }) {
+  // Settlement fields (tier, settlement_idr, iso21640) are optional on the
+  // shared type: absent on an older backend.
+  const e = evalResult;
   const breached = e.breaches.length > 0;
   return (
     <div className="flex flex-col gap-2.5">
+      {e.tier ? (
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span
+            className={cn(
+              "rounded-[6px] border px-2 py-0.5 text-[12px] font-bold tracking-[0.6px] uppercase",
+              TIER_TONE[e.tier] ?? "border-seam-strong text-ink",
+            )}
+          >
+            Tier {e.tier}
+            {TIER_NAME[e.tier] ? ` · ${TIER_NAME[e.tier]}` : ""}
+          </span>
+          {typeof e.settlement_idr === "number" ? (
+            <span className="text-[14px] font-semibold text-ink">
+              Settles at <span className="figure">{formatRupiah(e.settlement_idr)}</span>
+            </span>
+          ) : null}
+          {e.tier_reason ? <span className="text-[13px] text-muted">{e.tier_reason}</span> : null}
+        </div>
+      ) : null}
       {breached ? (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {e.breaches.map((b) => (
@@ -180,7 +209,15 @@ function ContractResult({ evalResult: e }: { evalResult: ContractEval }) {
         <Cell label="Payable" value={formatRupiahCompact(e.payable_idr)} sub={`${e.net_t.toFixed(2)} t net`} />
         <Cell label="Deduction" value={e.deduction_idr > 0 ? formatRupiahCompact(e.deduction_idr) : "Rp 0"} strong={e.deduction_idr > 0} />
       </dl>
-      <p className="m-0 text-[11.5px] text-faint">Example supply contract: terms are set per contract (SOP-RDF-5.3).</p>
+      {e.iso21640?.code ? (
+        <p className="m-0 text-[13px] text-muted">
+          ISO 21640 class (indicative): <span className="figure text-ink">{e.iso21640.code}</span>
+          {e.iso21640.label ? <span className="block text-[11.5px] text-faint">{e.iso21640.label}</span> : null}
+        </p>
+      ) : null}
+      <p className="m-0 text-[11.5px] text-faint">
+        Example supply contract and example settlement tiers: terms are set per contract (SOP-RDF-5.3).
+      </p>
     </div>
   );
 }

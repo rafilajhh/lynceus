@@ -4,6 +4,7 @@
   "started_at_utc": "2026-10-17T16:01:48+00:00",
   "finished_at_utc": "2026-10-17T16:22:32+00:00",
   "provider": "amd-token-factory",
+  "provider_label": "AMD Token Factory (hosted)",
   "endpoint_host": "developer.amd.com.cn",
   "model": "DeepSeek-V4-Flash-Vision-Exp",
   "settings": {
@@ -204,7 +205,7 @@
         "share": 0.0
       }
     },
-    "errors": 8,
+    "errors": 3,
     "retries": 13,
     "calls": 108
   },
@@ -233,6 +234,7 @@
         "mean": 42121.9,
         "n": 11
       },
+      "over_production_budget": 1,
       "tokens_per_inspection": {
         "total": {
           "p50": 1753.0,
@@ -305,6 +307,7 @@
         "mean": 19131.1,
         "n": 11
       },
+      "over_production_budget": 0,
       "tokens_per_inspection": {
         "total": {
           "p50": 1780.0,
@@ -377,6 +380,7 @@
         "mean": 30063.0,
         "n": 8
       },
+      "over_production_budget": 0,
       "tokens_per_inspection": {
         "total": {
           "p50": 2152.0,
@@ -416,9 +420,9 @@
       },
       "statuses": {
         "200": 31,
-        "transport_error": 5
+        "not_sent_budget": 5
       },
-      "errors": 6,
+      "errors": 1,
       "json_retries": 1,
       "backoff_retries": 8,
       "rate_limited": 8,
@@ -459,13 +463,6 @@
         "n": 30
       },
       "note": "AMD Token Factory is a free tier with a usage quota (about $10/day per third-party sources; the terms are not published), so no per-call price is claimed."
-    },
-    "mi300x_projection": {
-      "label": "projection, not measured on MI300X",
-      "usd_per_hour": 1.99,
-      "inspections_per_hour": 124.2,
-      "usd_per_1k_inspections": 16.02,
-      "basis": "AMD Developer Cloud MI300X list price / inspections per hour measured on Token Factory in the concurrent mode"
     }
   },
   "usage_reported": true,
@@ -476,8 +473,10 @@
     "Concurrent mode runs 3 inspections at once with at most 6 calls in flight (the shared key allows 8). The production server caps vision reads at 3 in flight process-wide, so one server's throughput is the parallel mode's, not this one's.",
     "The modes ran one after another, not interleaved: endpoint load may differ between them, which moves the speed-up.",
     "Read agreement compares the allow-listed hard contaminants of each read; temperature 0.1 and seed 0 as production.",
-    "The MI300X cost is a projection from Token Factory throughput, not a measurement on a self-hosted MI300X.",
     "The CPU detector was timed on the benchmark machine, not the deployment host.",
+    "Each call here fails at 90 s wall clock. Production gives the whole vote (every read and retry) one 90 s budget, so an inspection counted in over_production_budget would have gone to the fallback model or the detector-only hold in production.",
+    "Measured 2026-10-17T16:01:48+00:00 to 2026-10-17T16:22:32+00:00 (UTC). Read latency in this window had a heavy tail (see read_latency_ms p95 vs p50); it is reported as measured.",
+    "The per-mode call budget ran out before every inspection was sent (429 back-offs and JSON retries spend it); budget_skipped counts the reads never sent, and inspections_per_min counts completed inspections over the whole mode's wall time.",
     "Model set on the command line (DeepSeek-V4-Flash-Vision-Exp); the local backend/.env names MiniCPM-V-4.7-35B-A3B."
   ],
   "raw_rows": "2026-10-17.amd-throughput.jsonl"

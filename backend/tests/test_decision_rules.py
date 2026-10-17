@@ -366,3 +366,175 @@ def test_decide_degraded_still_holds():
                                                  inputs=_inputs())
     assert verdict == D.ESCALATE_HUMAN
     assert gates["detector_second_opinion"]["state"] == G.FAILED
+
+
+# ---------------------------------------------------------------------------
+# Wave 2: vote split (R1), image quality (R2), plate (R3)
+# ---------------------------------------------------------------------------
+
+
+def _voted(votes, hard=(), confidence=0.85):
+    """A merged vision read plus its per-read ``votes``."""
+    return {**_vlm(hard=hard, confidence=confidence),
+            "votes": [{"hard": list(v), "light": [], "confidence": confidence} for v in votes]}
+
+
+def _obs(kind, status, value=None, note=None):
+    return {"source": "sim", "kind": kind, "value": value, "unit": None, "uncertainty": None,
+            "status": status, "measured_at_utc": "2026-10-17T08:00:00Z", "sha256": None,
+            "simulated": True, "note": note}
+
+
+def test_minority_hard_finding_holds_never_rejects():
+    verdict, gates, reasons = _decide(vlm=_voted([["metal"], [], []]))
+    assert verdict == D.ESCALATE_HUMAN
+    assert reasons == ["1 of 3 vision reads saw metal: check by hand."]
+    assert gates["vlm_confidence"]["state"] == G.PASSED
+    assert "Reads split: 1 of 3 saw metal." in gates["vlm_confidence"]["reason"]
+    assert decision.vote_split(_voted([["metal"], [], []])) == {"metal": (1, 3)}
+    assert decision.vote_agreement(_voted([["metal"], [], []])) == "Reads split 1/3"
+
+
+def test_majority_hard_finding_rejects_and_agreeing_reads_accept():
+    verdict, _, _ = _decide(vlm=_voted([["metal"], ["metal"], []], hard=["metal"]))
+    assert verdict == D.REJECT  # the merged read kept it: the split is not R1
+    verdict, gates, _ = _decide(vlm=_voted([[], [], []]))
+    assert verdict == D.ACCEPT
+    assert decision.vote_agreement(_voted([[], [], []])) == "Reads 3/3 agree"
+    assert decision.VOTE_SPLIT_MARKER not in gates["vlm_confidence"]["reason"]
+
+
+@pytest.mark.parametrize("votes", [None, [], [{"hard": ["metal"]}], "x", [None, {"hard": "metal"}]])
+def test_one_read_or_malformed_votes_never_split(votes):
+    vlm = {**_vlm(), "votes": votes}
+    assert decision.vote_split(vlm) == {}
+    assert decision.vote_agreement(vlm) is None
+    assert _decide(vlm=vlm)[0] == D.ACCEPT
+
+
+def test_poor_image_holds_and_retakes():
+    obs = [_obs("image_quality", "poor", note="Photo is blurred.")]
+    verdict, gates, reasons = _decide(_inputs(observations=obs))
+    assert verdict == D.ESCALATE_HUMAN
+    assert reasons == ["Photo quality poor: Photo is blurred. Retake the photo."]
+    assert gates["vlm_confidence"]["state"] == G.FAILED
+    assert gates["vlm_confidence"]["reason"].startswith("Photo quality poor: Photo is blurred.")
+
+
+def test_poor_image_with_a_confident_hard_contaminant_still_rejects():
+    obs = [_obs("image_quality", "poor")]
+    verdict, _, reasons = _decide(_inputs(observations=obs), _vlm(hard=["metal"]))
+    assert verdict == D.REJECT
+    assert reasons[0].startswith("Hard contamination detected in the load: metal")
+
+
+@pytest.mark.parametrize("status", ["ok", "unavailable"])
+def test_image_quality_ok_or_unavailable_does_not_hold(status):
+    assert _decide(_inputs(observations=[_obs("image_quality", status)]))[0] == D.ACCEPT
+
+
+def test_plate_mismatch_holds_on_the_weighbridge_gate():
+    obs = [_obs("plate", "mismatch", value="B 9406 KXW")]
+    verdict, gates, reasons = _decide(_inputs(observations=obs))
+    assert verdict == D.ESCALATE_HUMAN
+    assert reasons[0] == (
+        "Plate mismatch: the camera reads B 9406 KXW, the waybill says B 9723 KXW; "
+        "verify the truck.")
+    assert gates["weight_plausibility"]["state"] == G.FAILED
+    assert gates["weight_plausibility"]["reason"].startswith(decision.PLATE_MISMATCH_MARKER)
+    assert "within tolerance" in gates["weight_plausibility"]["reason"]
+
+
+def test_plate_matching_ignores_spaces_and_case():
+    obs = [_obs("plate", "ok", value="b9723kxw")]
+    assert _decide(_inputs(observations=obs))[0] == D.ACCEPT
+    assert decision.plate_mismatch(_inputs(observations=obs)) is None
+
+
+def test_plate_mismatch_with_metal_still_rejects():
+    obs = [_obs("plate", "mismatch", value="B 9406 KXW")]
+    assert _decide(_inputs(observations=obs), _vlm(hard=["metal"]))[0] == D.REJECT
+
+
+def test_wave2_holds_come_first_in_stated_order():
+    obs = [_obs("plate", "mismatch", value="B 1 X"), _obs("image_quality", "poor", note="Dark.")]
+    _, _, reasons = _decide(_inputs(observations=obs, weight_kg=20000.0),
+                            _voted([["metal"], [], []]))
+    assert [r.split(":")[0] for r in reasons[:4]] == [
+        "Plate mismatch", "Photo quality poor", "1 of 3 vision reads saw metal",
+        "Ticket correction"]
+
+
+# ---------------------------------------------------------------------------
+# The decision receipt
+# ---------------------------------------------------------------------------
+
+
+def _trace(inputs=None, vlm=None, engine=ENGINE, detector=None):
+    return decision.rule_trace(inputs or _inputs(), vlm or _vlm(), _LLM, engine, detector)
+
+
+def _fired(rows):
+    return [row["id"] for row in rows if row["fired"]]
+
+
+def test_receipt_lists_every_rule_in_priority_order():
+    rows = _trace()
+    assert [row["id"] for row in rows] == [rule_id for rule_id, _, _ in decision.RULES]
+    for row in rows:
+        assert set(row) == {"id", "rule", "fired", "evidence", "effect"}
+        assert row["effect"] in {"reject", "hold", "accept", "refuse", "none"}
+        assert row["evidence"] and isinstance(row["evidence"], str)
+        assert row["effect"] == "none" or row["fired"]
+    # The demo waybill declares 28 % against the 20 % spec: noted, no effect.
+    assert _fired(rows) == ["moisture_spec", "accept"]
+    assert rows[-1]["effect"] == "accept"
+    spec = next(row for row in rows if row["id"] == "moisture_spec")
+    assert spec["effect"] == "none" and "28 % vs the 20 % contract spec" in spec["evidence"]
+
+
+def test_receipt_agrees_with_decide():
+    obs = [_obs("plate", "mismatch", value="B 9406 KXW")]
+    cases = [
+        (_inputs(), _vlm(hard=["metal"])),
+        (_inputs(observations=obs), _vlm()),
+        (_inputs(observations=[_obs("image_quality", "poor")]), _vlm()),
+        (_inputs(), _voted([["tire"], [], []])),
+        (_inputs(weight_kg=20000.0), _vlm()),
+        (_inputs(), _vlm(confidence=0.1)),
+    ]
+    effect = {D.REJECT: "reject", D.ESCALATE_HUMAN: "hold", D.ACCEPT: "accept"}
+    for inputs, vlm in cases:
+        verdict, _, _ = _decide(inputs, vlm)
+        rows = _trace(inputs, vlm)
+        assert effect[verdict] in {row["effect"] for row in rows if row["fired"]}
+        accept_row = next(row for row in rows if row["id"] == "accept")
+        assert accept_row["fired"] == (verdict == D.ACCEPT)
+
+
+def test_receipt_names_what_fired():
+    rows = _trace(vlm=_vlm(hard=["metal"]))
+    assert _fired(rows)[:2] == ["hard_contaminant", "declared_sorted"]
+    hard = rows[1]
+    assert hard["effect"] == "reject"
+    assert hard["evidence"] == "metal at VLM confidence 0.85 (bar 0.60)."
+    rows = _trace(vlm=_voted([["metal"], [], []]))
+    split = next(row for row in rows if row["id"] == "vote_split")
+    assert (split["fired"], split["effect"], split["evidence"]) == (
+        True, "hold", "1 of 3 reads saw metal.")
+    rows = _trace(_inputs(observations=[_obs("plate", "mismatch", value="B 9406 KXW")]))
+    assert "plate_mismatch" in _fired(rows)
+
+
+def test_receipt_on_refusal():
+    rows = decision.rule_trace({"manifest_text": "x"}, None, None, None)
+    assert rows[0] == {"id": "inputs", "rule": decision.RULES[0][1], "fired": True,
+                       "evidence": "Missing: photo, vlm_result.", "effect": "refuse"}
+    assert all(not row["fired"] for row in rows[1:])
+
+
+def test_receipt_is_pure():
+    inputs, vlm = _inputs(), _voted([["metal"], [], []])
+    assert _trace(inputs, vlm) == _trace(inputs, vlm)
+    assert inputs == _inputs()
+    assert decision.decide(inputs, vlm, _LLM, ENGINE) == _decide(inputs, vlm)

@@ -163,7 +163,7 @@ SUPPLIERS = {
         "plates": ("B 9412 SBR", "B 9415 SBR", "B 9031 UJK"),
         "drivers": ("Agus Santoso", "Dedi Kurniawan", "Hendra Wijaya"),
         "moisture": 17, "net": 14_200,
-        "labs": ((17.5, 14.8, 0.42, 12.4), (18.6, 14.3, 0.47, 13.1)),
+        "labs": ((14.6, 15.4, 0.42, 12.4), (18.6, 14.3, 0.47, 13.1)),
     },
     WET: {  # wet-prone: moisture breaches at the lab
         "origin": "TPST Burangkeng, Bekasi", "shipper": "TPST Burangkeng",
@@ -356,8 +356,11 @@ def seed_shift(storage_dir: Path, end: datetime | None = None) -> int:
     through :mod:`lynceus.followups` (never the network).
     """
     end = end or datetime.now(timezone.utc).replace(microsecond=0)
-    start = end - timedelta(hours=SHIFT_HOURS)
-    step = timedelta(hours=SHIFT_HOURS) / len(SHIFT_PLAN)
+    # The first truck 15 min into the shift, so the whole plan stays inside an
+    # 8 h window ending at "now" for a while after seeding (the dashboard's
+    # shift window), and the last truck still arrives before ``end``.
+    start = end - timedelta(hours=SHIFT_HOURS) + timedelta(minutes=15)
+    step = (timedelta(hours=SHIFT_HOURS) - timedelta(minutes=30)) / len(SHIFT_PLAN)
     clock = ScriptedClock(start)
     gate_seconds = {"value": 0}
     real_now, real_run = audit.now_utc, pipeline_mod.run_inspection

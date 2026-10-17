@@ -14,6 +14,10 @@ import {
   type HybridSummary,
   type ReplaySummary,
 } from "@/lib/validation-api";
+import { fetchBenchmarkAmd, type BenchmarkAmd } from "@/lib/control-api";
+import { AmdPanel } from "@/components/ops/amd-panel";
+import { plainWords } from "@/components/ops/format";
+import { EvalCard } from "@/components/ops/eval-card";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
 import {
@@ -98,7 +102,7 @@ function runDate(run: string | null | undefined): string | null {
 
 /** Backend sentences may start lower-case or end without a stop: tidy, never reword. */
 function sentence(text: string): string {
-  const t = text.trim();
+  const t = plainWords(text.trim());
   if (!t) return t;
   const head = t.charAt(0).toUpperCase() + t.slice(1);
   return /[.!?]$/.test(head) ? head : `${head}.`;
@@ -128,6 +132,17 @@ export function ValidationView() {
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+
+  // The eval card and the AMD run are a second read: their absence (older
+  // backend, no stored run) never blanks the benchmark.
+  const [amd, setAmd] = useState<BenchmarkAmd | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchBenchmarkAmd(controller.signal)
+      .then(setAmd)
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   if (state.kind === "loading") {
     const bar = "rounded-[4px] bg-raised animate-[gate-pulse_1.1s_ease-in-out_infinite]";
@@ -172,7 +187,9 @@ export function ValidationView() {
       ) : (
         <h1 className="sr-only">Validation benchmark</h1>
       )}
+      <EvalCard data={amd?.eval ?? null} showFraming={!summary.hybrid} />
       <VisionOnlyPanel summary={summary} demoted={summary.hybrid !== null && summary.hybrid !== undefined} />
+      {amd ? <AmdPanel measured={amd.measured ?? null} live={amd.live ?? null} /> : null}
     </div>
   );
 }

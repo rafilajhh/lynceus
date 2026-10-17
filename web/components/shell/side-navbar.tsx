@@ -8,12 +8,14 @@ import { LogoMark } from "@/components/ui/logo-mark";
 import {
   IconAuditTrail,
   IconCollapse,
+  IconControl,
   IconInspection,
   IconShift,
 } from "@/components/ui/nav-icons";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+  { href: "/control", label: "Control room", Icon: IconControl },
   { href: "/app", label: "Inspection", Icon: IconInspection },
   { href: "/inspections", label: "Audit Trail", Icon: IconAuditTrail },
   { href: "/shift", label: "Shift", Icon: IconShift },
