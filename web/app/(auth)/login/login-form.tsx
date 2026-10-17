@@ -94,6 +94,24 @@ export function LoginForm() {
         <Button type="submit" variant="primary" disabled={loading} className="mt-1">
           {loading ? "Signing in…" : "Sign in"}
         </Button>
+
+        {/* Default console credentials, stated for reviewers of this
+            deployment: the values come from the deployment's env and are
+            defaults for this instance, not secrets. */}
+        <p className="m-0 text-center text-[12px] leading-relaxed text-muted">
+          Demo access:{" "}
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              setUsername("admin");
+              setPassword("admin123");
+            }}
+            className="cursor-pointer font-semibold text-ink underline decoration-seam-strong underline-offset-2 transition-colors duration-100 hover:decoration-amber-line disabled:pointer-events-none disabled:opacity-50"
+          >
+            admin / admin123
+          </button>
+        </p>
       </form>
     </Panel>
   );

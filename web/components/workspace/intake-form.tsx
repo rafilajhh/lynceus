@@ -35,6 +35,8 @@ export function IntakeForm({
   onSubmit,
   onReset,
   onWaybillPhoto,
+  onQuickWaybill,
+  quickWaybillBusy,
   waybillPhoto,
   loading,
   formError,
@@ -48,6 +50,9 @@ export function IntakeForm({
   /** Upload handler receives the picked File (or null to clear). The load
       photo upload lives beside the hero image, not in this form. */
   onWaybillPhoto: (file: File | null) => void;
+  /** Quick-pick: load the site waybill photo through onWaybillPhoto. */
+  onQuickWaybill: () => void;
+  quickWaybillBusy: boolean;
   waybillPhoto: UploadSlot;
   loading: boolean;
   formError: string | null;
@@ -220,6 +225,14 @@ export function IntakeForm({
             waybillPhoto,
             onWaybillPhoto,
           )}
+          <button
+            type="button"
+            disabled={loading || quickWaybillBusy}
+            onClick={onQuickWaybill}
+            className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam disabled:pointer-events-none disabled:opacity-50"
+          >
+            {quickWaybillBusy ? "…" : "Sample"}
+          </button>
         </div>
 
         {formError ? (

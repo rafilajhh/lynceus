@@ -93,6 +93,24 @@ function sentFilename(name: string | null, reencoded: boolean): string | null {
   return `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
 }
 
+/** Quick-pick presets: a site photo asset fetched as a File, so it flows
+ * through the exact same upload pipeline (encode, preview, audit filename)
+ * as a camera upload. Generic operator copy — no scenario name leaks into
+ * the UI text. */
+const QUICK_LOADS: { label: string; file: string }[] = [
+  { label: "Metal", file: "t-metal-1.jpg" },
+  { label: "Clean", file: "t-clean-1.jpg" },
+  { label: "Wet", file: "t-ambiguous-1.jpg" },
+];
+const QUICK_WAYBILL = "waybill-1.jpg";
+
+/** Fetch a public /demo asset as a File (browser-cached JPEG bytes). */
+async function demoFile(name: string): Promise<File> {
+  const res = await fetch(`/demo/${name}`);
+  if (!res.ok) throw new Error(`Cannot read ${name}`);
+  return new File([await res.blob()], name, { type: "image/jpeg" });
+}
+
 const EMPTY_FORM: IntakeValues = {
   truck_id: "",
   supplier: "",
@@ -189,6 +207,23 @@ export function WorkspaceClient() {
         mime: f.type,
       })),
     [pickFile, waybillUpload],
+  );
+
+  // Quick-pick: site photo assets piped through the upload handlers above,
+  // so a picked preset is indistinguishable from a camera upload.
+  const [quickBusy, setQuickBusy] = useState<string | null>(null);
+  const pickDemo = useCallback(
+    async (name: string, kind: "load" | "waybill") => {
+      setQuickBusy(name);
+      try {
+        const file = await demoFile(name);
+        if (kind === "load") onLoadPhoto(file);
+        else onWaybillPhoto(file);
+      } finally {
+        setQuickBusy(null);
+      }
+    },
+    [onLoadPhoto, onWaybillPhoto],
   );
 
   // Memoised: GateStrip restarts its lighting stagger whenever the array
@@ -400,6 +435,22 @@ export function WorkspaceClient() {
           Clear upload
         </button>
       ) : null}
+      {/* Quick-pick row: one tap loads a site photo through the normal
+          upload pipeline — faster than browsing for a file. */}
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="smallcaps shrink-0 text-[10px]">Photo presets</span>
+        {QUICK_LOADS.map((p) => (
+          <button
+            key={p.file}
+            type="button"
+            disabled={loading || quickBusy !== null}
+            onClick={() => pickDemo(p.file, "load")}
+            className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam disabled:pointer-events-none disabled:opacity-50"
+          >
+            {quickBusy === p.file ? "…" : p.label}
+          </button>
+        ))}
+      </div>
     </figure>
   );
 
@@ -425,6 +476,8 @@ export function WorkspaceClient() {
             onSubmit={onSubmit}
             onReset={onReset}
             onWaybillPhoto={onWaybillPhoto}
+            onQuickWaybill={() => pickDemo(QUICK_WAYBILL, "waybill")}
+            quickWaybillBusy={quickBusy === QUICK_WAYBILL}
             waybillPhoto={waybillUpload}
             loading={loading}
             formError={formError}

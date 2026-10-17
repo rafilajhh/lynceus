@@ -364,6 +364,18 @@ class PhotoInput(_StrictModel):
     sha256: str
     captured_at_utc: str
     provenance: str
+    #: Relative path of the stored evidence file inside this inspection's
+    #: folder (e.g. "photo.jpg"), when the bytes were persisted. Absent on
+    #: older records and on runs that stored no file: the sha256 alone then
+    #: identifies the photo the verdict answered to.
+    path: Optional[str] = None
+
+    @field_validator("path")
+    @classmethod
+    def _v_path(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_relative_filename(v, "inputs.photo.path")
 
     @field_validator("sha256")
     @classmethod

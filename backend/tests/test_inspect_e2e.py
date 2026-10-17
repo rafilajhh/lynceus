@@ -609,3 +609,97 @@ def test_demo_case_only_records_effective_inputs(client, tmp_path):
     assert rec.digest.input_digests["manifest_text"] == expected_manifest_sha
     # The LLM prompt hash is the same manifest digest (existing contract).
     assert rec.ai_outputs.llm.prompt_sha256 == expected_manifest_sha
+
+
+# ---------------------------------------------------------------------------
+# 9. Evidence photo storage: uploaded bytes are persisted inside the
+#    record folder and served back via the auth-protected evidence route.
+# ---------------------------------------------------------------------------
+
+
+def test_uploaded_photo_is_persisted_and_served(client, tmp_path):
+    # Real JPEG magic bytes so decode_photo accepts the upload.
+    photo_b64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwcJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPDUzNDP/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="
+    waybill_b64 = (
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkS"
+        "Ew8UHRofHh0aHBwcJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPDUzNDP/wAALCAAB"
+        "AAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAA"
+        "AAD/2gAIAQEAAD8AKp//2Q=="
+    )
+    resp = client.post(
+        "/inspect",
+        json={
+            "truck_id": "B-9000-EV",
+            "photo_base64": photo_b64,
+            "photo_filename": "gate.jpg",
+            "waybill_image_base64": waybill_b64,
+            "waybill_photo_filename": "surat-jalan.jpg",
+            "manifest_text": _GREEN_MANIFEST,
+            "weight_kg": 5200,
+            "waste_stream": "rdf-feedstock",
+            "moisture": 0.1,
+            "age_h": 5,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    record_id = body["record_id"]
+    rec = _load_audit_record(tmp_path, record_id)
+
+    # The record names the stored files, relative inside its own folder.
+    assert rec.inputs.photo.path == "photo.jpg"
+    assert rec.inputs.waybill_photo is not None
+    assert rec.inputs.waybill_photo.path == "waybill.jpg"
+    # The files exist and their bytes hash to the recorded digests.
+    import base64 as _b64
+
+    for slot, uploaded in (("photo", photo_b64), ("waybill_photo", waybill_b64)):
+        stored = (tmp_path / record_id / (rec.inputs.photo.path if slot == "photo" else rec.inputs.waybill_photo.path)).read_bytes()
+        expected = _b64.b64decode(uploaded)
+        assert stored == expected, f"{slot}: stored bytes differ from upload"
+        assert audit.sha256_field(stored) == getattr(rec.inputs, slot).sha256
+
+    # GET /inspections/{id}/evidence/{slot} serves the stored bytes (auth'd).
+    get_resp = client.get(f"/inspections/{record_id}/evidence/photo")
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.content == _b64.b64decode(photo_b64)
+    assert get_resp.headers["content-type"].startswith("image/")
+    waybill_resp = client.get(f"/inspections/{record_id}/evidence/waybill_photo")
+    assert waybill_resp.status_code == 200, waybill_resp.text
+
+
+def test_evidence_route_guards(client, tmp_path):
+    # Run one inspection with a photo so a record with stored evidence exists.
+    resp = client.post(
+        "/inspect",
+        json={
+            "truck_id": "B-9001-GU",
+            "photo_base64": "/9j/4HN0dWItcGhvdG8=",
+            "manifest_text": _GREEN_MANIFEST,
+            "weight_kg": 5200,
+            "waste_stream": "rdf-feedstock",
+            "moisture": 0.1,
+            "age_h": 5,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    record_id = resp.json()["record_id"]
+
+    # Unknown slot is 422, unknown record 404, demo records (no stored file,
+    # hash-only evidence) are 404 with no_stored_photo.
+    assert client.get(f"/inspections/{record_id}/evidence/other").status_code == 422
+    assert (
+        client.get("/inspections/inspection-999999/evidence/photo").status_code == 404
+    )
+    demo = client.post("/inspect", json={"demo_case": "green"})
+    demo_id = demo.json()["record_id"]
+    no_file = client.get(f"/inspections/{demo_id}/evidence/photo")
+    assert no_file.status_code == 404
+    assert no_file.json()["detail"]["error"] == "no_stored_photo"
+
+    # A tampered stored file is refused (410), never quietly served.
+    stored = tmp_path / record_id / "photo.jpg"
+    stored.write_bytes(b"tampered")
+    tampered = client.get(f"/inspections/{record_id}/evidence/photo")
+    assert tampered.status_code == 410
+    assert tampered.json()["detail"]["error"] == "evidence_tampered"

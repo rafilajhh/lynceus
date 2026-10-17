@@ -455,7 +455,29 @@ def _run_inspection_with_audit(
     # what the verdict answers to is exactly what the record froze
     # (invariant 3).  The twin/sensor runs exactly once here, not again in
     # run_inspection.
-    reserved_id, _reserved_path = audit.allocate_inspection_id(settings.storage_dir)
+    reserved_id, reserved_path = audit.allocate_inspection_id(settings.storage_dir)
+
+    # Persist the evidence bytes inside the reserved record folder so the
+    # audit trail can show the photo the verdict answered to (record sha256
+    # identifies it; the file makes it inspectable). A storage failure must
+    # not kill the inspection: the record keeps hash-only evidence.
+    def _persist(name: str, data: bytes) -> str | None:
+        if not data:
+            return None
+        try:
+            target = reserved_path / name
+            target.write_bytes(data)
+            return name
+        except OSError:
+            return None
+
+    photo_path = _persist("photo.jpg", photo_bytes)
+    if photo_path:
+        inputs["photo"]["path"] = photo_path
+    waybill_path = _persist("waybill.jpg", waybill_bytes)
+    if waybill_path:
+        inputs["waybill_photo"]["path"] = waybill_path
+
     gas_result = pipeline.collect_gate_gas(payload, reserved_id)
     gas_ai_output: dict[str, Any] | None = None
     if gas_result and gas_result.get("readings_ppm"):
@@ -1210,6 +1232,67 @@ def create_app() -> FastAPI:
         """
         record = _load_record_or_http(record_id)
         return record.model_dump()
+
+    @app.get("/inspections/{record_id}/evidence/{slot}")
+    def get_evidence_photo(
+        record_id: str,
+        slot: str,
+        _user: str | None = Depends(auth.require_auth),
+    ) -> FileResponse:
+        """Serve one stored evidence photo for an inspection.
+
+        ``slot`` is the key in ``record.inputs`` ("photo" for the load,
+        "waybill_photo" for the waybill). Only files the record itself names
+        in ``inputs.<slot>.path`` are served — the record is the allow-list,
+        so nothing else inside the inspection folder is reachable. The stored
+        bytes' sha256 is checked against the recorded digest: a tampered or
+        missing file is a 410, never a quiet substitution.
+        """
+        if slot not in ("photo", "waybill_photo"):
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "invalid_slot", "message": "slot must be 'photo' or 'waybill_photo'."},
+            )
+        record = _load_record_or_http(record_id)
+        photo_input = getattr(record.inputs, slot, None) if record.inputs else None
+        rel_path = getattr(photo_input, "path", None) if photo_input else None
+        if not rel_path:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "no_stored_photo",
+                    "message": f"This record stored no {slot} file (hash-only evidence).",
+                },
+            )
+        # _validate_relative_filename ran at strict-decode time; resolve and
+        # confine to the inspection folder anyway (defence in depth).
+        record_dir = (Path(get_settings().storage_dir) / record_id).resolve()
+        file_path = (record_dir / rel_path).resolve()
+        if file_path.parent != record_dir:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "invalid_path", "message": "evidence path escapes the inspection folder."},
+            )
+        if not file_path.is_file():
+            raise HTTPException(
+                status_code=410,
+                detail={"error": "evidence_missing", "message": "The stored evidence file is gone."},
+            )
+        if audit.sha256_field(file_path.read_bytes()) != getattr(
+            photo_input, "sha256", ""
+        ):
+            raise HTTPException(
+                status_code=410,
+                detail={
+                    "error": "evidence_tampered",
+                    "message": "Stored file hash does not match the audit record.",
+                },
+            )
+        return FileResponse(
+            file_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
 
 
     if _WEB_DIR.is_dir():

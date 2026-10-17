@@ -217,10 +217,21 @@ const auditRecordSchema = z
             sha256: z.string().optional(),
             captured_at_utc: z.string().optional(),
             provenance: z.string().optional(),
-            // TODO(backend): relative path to the stored photo, when exposed.
+            // Relative path of the stored evidence file, when the backend
+            // persisted the photo bytes; absent on older records.
             path: z.string().optional(),
           })
           .optional(),
+        waybill_photo: z
+          .object({
+            filename: z.string().catch("waybill.jpg"),
+            sha256: z.string().optional(),
+            captured_at_utc: z.string().optional(),
+            provenance: z.string().optional(),
+            path: z.string().optional(),
+          })
+          .nullish()
+          .catch(null),
         weight: z
           .object({
             value_kg: z.number().optional(),

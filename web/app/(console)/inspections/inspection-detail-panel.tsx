@@ -59,12 +59,18 @@ function uncertaintyNote(uncertainty: string): string | null {
 }
 
 /** Demo photos are public assets: a record whose photo came from one can
-    show it again. Anything else needs a stored-photo path from the API. */
+    show it again. A record with a stored evidence path serves it from the
+    authenticated API; anything else has no photo to show. */
 const DEMO_PHOTO_PATH = /^\/demo\/[a-z0-9-]+\.(jpe?g|png)$/i;
 
-function photoSrc(photo: PhotoInput | undefined): string | null {
+function photoSrc(
+  photo: PhotoInput | undefined,
+  recordId: string | undefined,
+): string | null {
   if (!photo) return null;
-  if (photo.path) return photo.path;
+  if (photo.path && recordId) {
+    return `/inspections/${encodeURIComponent(recordId)}/evidence/photo`;
+  }
   return DEMO_PHOTO_PATH.test(photo.filename) ? photo.filename : null;
 }
 
@@ -291,7 +297,7 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
       <section>
         <h3 className="smallcaps mb-2">Evidence</h3>
         <PhotoEvidence
-          src={photoSrc(photo)}
+          src={photoSrc(photo, detail.record_id)}
           alt={`Load photo for ${detail.record_id}`}
           boxes={vlm?.boxes ?? []}
           localisation={vlm?.localisation}
