@@ -11,7 +11,7 @@
  * Honesty: the caption always says how the regions were produced:
  * a 3×3 zone marking (coarse), a model's own boxes, or a scripted sample.
  *
- * The CPU detector's second opinion (YOLO26s) is drawn alongside in a
+ * The CPU detector's second opinion (YOLO26) is drawn alongside in a
  * distinct style: dashed outline, "YOLO" tag under the box. Only the boxes
  * the gate acts on are drawn: metal at/above the hard threshold, glass and
  * organic at/above the light one (the record's ``thresholds``, else 0.25);
@@ -76,10 +76,11 @@ function captionFor({
   return `Located by ${model || "the vision model"}`;
 }
 
-/** "yolo26s-realwaste-taco" → "YOLO26s"; unknown ids are shown as sent. */
+/** "yolo26m-realwaste-taco" → "YOLO26m" (older records: "YOLO26s"); unknown ids are shown as sent. */
 export function detectorName(model: string | null | undefined): string {
   if (!model) return "the detector";
-  return /^yolo26s/i.test(model) ? "YOLO26s" : model;
+  const size = /^yolo26([nsmlx])/i.exec(model);
+  return size ? `YOLO26${size[1].toLowerCase()}` : model;
 }
 
 export function PhotoEvidence({

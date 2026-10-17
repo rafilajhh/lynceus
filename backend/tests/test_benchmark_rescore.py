@@ -17,7 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from benchmark import rescore  # noqa: E402
-from lynceus import pipeline  # noqa: E402
+from lynceus import config, detector, pipeline  # noqa: E402
 
 JPEG = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"fake"
 PASSED = {
@@ -237,7 +237,7 @@ def hybrid(tmp_path, monkeypatch):
 def test_hybrid_variants(hybrid):
     s = hybrid["summary"]
     assert s["kind"] == "hybrid_replay" and "separate val split" in s["disclosure"]
-    assert s["detector"]["model"] == "yolo26s-realwaste-taco"
+    assert s["detector"]["model"] == detector.model_name(str(config.BUNDLED_DETECTOR_MODEL))
     assert (s["detector"]["hard_conf_default"], s["detector"]["light_conf"]) == (0.35, 0.05)
     assert json.loads(hybrid["out"].read_text(encoding="utf-8")) == s
     # The summary names what produced the boxes, not a runtime it did not use.
@@ -259,7 +259,8 @@ def test_hybrid_variants(hybrid):
 
 
 @pytest.mark.parametrize("name", ["2026-10-16.hybrid-rescore.summary.json",
-                                  "2026-10-16.hybrid-rescore.realwaste-taco.summary.json"])
+                                  "2026-10-16.hybrid-rescore.realwaste-taco.summary.json",
+                                  "2026-10-17.hybrid-rescore.realwaste-taco-m.summary.json"])
 def test_committed_hybrid_summary_was_produced_by_lynceus_detector(name):
     path = Path(rescore.__file__).resolve().parent / "results" / name
     d = json.loads(path.read_text(encoding="utf-8"))["detector"]
@@ -273,7 +274,7 @@ def test_committed_summary_of_the_bundled_model_matches_its_weights():
     from lynceus import config, decision, detector
 
     path = (Path(rescore.__file__).resolve().parent / "results"
-            / "2026-10-16.hybrid-rescore.realwaste-taco.summary.json")
+            / "2026-10-17.hybrid-rescore.realwaste-taco-m.summary.json")
     d = json.loads(path.read_text(encoding="utf-8"))["detector"]
     digest = hashlib.sha256(config.BUNDLED_DETECTOR_MODEL.read_bytes()).hexdigest()
     # The committed numbers describe the shipped weights at the shipped defaults.

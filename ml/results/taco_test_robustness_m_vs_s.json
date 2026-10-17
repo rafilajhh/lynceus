@@ -1,0 +1,866 @@
+{
+ "rule": {
+  "near_dup": "dHash Hamming <= 10 to any TACO train/val image",
+  "adjacent": "a TACO train/val image within 2 places in the same batch at dHash Hamming <= 16 (likely the same scene)",
+  "pool": {
+   "train": 1200,
+   "val": 150
+  }
+ },
+ "neighbour_hamming": {
+  "test_images_with_batch_neighbours": 150,
+  "min": 5,
+  "median": 27.0,
+  "cumulative": {
+   "<=8": 1,
+   "<=10": 1,
+   "<=12": 1,
+   "<=16": 2,
+   "<=20": 9,
+   "<=24": 38
+  }
+ },
+ "excluded": {
+  "near_dup": 2,
+  "adjacent": 2,
+  "either": 3
+ },
+ "near_dup_images": [
+  "taco_0709.jpg",
+  "taco_0989.jpg"
+ ],
+ "adjacent_images": [
+  "taco_0839.jpg",
+  "taco_0989.jpg"
+ ],
+ "subsets": {
+  "all": {
+   "images": 150,
+   "metal_recall": {
+    "new@0.35/0.05": {
+     "count": "14/29",
+     "rate": 0.4828,
+     "wilson95": [
+      0.3139,
+      0.6557
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/29",
+     "rate": 0.4138,
+     "wilson95": [
+      0.2551,
+      0.5926
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.069,
+     "bootstrap95": [
+      -0.1034,
+      0.2414
+     ],
+     "discordant_new_only/old_only": "4/2",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "false_metal": {
+    "new@0.35/0.05": {
+     "count": "4/121",
+     "rate": 0.0331,
+     "wilson95": [
+      0.0129,
+      0.0819
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "6/121",
+     "rate": 0.0496,
+     "wilson95": [
+      0.0229,
+      0.104
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0165,
+     "bootstrap95": [
+      -0.0579,
+      0.0248
+     ],
+     "discordant_new_only/old_only": "2/4",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "light_recall": {
+    "new@0.35/0.05": {
+     "count": "2/11",
+     "rate": 0.1818,
+     "wilson95": [
+      0.0514,
+      0.477
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "3/11",
+     "rate": 0.2727,
+     "wilson95": [
+      0.0975,
+      0.5656
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0909,
+     "bootstrap95": [
+      -0.3636,
+      0.1818
+     ],
+     "discordant_new_only/old_only": "1/2",
+     "mcnemar_exact_p": 1.0
+    }
+   },
+   "false_escalate_clean": {
+    "new@0.35/0.05": {
+     "count": "14/112",
+     "rate": 0.125,
+     "wilson95": [
+      0.0759,
+      0.1989
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "8/112",
+     "rate": 0.0714,
+     "wilson95": [
+      0.0366,
+      0.1346
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0536,
+     "bootstrap95": [
+      -0.0179,
+      0.125
+     ],
+     "discordant_new_only/old_only": "11/5",
+     "mcnemar_exact_p": 0.2101
+    }
+   },
+   "any_hold_clean": {
+    "new@0.35/0.05": {
+     "count": "16/112",
+     "rate": 0.1429,
+     "wilson95": [
+      0.0899,
+      0.2195
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/112",
+     "rate": 0.1071,
+     "wilson95": [
+      0.0624,
+      0.178
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0357,
+     "bootstrap95": [
+      -0.0357,
+      0.1071
+     ],
+     "discordant_new_only/old_only": "10/6",
+     "mcnemar_exact_p": 0.4545
+    }
+   }
+  },
+  "no_near_dup": {
+   "images": 148,
+   "metal_recall": {
+    "new@0.35/0.05": {
+     "count": "13/28",
+     "rate": 0.4643,
+     "wilson95": [
+      0.2953,
+      0.6419
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "11/28",
+     "rate": 0.3929,
+     "wilson95": [
+      0.2357,
+      0.5759
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0714,
+     "bootstrap95": [
+      -0.1071,
+      0.25
+     ],
+     "discordant_new_only/old_only": "4/2",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "false_metal": {
+    "new@0.35/0.05": {
+     "count": "4/120",
+     "rate": 0.0333,
+     "wilson95": [
+      0.013,
+      0.0826
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "6/120",
+     "rate": 0.05,
+     "wilson95": [
+      0.0231,
+      0.1048
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0167,
+     "bootstrap95": [
+      -0.0583,
+      0.025
+     ],
+     "discordant_new_only/old_only": "2/4",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "light_recall": {
+    "new@0.35/0.05": {
+     "count": "2/11",
+     "rate": 0.1818,
+     "wilson95": [
+      0.0514,
+      0.477
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "3/11",
+     "rate": 0.2727,
+     "wilson95": [
+      0.0975,
+      0.5656
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0909,
+     "bootstrap95": [
+      -0.3636,
+      0.1818
+     ],
+     "discordant_new_only/old_only": "1/2",
+     "mcnemar_exact_p": 1.0
+    }
+   },
+   "false_escalate_clean": {
+    "new@0.35/0.05": {
+     "count": "14/111",
+     "rate": 0.1261,
+     "wilson95": [
+      0.0766,
+      0.2006
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "8/111",
+     "rate": 0.0721,
+     "wilson95": [
+      0.037,
+      0.1358
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0541,
+     "bootstrap95": [
+      -0.018,
+      0.1261
+     ],
+     "discordant_new_only/old_only": "11/5",
+     "mcnemar_exact_p": 0.2101
+    }
+   },
+   "any_hold_clean": {
+    "new@0.35/0.05": {
+     "count": "16/111",
+     "rate": 0.1441,
+     "wilson95": [
+      0.0907,
+      0.2214
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/111",
+     "rate": 0.1081,
+     "wilson95": [
+      0.0629,
+      0.1795
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.036,
+     "bootstrap95": [
+      -0.036,
+      0.1081
+     ],
+     "discordant_new_only/old_only": "10/6",
+     "mcnemar_exact_p": 0.4545
+    }
+   }
+  },
+  "no_adjacent": {
+   "images": 148,
+   "metal_recall": {
+    "new@0.35/0.05": {
+     "count": "13/28",
+     "rate": 0.4643,
+     "wilson95": [
+      0.2953,
+      0.6419
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "11/28",
+     "rate": 0.3929,
+     "wilson95": [
+      0.2357,
+      0.5759
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0714,
+     "bootstrap95": [
+      -0.1071,
+      0.25
+     ],
+     "discordant_new_only/old_only": "4/2",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "false_metal": {
+    "new@0.35/0.05": {
+     "count": "4/120",
+     "rate": 0.0333,
+     "wilson95": [
+      0.013,
+      0.0826
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "6/120",
+     "rate": 0.05,
+     "wilson95": [
+      0.0231,
+      0.1048
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0167,
+     "bootstrap95": [
+      -0.0583,
+      0.025
+     ],
+     "discordant_new_only/old_only": "2/4",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "light_recall": {
+    "new@0.35/0.05": {
+     "count": "2/10",
+     "rate": 0.2,
+     "wilson95": [
+      0.0567,
+      0.5098
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "3/10",
+     "rate": 0.3,
+     "wilson95": [
+      0.1078,
+      0.6032
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.1,
+     "bootstrap95": [
+      -0.4,
+      0.2
+     ],
+     "discordant_new_only/old_only": "1/2",
+     "mcnemar_exact_p": 1.0
+    }
+   },
+   "false_escalate_clean": {
+    "new@0.35/0.05": {
+     "count": "14/111",
+     "rate": 0.1261,
+     "wilson95": [
+      0.0766,
+      0.2006
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "8/111",
+     "rate": 0.0721,
+     "wilson95": [
+      0.037,
+      0.1358
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0541,
+     "bootstrap95": [
+      -0.018,
+      0.1261
+     ],
+     "discordant_new_only/old_only": "11/5",
+     "mcnemar_exact_p": 0.2101
+    }
+   },
+   "any_hold_clean": {
+    "new@0.35/0.05": {
+     "count": "16/111",
+     "rate": 0.1441,
+     "wilson95": [
+      0.0907,
+      0.2214
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/111",
+     "rate": 0.1081,
+     "wilson95": [
+      0.0629,
+      0.1795
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.036,
+     "bootstrap95": [
+      -0.036,
+      0.1081
+     ],
+     "discordant_new_only/old_only": "10/6",
+     "mcnemar_exact_p": 0.4545
+    }
+   }
+  },
+  "strict": {
+   "images": 147,
+   "metal_recall": {
+    "new@0.35/0.05": {
+     "count": "12/27",
+     "rate": 0.4444,
+     "wilson95": [
+      0.2759,
+      0.6269
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "10/27",
+     "rate": 0.3704,
+     "wilson95": [
+      0.2153,
+      0.5577
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0741,
+     "bootstrap95": [
+      -0.1111,
+      0.2593
+     ],
+     "discordant_new_only/old_only": "4/2",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "false_metal": {
+    "new@0.35/0.05": {
+     "count": "4/120",
+     "rate": 0.0333,
+     "wilson95": [
+      0.013,
+      0.0826
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "6/120",
+     "rate": 0.05,
+     "wilson95": [
+      0.0231,
+      0.1048
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0167,
+     "bootstrap95": [
+      -0.0583,
+      0.025
+     ],
+     "discordant_new_only/old_only": "2/4",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "light_recall": {
+    "new@0.35/0.05": {
+     "count": "2/10",
+     "rate": 0.2,
+     "wilson95": [
+      0.0567,
+      0.5098
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "3/10",
+     "rate": 0.3,
+     "wilson95": [
+      0.1078,
+      0.6032
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.1,
+     "bootstrap95": [
+      -0.4,
+      0.2
+     ],
+     "discordant_new_only/old_only": "1/2",
+     "mcnemar_exact_p": 1.0
+    }
+   },
+   "false_escalate_clean": {
+    "new@0.35/0.05": {
+     "count": "14/111",
+     "rate": 0.1261,
+     "wilson95": [
+      0.0766,
+      0.2006
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "8/111",
+     "rate": 0.0721,
+     "wilson95": [
+      0.037,
+      0.1358
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0541,
+     "bootstrap95": [
+      -0.018,
+      0.1261
+     ],
+     "discordant_new_only/old_only": "11/5",
+     "mcnemar_exact_p": 0.2101
+    }
+   },
+   "any_hold_clean": {
+    "new@0.35/0.05": {
+     "count": "16/111",
+     "rate": 0.1441,
+     "wilson95": [
+      0.0907,
+      0.2214
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/111",
+     "rate": 0.1081,
+     "wilson95": [
+      0.0629,
+      0.1795
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.036,
+     "bootstrap95": [
+      -0.036,
+      0.1081
+     ],
+     "discordant_new_only/old_only": "10/6",
+     "mcnemar_exact_p": 0.4545
+    }
+   }
+  },
+  "strict_cut12": {
+   "images": 148,
+   "metal_recall": {
+    "new@0.35/0.05": {
+     "count": "13/28",
+     "rate": 0.4643,
+     "wilson95": [
+      0.2953,
+      0.6419
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "11/28",
+     "rate": 0.3929,
+     "wilson95": [
+      0.2357,
+      0.5759
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0714,
+     "bootstrap95": [
+      -0.1071,
+      0.25
+     ],
+     "discordant_new_only/old_only": "4/2",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "false_metal": {
+    "new@0.35/0.05": {
+     "count": "4/120",
+     "rate": 0.0333,
+     "wilson95": [
+      0.013,
+      0.0826
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "6/120",
+     "rate": 0.05,
+     "wilson95": [
+      0.0231,
+      0.1048
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0167,
+     "bootstrap95": [
+      -0.0583,
+      0.025
+     ],
+     "discordant_new_only/old_only": "2/4",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "light_recall": {
+    "new@0.35/0.05": {
+     "count": "2/11",
+     "rate": 0.1818,
+     "wilson95": [
+      0.0514,
+      0.477
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "3/11",
+     "rate": 0.2727,
+     "wilson95": [
+      0.0975,
+      0.5656
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0909,
+     "bootstrap95": [
+      -0.3636,
+      0.1818
+     ],
+     "discordant_new_only/old_only": "1/2",
+     "mcnemar_exact_p": 1.0
+    }
+   },
+   "false_escalate_clean": {
+    "new@0.35/0.05": {
+     "count": "14/111",
+     "rate": 0.1261,
+     "wilson95": [
+      0.0766,
+      0.2006
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "8/111",
+     "rate": 0.0721,
+     "wilson95": [
+      0.037,
+      0.1358
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0541,
+     "bootstrap95": [
+      -0.018,
+      0.1261
+     ],
+     "discordant_new_only/old_only": "11/5",
+     "mcnemar_exact_p": 0.2101
+    }
+   },
+   "any_hold_clean": {
+    "new@0.35/0.05": {
+     "count": "16/111",
+     "rate": 0.1441,
+     "wilson95": [
+      0.0907,
+      0.2214
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/111",
+     "rate": 0.1081,
+     "wilson95": [
+      0.0629,
+      0.1795
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.036,
+     "bootstrap95": [
+      -0.036,
+      0.1081
+     ],
+     "discordant_new_only/old_only": "10/6",
+     "mcnemar_exact_p": 0.4545
+    }
+   }
+  },
+  "strict_cut20": {
+   "images": 140,
+   "metal_recall": {
+    "new@0.35/0.05": {
+     "count": "11/24",
+     "rate": 0.4583,
+     "wilson95": [
+      0.2789,
+      0.6493
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "9/24",
+     "rate": 0.375,
+     "wilson95": [
+      0.2116,
+      0.5729
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0833,
+     "bootstrap95": [
+      -0.125,
+      0.2917
+     ],
+     "discordant_new_only/old_only": "4/2",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "false_metal": {
+    "new@0.35/0.05": {
+     "count": "4/116",
+     "rate": 0.0345,
+     "wilson95": [
+      0.0135,
+      0.0853
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "6/116",
+     "rate": 0.0517,
+     "wilson95": [
+      0.0239,
+      0.1083
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.0172,
+     "bootstrap95": [
+      -0.0603,
+      0.0259
+     ],
+     "discordant_new_only/old_only": "2/4",
+     "mcnemar_exact_p": 0.6875
+    }
+   },
+   "light_recall": {
+    "new@0.35/0.05": {
+     "count": "2/9",
+     "rate": 0.2222,
+     "wilson95": [
+      0.0632,
+      0.5474
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "3/9",
+     "rate": 0.3333,
+     "wilson95": [
+      0.1206,
+      0.6458
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": -0.1111,
+     "bootstrap95": [
+      -0.4444,
+      0.2222
+     ],
+     "discordant_new_only/old_only": "1/2",
+     "mcnemar_exact_p": 1.0
+    }
+   },
+   "false_escalate_clean": {
+    "new@0.35/0.05": {
+     "count": "13/108",
+     "rate": 0.1204,
+     "wilson95": [
+      0.0717,
+      0.1951
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "8/108",
+     "rate": 0.0741,
+     "wilson95": [
+      0.038,
+      0.1394
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0463,
+     "bootstrap95": [
+      -0.0185,
+      0.1204
+     ],
+     "discordant_new_only/old_only": "10/5",
+     "mcnemar_exact_p": 0.3018
+    }
+   },
+   "any_hold_clean": {
+    "new@0.35/0.05": {
+     "count": "15/108",
+     "rate": 0.1389,
+     "wilson95": [
+      0.086,
+      0.2166
+     ]
+    },
+    "previous@0.35/0.05 (shipped)": {
+     "count": "12/108",
+     "rate": 0.1111,
+     "wilson95": [
+      0.0647,
+      0.1842
+     ]
+    },
+    "new_minus[previous@0.35/0.05 (shipped)]": {
+     "diff": 0.0278,
+     "bootstrap95": [
+      -0.037,
+      0.1019
+     ],
+     "discordant_new_only/old_only": "9/6",
+     "mcnemar_exact_p": 0.6072
+    }
+   }
+  }
+ }
+}

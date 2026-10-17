@@ -1,0 +1,398 @@
+{
+ "weights": "ml\\runs\\yolo26m_e26l_colab\\weights\\last.pt",
+ "data": "ml/data/val_mix/data.yaml",
+ "split": "val",
+ "images": 566,
+ "per_source": {
+  "realwaste": 416,
+  "taco": 150
+ },
+ "map50": 0.715,
+ "map50_95": 0.6306,
+ "map50_per_class": {
+  "metal": 0.7981,
+  "glass": 0.4481,
+  "organic": 0.8686,
+  "paper": 0.78,
+  "plastic": 0.5826,
+  "textile": 0.8125
+ },
+ "rule": "hard t = lowest with false-metal rate <= {'realwaste': 0.02, 'taco': 0.05} per source; light t = lowest with false-escalate rate on clean images <= {'realwaste': 0.05, 'taco': 0.1} per source",
+ "hard_threshold": 0.5,
+ "light_threshold": 0.2,
+ "at_selected": {
+  "metal_recall": 0.7593,
+  "metal_false_rate": 0.0087,
+  "light_recall": 0.9173,
+  "light_false_rate_clean": 0.0334
+ },
+ "at_selected_by_source": {
+  "realwaste": {
+   "hard": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8571,
+    "metal_false_rate": 0.0029,
+    "light_recall": 0.8548,
+    "light_false_rate_clean": 0.0326
+   },
+   "light": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8961,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9758,
+    "light_false_rate_clean": 0.0419
+   }
+  },
+  "taco": {
+   "hard": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.5161,
+    "metal_false_rate": 0.0252,
+    "light_recall": 0.0,
+    "light_false_rate_clean": 0.0
+   },
+   "light": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.6452,
+    "metal_false_rate": 0.1597,
+    "light_recall": 0.1111,
+    "light_false_rate_clean": 0.0175
+   }
+  }
+ },
+ "gpu_latency_ms_p50": 37.5,
+ "sweep": {
+  "0.05": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.9167,
+    "metal_false_rate": 0.1179,
+    "light_recall": 0.9624,
+    "light_false_rate_clean": 0.0881
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.9481,
+    "metal_false_rate": 0.0295,
+    "light_recall": 1.0,
+    "light_false_rate_clean": 0.0884
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.8387,
+    "metal_false_rate": 0.3697,
+    "light_recall": 0.4444,
+    "light_false_rate_clean": 0.0877
+   }
+  },
+  "0.1": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.8519,
+    "metal_false_rate": 0.0677,
+    "light_recall": 0.9474,
+    "light_false_rate_clean": 0.0608
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.9221,
+    "metal_false_rate": 0.0088,
+    "light_recall": 0.9919,
+    "light_false_rate_clean": 0.0698
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.6774,
+    "metal_false_rate": 0.2353,
+    "light_recall": 0.3333,
+    "light_false_rate_clean": 0.0439
+   }
+  },
+  "0.15": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.8426,
+    "metal_false_rate": 0.0524,
+    "light_recall": 0.9248,
+    "light_false_rate_clean": 0.0395
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.9091,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9758,
+    "light_false_rate_clean": 0.0512
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.6774,
+    "metal_false_rate": 0.1849,
+    "light_recall": 0.2222,
+    "light_false_rate_clean": 0.0175
+   }
+  },
+  "0.2": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.8241,
+    "metal_false_rate": 0.0459,
+    "light_recall": 0.9173,
+    "light_false_rate_clean": 0.0334
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8961,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9758,
+    "light_false_rate_clean": 0.0419
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.6452,
+    "metal_false_rate": 0.1597,
+    "light_recall": 0.1111,
+    "light_false_rate_clean": 0.0175
+   }
+  },
+  "0.25": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.8148,
+    "metal_false_rate": 0.0349,
+    "light_recall": 0.8947,
+    "light_false_rate_clean": 0.0334
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8961,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9516,
+    "light_false_rate_clean": 0.0419
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.6129,
+    "metal_false_rate": 0.1176,
+    "light_recall": 0.1111,
+    "light_false_rate_clean": 0.0175
+   }
+  },
+  "0.3": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.8056,
+    "metal_false_rate": 0.0284,
+    "light_recall": 0.8947,
+    "light_false_rate_clean": 0.0304
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8961,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9516,
+    "light_false_rate_clean": 0.0372
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.5806,
+    "metal_false_rate": 0.0924,
+    "light_recall": 0.1111,
+    "light_false_rate_clean": 0.0175
+   }
+  },
+  "0.35": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.8056,
+    "metal_false_rate": 0.0284,
+    "light_recall": 0.8797,
+    "light_false_rate_clean": 0.0304
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8961,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9355,
+    "light_false_rate_clean": 0.0372
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.5806,
+    "metal_false_rate": 0.0924,
+    "light_recall": 0.1111,
+    "light_false_rate_clean": 0.0175
+   }
+  },
+  "0.4": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.787,
+    "metal_false_rate": 0.0197,
+    "light_recall": 0.8571,
+    "light_false_rate_clean": 0.0243
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8831,
+    "metal_false_rate": 0.0059,
+    "light_recall": 0.9113,
+    "light_false_rate_clean": 0.0372
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.5484,
+    "metal_false_rate": 0.0588,
+    "light_recall": 0.1111,
+    "light_false_rate_clean": 0.0
+   }
+  },
+  "0.5": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.7593,
+    "metal_false_rate": 0.0087,
+    "light_recall": 0.797,
+    "light_false_rate_clean": 0.0213
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8571,
+    "metal_false_rate": 0.0029,
+    "light_recall": 0.8548,
+    "light_false_rate_clean": 0.0326
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.5161,
+    "metal_false_rate": 0.0252,
+    "light_recall": 0.0,
+    "light_false_rate_clean": 0.0
+   }
+  },
+  "0.6": {
+   "pooled": {
+    "n": 566,
+    "n_metal": 108,
+    "n_light": 133,
+    "n_clean": 329,
+    "metal_recall": 0.7407,
+    "metal_false_rate": 0.0066,
+    "light_recall": 0.6917,
+    "light_false_rate_clean": 0.0182
+   },
+   "realwaste": {
+    "n": 416,
+    "n_metal": 77,
+    "n_light": 124,
+    "n_clean": 215,
+    "metal_recall": 0.8442,
+    "metal_false_rate": 0.0029,
+    "light_recall": 0.7419,
+    "light_false_rate_clean": 0.0279
+   },
+   "taco": {
+    "n": 150,
+    "n_metal": 31,
+    "n_light": 9,
+    "n_clean": 114,
+    "metal_recall": 0.4839,
+    "metal_false_rate": 0.0168,
+    "light_recall": 0.0,
+    "light_false_rate_clean": 0.0
+   }
+  }
+ }
+}
