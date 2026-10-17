@@ -1,7 +1,7 @@
 # Lynceus
 
 <p align="center">
-  <img src="docs/assets/lynceus-cover.jpg" alt="Lynceus AI gate inspector — an RDF truck on the weighbridge; the vision model boxes a metal contaminant and the gate card says REJECT" width="840">
+  <img src="docs/assets/lynceus-cover-light.jpg" alt="Lynceus AI gate inspector — an RDF truck on the weighbridge; the vision model boxes a metal contaminant and the gate card says REJECT" width="840">
 </p>
 
 **AI gate inspector for alternative-fuel (RDF) facilities — built for the AMD Developer Hackathon: ACT III (Intelligent Industry track).**
