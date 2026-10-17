@@ -29,7 +29,7 @@ WORKDIR /app
 
 # Backend sources, sample-shift seeder, the committed benchmark manifest/results
 # (the benchmark images are excluded by .dockerignore) and the CPU detector model
-# (backend/models/, 38 MB ONNX).
+# (backend/models/, 82 MB ONNX).
 COPY backend/ ./backend/
 
 # Regular (non-editable) install; knowledge/*.md ships as package data.
@@ -48,7 +48,7 @@ RUN chmod +x /usr/local/bin/lynceus-entrypoint
 # CPUExecutionProvider); GPU providers need a different onnxruntime build.
 ENV LYNCEUS_WEB_DIR=/app/web/out \
     LYNCEUS_BENCHMARK_DIR=/app/backend/benchmark \
-    DETECTOR_MODEL_PATH=/app/backend/models/lynceus-yolo26s-realwaste-taco.onnx \
+    DETECTOR_MODEL_PATH=/app/backend/models/lynceus-yolo26m-realwaste-taco.onnx \
     LYNCEUS_STORAGE_DIR=/data/runs \
     PORT=8020
 

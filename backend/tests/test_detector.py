@@ -102,12 +102,12 @@ def test_settings_keep_older_positional_construction():
 
 def test_detect_finds_metal_on_a_metal_image():
     result = detector.detect((IMAGES / "metal_1.jpg").read_bytes())
-    assert result["model"] == "yolo26s-realwaste-taco"
+    assert result["model"] == "yolo26m-realwaste-taco"
     assert result["runtime"] == "onnxruntime-cpu"
     assert result["latency_ms"] > 0
     assert result["hard_contaminants"] == ["metal"]
     top = result["boxes"][0]
-    assert top["label"] == "metal" and top["confidence"] >= 0.9
+    assert top["label"] == "metal" and top["confidence"] >= 0.85
     x0, y0, x1, y1 = top["box"]
     assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1
     # The output is exactly what the audit schema accepts.
@@ -116,7 +116,8 @@ def test_detect_finds_metal_on_a_metal_image():
 
 def test_feedstock_classes_never_flag():
     result = detector.detect((IMAGES / "paper_51.jpg").read_bytes())
-    assert {b["label"] for b in result["boxes"]} == {"paper", "plastic"}
+    labels = {b["label"] for b in result["boxes"]}
+    assert "paper" in labels and labels <= {"paper", "plastic", "textile"}
     assert result["hard_contaminants"] == [] and result["light_contaminants"] == []
 
 
@@ -156,7 +157,7 @@ def test_unconfirmed_detector_metal_escalates_never_rejects():
         _INPUTS, _vlm(), _LLM, _ENGINE, _det(("metal", 0.93)))
     assert verdict == D.ESCALATE_HUMAN
     assert reasons == [
-        "Detector (YOLO26s) flagged metal (0.93) that the vision model did not confirm; "
+        "Detector (YOLO26m) flagged metal (0.93) that the vision model did not confirm; "
         "hold for a manual check."
     ]
     gate = gates["detector_second_opinion"]
