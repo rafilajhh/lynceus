@@ -65,3 +65,19 @@ ml/data/
 ml/runs/
 ml/weights/
 ml/dist/
+
+# Hackathon submission hygiene (lablab.ai upload carries these, not the repo)
+# Pitch deck is never committed (user rule); demo video & cover are recorded
+# locally and uploaded through the submission form.
+*.pptx
+*.ppt
+*.mp4
+*.mov
+*.webm
+*.log
+
+# IDE / agent tooling
+.vscode/
+.idea/
+.claude/
+.pytest_cache/
