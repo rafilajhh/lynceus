@@ -346,21 +346,19 @@ The skipped test is the live smoke module; enable it with `LYNCEUS_LIVE_TESTS=1`
 
 ## Licences
 
-- Lynceus code: MIT (see `LICENSE`).
-- **RealWaste images** (the benchmark images in `backend/benchmark/images/`)
-  are from the RealWaste dataset (Single, Iranmanesh, Raad, University of
-  Wollongong; UCI ML Repository id 908) and remain under their own licence. The
-  licence statements disagree: the UCI page says **CC BY 4.0**, the README
-  inside the dataset zip says **CC BY-NC-SA 4.0**. Until the authors clarify,
-  treat the more restrictive terms as binding (attribution, non-commercial,
-  share-alike). Details: `backend/benchmark/images/ATTRIBUTION.md`. The
-  benchmark images are excluded from the Docker image.
-- **Third-party model weights.** The bundled CPU detector
-  (`backend/models/lynceus-yolo26m-realwaste-taco.onnx`) is **not** covered by
-  the MIT licence. The weights derive from Ultralytics YOLO26 (**AGPL-3.0**) and
-  were fine-tuned on RealWaste (**CC BY-NC-SA 4.0** treated as binding, as
-  above) and TACO (annotations **CC BY 4.0**). Their training and export source
-  is in `ml/` (our offer of the corresponding source). Commercial use requires
-  retraining on your own data and an Ultralytics Enterprise licence, or a
-  permissively licensed detector (`DETECTOR_MODEL_PATH` points at it; empty
-  turns the detector off). Details: `backend/models/NOTICE`.
+Lynceus is open source under the **MIT licence** (`LICENSE`): the backend, the
+web console, the deployment files and the training scripts.
+
+Two optional third-party materials ship alongside it in their own directories
+and keep their own licences; Lynceus builds and runs without either:
+
+- **Detector weights** (`backend/models/*.onnx`): fine-tuned from Ultralytics
+  YOLO26 (AGPL-3.0) on RealWaste and TACO. They power the optional CPU second
+  opinion; set `DETECTOR_MODEL_PATH=` (empty) to run on the AMD-hosted vision
+  model alone. The backend never imports Ultralytics — it decodes the ONNX
+  output itself with onnxruntime. Details: `backend/models/NOTICE`.
+- **RealWaste benchmark images** (`backend/benchmark/images/`): used only to
+  reproduce the benchmark and not included in the Docker image. Attribution
+  and terms: `backend/benchmark/images/ATTRIBUTION.md`.
+
+Full list: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

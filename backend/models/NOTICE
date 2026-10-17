@@ -1,5 +1,9 @@
-Third-party model weights: lynceus-yolo26m-realwaste-taco.onnx
+Third-party model weights: lynceus-yolo26m-realwaste-taco.onnx,
+                           lynceus-yolo26s-realwaste-taco.onnx
 ==============================================================
+
+Optional component: Lynceus runs without these weights (DETECTOR_MODEL_PATH
+empty). Overview of all third-party material: THIRD_PARTY_NOTICES.md.
 
 The ONNX weights in this directory are NOT covered by the MIT licence of the
 Lynceus repository (LICENSE). They are distributed under the terms below.
