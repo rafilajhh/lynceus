@@ -267,6 +267,7 @@ Full server guide (HTTPS, updates, backups, judging-day checklist):
 | `LOCALISATION_MODE` | `box` | Hazard localisation: `box` or `zone` |
 | `VLLM_API_KEY` | *(empty)* | Bearer key sent to the endpoints (the Token Factory team key); no auth header when empty |
 | `LYNCEUS_ALLOW_STUB_FALLBACK` | `1` | `0` / `false` / `no`: a live-AI failure returns HTTP 503 instead of the offline stub (use for hosted demos) |
+| `SUPPLIER_NOTIFY_WEBHOOK` | *(empty)* | https URL that receives a POSTed supplier notice (5 s timeout); empty, non-https or a failed POST = the notice is only logged in the record's follow-up log |
 | `LYNCEUS_GAS_SENSOR_URL` | *(empty)* | HTTP/JSON gate gas-sensor gateway; empty = physics digital twin |
 | `LYNCEUS_STORAGE_DIR` | `./runs` (`/data/runs` in the image) | Where inspection audit records live |
 | `LYNCEUS_WEB_DIR` | `<repo>/web/out` (`/app/web/out` in the image) | Static web export to serve |

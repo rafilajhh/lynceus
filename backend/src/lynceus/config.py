@@ -86,6 +86,8 @@ DETECTOR_THREADS_ENV = "DETECTOR_THREADS"
 #: onnxruntime execution providers for the detector, comma-separated. The
 #: detector runs on the CPU: the only valid provider is CPUExecutionProvider.
 DETECTOR_PROVIDERS_ENV = "DETECTOR_PROVIDERS"
+#: Optional https webhook that receives supplier notices (empty = logged only).
+SUPPLIER_NOTIFY_WEBHOOK_ENV = "SUPPLIER_NOTIFY_WEBHOOK"
 
 _DEFAULT_VLLM_VLM_URL = "http://localhost:8000/v1"
 _DEFAULT_VLLM_LLM_URL = "http://localhost:8001/v1"
@@ -146,6 +148,7 @@ class Settings:
     detector_threads: int = _DEFAULT_DETECTOR_THREADS
     detector_providers: Tuple[str, ...] = _DEFAULT_DETECTOR_PROVIDERS
     vlm_votes: int = _DEFAULT_VLM_VOTES
+    supplier_notify_webhook: str = ""
 
 def provider_for_url(url: str) -> str:
     """Name the provider behind an endpoint URL, for audit provenance.
@@ -274,4 +277,5 @@ def get_settings() -> Settings:
         not in ("0", "false", "no"),
         detector_threads=_env_threads(),
         detector_providers=_env_providers(),
+        supplier_notify_webhook=os.environ.get(SUPPLIER_NOTIFY_WEBHOOK_ENV, "").strip(),
     )

@@ -31,9 +31,9 @@ import re
 import threading
 import time
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
-from datetime import timezone
+from datetime import date, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 import httpx
 
@@ -51,6 +51,9 @@ VLM_TIMEOUT_S = 90.0
 LLM_TIMEOUT_S = 45.0
 ASSIST_TIMEOUT_S = 30.0
 EXPLAIN_TIMEOUT_S = ASSIST_TIMEOUT_S
+#: Waybill OCR: one image read (no votes).  The VLM budget: the shared
+#: endpoint has taken over 60 s for one image read under load.
+WAYBILL_TIMEOUT_S = VLM_TIMEOUT_S
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -150,7 +153,9 @@ __all__ = [
     "resolve_clients",
     "resolve_assist_client",
     "resolve_explain_client",
+    "resolve_waybill_client",
     "run_inspection",
+    "waybill_fields",
 ]
 
 
@@ -216,6 +221,56 @@ _LLM_PROMPT = (
     '"confidence" (number 0..1).'
 )
 
+_WAYBILL_PROMPT = (
+    "You are transcribing a photographed waste-transport waybill (Indonesian "
+    "'Surat Jalan', often bilingual, partly handwritten). Copy what is written; "
+    "never guess, never infer, never translate values. Reply with ONLY a JSON "
+    "object, no prose, with ALL of these keys, none omitted (each a string "
+    "exactly as written, or null when the field is absent or unreadable; join a "
+    "value written over several lines with one space): "
+    '"truck_id" (vehicle plate: Nomor Polisi / Plate Number), '
+    '"supplier" (the hauling company filled in on the form: Nama Perusahaan / '
+    "Company / Transporter — NOT the company printed in the letterhead or logo "
+    "that issued the form), "
+    '"weight_kg" (the NET weight: Berat Bersih / Netto / Net Weight, digits '
+    "and separators exactly as written, e.g. \"16.340\" — not gross, not tare), "
+    '"stream_raw" (type of load: Jenis Muatan / Type of Load, as written), '
+    '"moisture_pct" (declared moisture: Kadar Air / Moisture Content, the '
+    "number only), "
+    '"waybill_no" (the waybill number: No. SJ / No. Surat Jalan), '
+    '"date" (Tanggal / Date, as written), '
+    '"origin" (Asal / Origin), '
+    '"destination" (Tujuan / Destination), '
+    '"driver" (Nama Pengemudi / Driver Name), '
+    '"reference" (No. DO / Referensi / Reference No.), and '
+    '"confidence" (number 0..1, how legible the document was for you).'
+)
+
+#: Waste-stream presets the register accepts (engine preset names).
+WAYBILL_STREAMS = (
+    "mixed-msw",
+    "co-disposal",
+    "organic-rich",
+    "green-waste",
+    "rdf-feedstock",
+    "dry-recyclables",
+)
+#: Load type as written → preset, first match wins.  Co-disposal comes first
+#: because its wording usually names MSW too; anything unmatched stays None
+#: for the operator to pick, never a guessed preset.
+_STREAM_KEYWORDS = (
+    ("co-disposal", ("co-disposal", "co disposal", "codisposal")),
+    ("rdf-feedstock", ("rdf", "fluff", "refuse-derived", "refuse derived")),
+    ("organic-rich", ("organik", "organic", "food")),
+    ("green-waste", ("green", "garden", "taman")),
+    ("dry-recyclables", ("recyclable", "daur ulang kering", "plastic", "paper")),
+    ("mixed-msw", ("campuran", "mixed", "msw", "municipal")),
+)
+#: Plausible net weight of one truck load, in kg (exclusive of 0).
+_MAX_WAYBILL_WEIGHT_KG = 100_000
+#: Blank-equivalents a transcription may use for an empty field.
+_BLANK_TEXT = frozenset({"", "-", "--", "n/a", "na", "null", "none", "unknown", "?"})
+
 
 def _extract_json(text: str) -> Optional[Dict[str, Any]]:
     """Best-effort extraction of the first JSON object from model output.
@@ -261,6 +316,156 @@ def _clamp01(value: Any, default: float = 0.0) -> float:
     if number != number or number in (float("inf"), float("-inf")):
         return default
     return max(0.0, min(1.0, number))
+
+
+def _image_data_uri(image_b64: str) -> str:
+    """A base64 image as a data URI (kept as-is when it already is one).
+
+    PNG base64 always starts "iVBOR" (the 0x89 'PNG' signature); the API has
+    already admitted only JPEG and PNG.
+    """
+    if image_b64.startswith("data:"):
+        return image_b64
+    mime = "image/png" if image_b64.startswith("iVBOR") else "image/jpeg"
+    return f"data:{mime};base64,{image_b64}"
+
+
+def _waybill_text(value: Any, max_len: int = 120) -> Optional[str]:
+    """A transcribed field as one clean line; ``None`` for blanks and non-text."""
+    if value is None or isinstance(value, (bool, dict, list)):
+        return None
+    text = " ".join(str(value).split())
+    if text.lower() in _BLANK_TEXT:
+        return None
+    return text[:max_len]
+
+
+def _waybill_code(value: Any, max_len: int) -> Optional[str]:
+    """A document number with the spaces handwriting leaves around its
+    separators removed ("DO - 250514 - 0198" → "DO-250514-0198")."""
+    text = _waybill_text(value, max_len)
+    return re.sub(r"\s*([-/])\s*", r"\1", text) if text is not None else None
+
+
+def _waybill_number(value: Any) -> Optional[float]:
+    """A written number → float, reading Indonesian separators.
+
+    "16.340" and "16,340" are thousands (a single separator followed by
+    exactly three digits), "16.340,5" / "16,340.5" take the last separator as
+    the decimal mark, "28,5" is a decimal.  Units and spaces are ignored; a
+    leading minus is kept so the caller's range check rejects it.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    text = _waybill_text(value)
+    if text is None:
+        return None
+    digits = re.sub(r"[^\d.,]", "", text)
+    if not re.search(r"\d", digits):
+        return None
+    seps = [c for c in digits if c in ".,"]
+    if len(set(seps)) == 2:
+        decimal = digits[max(digits.rfind("."), digits.rfind(","))]
+        thousands = "," if decimal == "." else "."
+        digits = digits.replace(thousands, "").replace(decimal, ".")
+    elif seps:
+        sep = seps[0]
+        groups = digits.split(sep)
+        if len(seps) > 1 or len(groups[-1]) == 3:
+            digits = digits.replace(sep, "")
+        else:
+            digits = digits.replace(sep, ".")
+    try:
+        number = float(digits)
+    except ValueError:
+        return None
+    if text.startswith("-") and text[1:].lstrip()[:1].isdigit():
+        number = -number  # a written negative stays negative (and is rejected)
+    return number if math.isfinite(number) else None
+
+
+def _waybill_weight_kg(value: Any) -> Optional[float]:
+    """Net weight in kg, ``None`` unless 0 < kg <= 100 000 (an int when whole)."""
+    kg = _waybill_number(value)
+    if kg is None or not 0 < kg <= _MAX_WAYBILL_WEIGHT_KG:
+        return None
+    return int(kg) if kg.is_integer() else kg
+
+
+def _waybill_plate(value: Any) -> Optional[str]:
+    """Plate uppercased, separators collapsed to single spaces ("b-9723kxw" →
+    "B 9723 KXW"): letter/digit runs are split as Indonesian plates print."""
+    text = _waybill_text(value, max_len=20)
+    if text is None:
+        return None
+    plate = re.sub(r"[\s.\-_/]+", " ", text.upper())
+    plate = re.sub(r"(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])", " ", plate)
+    plate = " ".join(plate.split())
+    return plate or None
+
+
+def _waybill_stream(raw: Optional[str]) -> Optional[str]:
+    """Map a written load type onto a register preset (``None`` when unknown)."""
+    if raw is None:
+        return None
+    lowered = raw.lower()
+    if lowered in WAYBILL_STREAMS:
+        return lowered
+    for stream, keywords in _STREAM_KEYWORDS:
+        if any(word in lowered for word in keywords):
+            return stream
+    return None
+
+
+def _waybill_date(value: Any) -> Optional[str]:
+    """ISO ``YYYY-MM-DD`` for day-first or ISO dates, else the text as written."""
+    text = _waybill_text(value, max_len=40)
+    if text is None:
+        return None
+    match = re.fullmatch(r"(\d{1,2})\s*[/.\-]\s*(\d{1,2})\s*[/.\-]\s*(\d{4})", text)
+    if match:
+        day, month, year = (int(g) for g in match.groups())
+    else:
+        match = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+        if not match:
+            return text
+        year, month, day = (int(g) for g in match.groups())
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return text
+
+
+def waybill_fields(parsed: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+    """The model's transcription → ``(register fields, load type as written)``.
+
+    Every value is validated here, not trusted: a weight outside 0..100 000
+    kg, a moisture outside 0..100 %, or a load type matching no preset
+    becomes ``None`` — the operator fills it in rather than receiving a guess.
+    """
+    stream_raw = _waybill_text(parsed.get("stream_raw"))
+    moisture = _waybill_number(parsed.get("moisture_pct"))
+    if moisture is not None and not 0 <= moisture <= 100:
+        moisture = None
+    elif moisture is not None and moisture.is_integer():
+        moisture = int(moisture)
+    fields = {
+        "truck_id": _waybill_plate(parsed.get("truck_id")),
+        "supplier": _waybill_text(parsed.get("supplier")),
+        "weight_kg": _waybill_weight_kg(parsed.get("weight_kg")),
+        "stream": _waybill_stream(stream_raw),
+        "moisture_pct": moisture,
+        "waybill_no": _waybill_code(parsed.get("waybill_no"), max_len=40),
+        "date": _waybill_date(parsed.get("date")),
+        "origin": _waybill_text(parsed.get("origin")),
+        "destination": _waybill_text(parsed.get("destination")),
+        "driver": _waybill_text(parsed.get("driver")),
+        "reference": _waybill_code(parsed.get("reference"), max_len=60),
+    }
+    return fields, stream_raw
 
 
 def _vote_majority(reads: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -600,29 +805,20 @@ class VLLMClient:
             abandoned.set()
             pool.shutdown(wait=False, cancel_futures=True)
 
-    def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
-        if not photo:
-            raise ValueError("VLMClient.vlm requires a base64 photo")
-        # PNG base64 always starts "iVBOR" (the 0x89 'PNG' signature); the
-        # API has already admitted only JPEG and PNG.
-        mime = "image/png" if photo.startswith("iVBOR") else "image/jpeg"
-        data_uri = photo if photo.startswith("data:") else f"data:{mime};base64,{photo}"
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _VLM_PROMPT},
-                    {"type": "image_url", "image_url": {"url": data_uri}},
-                ],
-            }
-        ]
-        # VLM_MODEL first, then VLM_FALLBACK_MODELS in order: a shared endpoint
-        # can drop one model ("no available workers") while others still serve.
-        # One wall-clock budget covers the whole chain.  Only a failure of the
-        # model itself (an HTTP error status, an unparseable reply) moves on;
-        # an unreachable endpoint or a spent budget ends the chain.  The model
-        # that answered is reported; the ones that failed are named in
-        # ``fallback_from`` so the audit never hides the switch.
+    def _vision_chain(
+        self, read: Callable[[str, float], Dict[str, Any]]
+    ) -> Tuple[Dict[str, Any], str, float, List[str]]:
+        """Run ``read(model, deadline)`` down the vision model chain.
+
+        VLM_MODEL first, then VLM_FALLBACK_MODELS in order: a shared endpoint
+        can drop one model ("no available workers") while others still serve.
+        One wall-clock budget covers the whole chain.  Only a failure of the
+        model itself (an HTTP error status, an unparseable reply) moves on;
+        an unreachable endpoint or a spent budget ends the chain.  Returns
+        ``(parsed, model, latency_ms, failed)``: the model that answered, its
+        latency, and the ones that failed before it (so the caller never
+        hides the switch).
+        """
         models = (self._settings.vlm_model, *self._settings.vlm_fallback_models)
         deadline = time.monotonic() + self._timeout_s
         failed: List[str] = []
@@ -630,7 +826,7 @@ class VLLMClient:
         for model in models:
             started = time.perf_counter()
             try:
-                parsed = self._vote_reads(model, messages, deadline)
+                parsed = read(model, deadline)
                 break
             except Exception as exc:  # noqa: BLE001 — next model, else re-raise
                 took = f"{type(exc).__name__} after {time.perf_counter() - started:.1f} s"
@@ -643,9 +839,63 @@ class VLLMClient:
                 raise VisionModelsFailedError(
                     "every vision model tried failed: " + "; ".join(details)
                 ) from exc
-        latency_ms = (time.perf_counter() - started) * 1000.0
+        return parsed, model, (time.perf_counter() - started) * 1000.0, failed
+
+    def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
+        if not photo:
+            raise ValueError("VLMClient.vlm requires a base64 photo")
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _VLM_PROMPT},
+                    {"type": "image_url", "image_url": {"url": _image_data_uri(photo)}},
+                ],
+            }
+        ]
+        parsed, model, latency_ms, failed = self._vision_chain(
+            lambda model, deadline: self._vote_reads(model, messages, deadline)
+        )
         mode = self._settings.localisation_mode
         result = self._vlm_result(parsed, model, latency_ms, mode)
+        if failed:
+            result["fallback_from"] = failed
+        return result
+
+    def read_waybill(self, image_b64: str) -> Dict[str, Any]:
+        """Read the fields of a paper waybill photo (OCR by the vision model).
+
+        One read per model down the same chain as :meth:`vlm` (no votes: a
+        field is copied, not judged).  The model only transcribes; weight,
+        plate, stream and date normalisation happen in :func:`waybill_fields`,
+        so an unreadable field stays ``None`` instead of being guessed.
+        """
+        if not image_b64:
+            raise ValueError("VLLMClient.read_waybill requires a base64 image")
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _WAYBILL_PROMPT},
+                    {"type": "image_url", "image_url": {"url": _image_data_uri(image_b64)}},
+                ],
+            }
+        ]
+        url = self._settings.vllm_vlm_url
+        scoped = self._scoped(WAYBILL_TIMEOUT_S)
+        parsed, model, latency_ms, failed = scoped._vision_chain(
+            lambda model, deadline: scoped._remaining(deadline)._chat_json(url, model, messages)
+        )
+        fields, stream_raw = waybill_fields(parsed)
+        result: Dict[str, Any] = {
+            "fields": fields,
+            "stream_raw": stream_raw,
+            "confidence": _clamp01(parsed.get("confidence")),
+            "model": model,
+            "provider": provider_for_url(url),
+            "latency_ms": round(latency_ms, 1),
+            "provenance": self.provenance,
+        }
         if failed:
             result["fallback_from"] = failed
         return result
@@ -954,6 +1204,21 @@ def resolve_explain_client(
     """
     settings = settings or get_settings()
     if _assist_reachable(settings, base_url=settings.explain_url):
+        return VLLMClient(settings=settings)
+    return None
+
+
+def resolve_waybill_client(
+    settings: Optional[Settings] = None,
+) -> Optional[VLLMClient]:
+    """The live waybill reader, or ``None`` when the VLM endpoint is down.
+
+    There is no stub: a scripted answer would claim to have read a document
+    it never saw, so ``None`` means "fill the register by hand" (the API's
+    503), whatever ``LYNCEUS_ALLOW_STUB_FALLBACK`` says.
+    """
+    settings = settings or get_settings()
+    if _vlm_reachable(settings):
         return VLLMClient(settings=settings)
     return None
 

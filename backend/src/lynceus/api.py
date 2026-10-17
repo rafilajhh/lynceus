@@ -5,6 +5,8 @@ Routes:
     POST /assess   — one batch assessment through the Lynceus decision engine.
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
     POST /assist   — Pythia: cited answers over plant documents and an audit record.
+    POST /waybill/extract — read a waybill photo's fields (vision model OCR).
+    GET/POST /inspections/{record_id}/actions — append-only follow-up log.
     GET  /shift-report — shift aggregation with supplier risk and explanations.
     GET  /benchmark/latest — newest committed validation summary (+ framing, + its replay).
     GET  /benchmark/replay — newest replay re-score of a recorded run (current rules).
@@ -15,12 +17,13 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 import os
 import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterator
+from typing import Any, AsyncIterator, Iterator, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +38,7 @@ from lynceus import auth
 from lynceus import decision
 from lynceus import detector
 from lynceus import engine_adapter
+from lynceus import followup
 from lynceus import gas_twin
 from lynceus import impact
 from lynceus import pipeline
@@ -264,6 +268,33 @@ class AssistRequest(BaseModel):
         return self
 
 
+class WaybillExtractRequest(BaseModel):
+    """One waybill photo to read (same JPEG/PNG + size rules as the load photo)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    image_base64: str = Field(min_length=1)
+    filename: str | None = Field(default=None, max_length=255)
+
+
+class FollowupRequest(BaseModel):
+    """One follow-up action on a sealed inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["notify_supplier", "escalate"]
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _clean_note(self) -> "FollowupRequest":
+        """Strip the note; blank becomes None; longer than the cap is a 422."""
+        note = (self.note or "").strip() or None
+        if note is not None and len(note) > followup.NOTE_MAX_CHARS:
+            raise ValueError(f"note must be at most {followup.NOTE_MAX_CHARS} characters")
+        object.__setattr__(self, "note", note)
+        return self
+
+
 def _load_record_or_http(record_id: str) -> audit.AuditRecord:
     """Validate ``record_id`` (422) and strict-load its record (404)."""
     if not audit.RECORD_ID_RE.match(record_id):
@@ -338,6 +369,16 @@ def _ledger_reason(record: audit.AuditRecord) -> str:
 #: 90 s model calls.  Scripted ``demo_case`` requests never take a slot.
 MAX_LIVE_INSPECTIONS = 2
 _LIVE_SLOTS = threading.BoundedSemaphore(MAX_LIVE_INSPECTIONS)
+#: Its own cap for waybill reads: an operator filling the register must not
+#: take a slot from a truck being inspected, nor queue behind one.
+MAX_LIVE_WAYBILL_READS = 2
+_WAYBILL_SLOTS = threading.BoundedSemaphore(MAX_LIVE_WAYBILL_READS)
+_OCR_UNAVAILABLE = {
+    "error": "ocr_unavailable",
+    "message": "Couldn't read the waybill right now — fill in the register by hand.",
+}
+
+_log = logging.getLogger(__name__)
 
 
 def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
@@ -1076,6 +1117,9 @@ def create_app() -> FastAPI:
                     "gate_states": states,
                     "reason": _ledger_reason(record),
                     "record_sha256": record.digest.record_sha256,
+                    "followups": followup.count_actions(
+                        settings.storage_dir, record.record_id
+                    ),
                 }
             )
         # Newest inspection first: record_id is zero-padded, so a plain
@@ -1097,6 +1141,44 @@ def create_app() -> FastAPI:
             record = _load_record_or_http(request.record_id).model_dump()
         client = pipeline.resolve_assist_client(get_settings())
         return assist.answer(request.question, record, client)
+
+    @app.post("/waybill/extract")
+    def extract_waybill(
+        request: WaybillExtractRequest, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
+        """Read the register fields off a waybill photo (live vision model only).
+
+        Every field is nullable: unreadable means ``None``, never a guess.  No
+        live model (endpoint down, every model in the chain failed) is a 503
+        ``ocr_unavailable`` — never stub fields, whatever
+        ``LYNCEUS_ALLOW_STUB_FALLBACK`` says.  Nothing is stored.
+        """
+        try:
+            image = decode_photo(request.image_base64)
+        except PhotoError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"error": exc.error, "message": str(exc)},
+            ) from exc
+        if not _WAYBILL_SLOTS.acquire(blocking=False):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "busy",
+                    "message": "The waybill reader is busy — try again in a moment.",
+                },
+            )
+        try:
+            client = pipeline.resolve_waybill_client(get_settings())
+            if client is None:
+                raise HTTPException(status_code=503, detail=_OCR_UNAVAILABLE)
+            try:
+                return client.read_waybill(base64.b64encode(image).decode("ascii"))
+            except Exception as exc:  # noqa: BLE001 — any live failure is a 503
+                _log.warning("waybill read failed: %s: %s", type(exc).__name__, exc)
+                raise HTTPException(status_code=503, detail=_OCR_UNAVAILABLE) from exc
+        finally:
+            _WAYBILL_SLOTS.release()
 
     @app.get("/shift", include_in_schema=False, response_model=None)
     def serve_shift_page(request: Request) -> FileResponse | RedirectResponse:
@@ -1276,6 +1358,38 @@ def create_app() -> FastAPI:
         """
         record = _load_record_or_http(record_id)
         return record.model_dump()
+
+    @app.get("/inspections/{record_id}/actions")
+    def get_followups(
+        record_id: str, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
+        """The record's follow-up log, oldest first, with its chain verified.
+
+        A broken chain (an edited, removed or unparseable line) still returns
+        every parseable entry, with ``chain_ok: false``.
+        """
+        _load_record_or_http(record_id)
+        entries, chain_ok = followup.read_actions(get_settings().storage_dir, record_id)
+        return {"actions": entries, "chain_ok": chain_ok}
+
+    @app.post("/inspections/{record_id}/actions", status_code=201)
+    def post_followup(
+        record_id: str,
+        request: FollowupRequest,
+        user: str | None = Depends(auth.require_auth),
+    ) -> dict[str, Any]:
+        """Append one follow-up (the sealed record itself is never touched)."""
+        record = _load_record_or_http(record_id)
+        settings = get_settings()
+        entry = followup.append_action(
+            settings.storage_dir,
+            record,
+            request.kind,
+            request.note,
+            user or None,  # auth off reports "" — no actor, not an empty name
+            settings.supplier_notify_webhook,
+        )
+        return {"action": entry}
 
     @app.get("/inspections/{record_id}/evidence/{slot}")
     def get_evidence_photo(
