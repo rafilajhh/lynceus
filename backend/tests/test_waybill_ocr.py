@@ -272,13 +272,19 @@ def test_endpoint_down_is_503_never_stub(client, monkeypatch, stub_fallback):
 def test_model_chain_failure_is_503(client, monkeypatch):
     monkeypatch.setenv(VLM_FALLBACK_MODELS_ENV, _FALLBACK)
     monkeypatch.setenv(LYNCEUS_ALLOW_STUB_FALLBACK_ENV, "1")
-    _script(monkeypatch, ValueError("not JSON"), ValueError("not JSON either"))
+    calls = _script(
+        monkeypatch,
+        ValueError("not JSON"), ValueError("not JSON either"),  # first try
+        ValueError("still not JSON"), ValueError("nor this"),  # the one retry
+    )
     _assert_ocr_unavailable(_post(client))
+    assert [c["model"] for c in calls] == [_PRIMARY, _FALLBACK, _PRIMARY, _FALLBACK]
 
 
 def test_connection_failure_is_503(client, monkeypatch):
-    _script(monkeypatch, httpx.ConnectError("refused"))
+    calls = _script(monkeypatch, httpx.ConnectError("refused"), httpx.ConnectError("refused"))
     _assert_ocr_unavailable(_post(client))
+    assert len(calls) == 2  # one retry, then the operator types the register
 
 
 def test_busy_reader_is_503(client, monkeypatch):
@@ -320,3 +326,34 @@ def test_large_photo_is_reencoded_before_upload():
 
 def test_unreadable_image_is_sent_as_is():
     assert pipeline._compact_waybill_image(_JPEG_B64) == f"data:image/jpeg;base64,{_JPEG_B64}"
+
+
+def _http_error(status: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", f"{_AMD_URL}/chat/completions")
+    return httpx.HTTPStatusError(
+        f"HTTP {status}", request=request, response=httpx.Response(status, request=request)
+    )
+
+
+def test_transient_failure_is_retried_once(client, monkeypatch):
+    """A dropped request (500 on the primary, the overloaded fallback too)
+    gets one more try instead of failing the operator's read."""
+    monkeypatch.setenv(VLM_FALLBACK_MODELS_ENV, _FALLBACK)
+    calls = _script(monkeypatch, _http_error(500), _http_error(500), _SAMPLE_READ)
+    resp = _post(client)
+    assert resp.status_code == 200, resp.text
+    assert [c["model"] for c in calls] == [_PRIMARY, _FALLBACK, _PRIMARY]
+    assert resp.json()["model"] == _PRIMARY
+    assert resp.json()["fields"]["truck_id"] == "B 9723 KXW"
+
+
+def test_timeout_is_retried_once(client, monkeypatch):
+    calls = _script(monkeypatch, httpx.ReadTimeout("no complete reply"), _SAMPLE_READ)
+    assert _post(client).status_code == 200
+    assert len(calls) == 2
+
+
+def test_refused_key_is_not_retried(client, monkeypatch):
+    calls = _script(monkeypatch, _http_error(401), _SAMPLE_READ)
+    _assert_ocr_unavailable(_post(client))
+    assert len(calls) == 1

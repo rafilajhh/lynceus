@@ -51,9 +51,15 @@ VLM_TIMEOUT_S = 90.0
 LLM_TIMEOUT_S = 45.0
 ASSIST_TIMEOUT_S = 30.0
 EXPLAIN_TIMEOUT_S = ASSIST_TIMEOUT_S
-#: Waybill OCR: one image read (no votes).  The VLM budget: the shared
-#: endpoint has taken over 60 s for one image read under load.
-WAYBILL_TIMEOUT_S = VLM_TIMEOUT_S
+#: Waybill OCR: one image read (no votes).  The shared endpoint answers a
+#: compacted waybill in ~10-30 s but sometimes stalls or drops a request
+#: (HTTP 5xx / 429 under load), so the read gets two tries inside one budget:
+#: the first is capped so a stalled request still leaves time for a second.
+#: The total stays well under the reverse proxy's 150 s read timeout.
+WAYBILL_TIMEOUT_S = 110.0
+WAYBILL_FIRST_TRY_S = 55.0
+#: A retry with less time than this left could not finish; fail instead.
+WAYBILL_MIN_RETRY_S = 15.0
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -916,10 +922,28 @@ class VLLMClient:
             }
         ]
         url = self._settings.vllm_vlm_url
-        scoped = self._scoped(WAYBILL_TIMEOUT_S)
-        parsed, model, latency_ms, failed = scoped._vision_chain(
-            lambda model, deadline: scoped._remaining(deadline)._chat_json(url, model, messages)
-        )
+        deadline = time.monotonic() + WAYBILL_TIMEOUT_S
+        for attempt in (1, 2):
+            budget = deadline - time.monotonic()
+            if attempt == 1:
+                budget = min(budget, WAYBILL_FIRST_TRY_S)
+            scoped = self._scoped(budget)
+            try:
+                parsed, model, latency_ms, failed = scoped._vision_chain(
+                    lambda model, dl, c=scoped: c._remaining(dl)._chat_json(url, model, messages)
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 - one retry, then re-raise
+                refused = isinstance(exc, httpx.HTTPStatusError) and getattr(
+                    exc.response, "status_code", None
+                ) in _KEY_REFUSED_STATUSES
+                left = deadline - time.monotonic()
+                if attempt == 2 or refused or left < WAYBILL_MIN_RETRY_S:
+                    raise
+                _log.warning(
+                    "waybill read failed (%s: %s); retrying once with %.0f s left",
+                    type(exc).__name__, str(exc)[:160], left,
+                )
         fields, stream_raw = waybill_fields(parsed)
         result: Dict[str, Any] = {
             "fields": fields,
