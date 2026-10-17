@@ -468,6 +468,9 @@ class InspectionInputs(_StrictModel):
     weight: WeightInput
     gas: GasInput
     supplier: Optional[str] = None
+    #: The uploaded waybill document photo, when one was attached: evidence
+    #: only (no OCR is performed on it). Reuses the photo validation.
+    waybill_photo: Optional[PhotoInput] = None
 
     @field_validator("truck_id")
     @classmethod

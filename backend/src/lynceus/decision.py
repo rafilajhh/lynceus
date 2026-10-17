@@ -492,10 +492,13 @@ def decide(
     weight_mismatch = _weight_mismatch_fraction(declared_weight_kg, actual_weight_kg)
 
     # The waybill itself may state a declared weight when the caller did not
-    # supply one explicitly (e.g. "Declared weight: 18,400 kg").
+    # supply one explicitly (e.g. "Declared weight: 18,400 kg", or the
+    # console's synthesized declaration "declared 18,400 kg").
     if declared_weight_kg is None and manifest_text:
         for match in re.finditer(
-            r"declared weight[^0-9]{0,24}?([0-9][0-9,\.]*)\s*kg", manifest_text, re.IGNORECASE
+            r"declared(?:\s+weight)?[^0-9]{0,24}?([0-9][0-9,\.]*)\s*kg",
+            manifest_text,
+            re.IGNORECASE,
         ):
             try:
                 declared_weight_kg = float(match.group(1).replace(",", ""))

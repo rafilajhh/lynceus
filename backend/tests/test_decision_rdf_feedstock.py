@@ -37,6 +37,29 @@ def test_plastic_film_and_textile_are_not_light_contaminants():
     assert set(decision.LIGHT_CONTAMINANTS) == {"glass", "organic_residue", "wet_mix"}
 
 
+def test_synthesized_waybill_declaration_feeds_the_weight_gate():
+    """The console synthesizes "Dry rdf feedstock, no metal, declared 5200 kg"
+    (no declared_weight_kg field, no "weight" word). The weight gate must
+    still read the declaration and evaluate instead of staying N/A."""
+    inputs = {
+        "photo_filename": "load.jpg",
+        "manifest_text": "Dry rdf feedstock, no metal, declared 5200 kg",
+        "weight_kg": 5200.0,
+    }
+    vlm = {
+        "detected": {
+            "contamination": "none detected",
+            "moisture": 0.05,
+            "hard_contaminants": [],
+            "light_contaminants": [],
+        },
+        "confidence": 0.95,
+    }
+    verdict, gates, _ = decision.decide(inputs, vlm, {"confidence": 0.9}, None)
+    assert gates["weight_plausibility"]["state"] == "passed"
+    assert gates["weight_plausibility"]["value"] == 0.0
+
+
 @pytest.mark.parametrize(
     "contamination, light",
     [

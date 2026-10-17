@@ -203,6 +203,15 @@ class InspectRequest(BaseModel):
         default=None,
         description="Photo filename when no image bytes are available (stub mode).",
     )
+    waybill_image_base64: str | None = Field(
+        default=None,
+        description="Base64 JPEG/PNG of the waybill document — archived as "
+        "evidence in the audit record; no OCR is performed on it.",
+    )
+    waybill_photo_filename: str | None = Field(
+        default=None,
+        description="Filename of the uploaded waybill document photo.",
+    )
     manifest_text: str | None = Field(
         default=None,
         description="Waybill / transfer-note text (LLM cross-check input).",
@@ -338,6 +347,8 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
         "demo_case": request.demo_case,
         "photo_base64": request.photo_base64,
         "photo_filename": request.photo_filename,
+        "waybill_image_base64": request.waybill_image_base64,
+        "waybill_photo_filename": request.waybill_photo_filename,
         "manifest_text": manifest_text,
         "weight_kg": weight_kg,
         "declared_weight_kg": request.declared_weight_kg,
@@ -361,9 +372,10 @@ def _run_inspection_with_audit(
     ``photo_provenance`` overrides the recorded photo provenance; only the
     seeding script uses it (``"sample"`` for the scripted sample shift).
     """
-    # Validate the upload first: a rejected photo must not leave an
+    # Validate the uploads first: a rejected photo must not leave an
     # ``inspection-*`` record behind (audit.begin_record is below).
     photo_bytes = decode_photo(request.photo_base64)
+    waybill_bytes = decode_photo(request.waybill_image_base64)
     # One effective payload: demo defaults applied here flow identically to
     # the AI, the engine, the decision, the impact estimate, and the audit
     # record — the record reflects what the verdict actually used.
@@ -400,10 +412,23 @@ def _run_inspection_with_audit(
         "gas": gas_input,
         "supplier": payload["supplier"],
     }
+    # The waybill document photo is evidence only (no OCR): digest it into
+    # the audit record when one was uploaded.
+    if waybill_bytes:
+        inputs["waybill_photo"] = {
+            "filename": audit.safe_filename(
+                payload["waybill_photo_filename"] or "waybill.jpg"
+            ),
+            "sha256": audit.sha256_field(waybill_bytes),
+            "captured_at_utc": now,
+            "provenance": "user_upload",
+        }
     input_digests = {
         "photo": audit.sha256_field(photo_bytes),
         "manifest_text": audit.sha256_field(manifest_text.encode("utf-8")),
     }
+    if waybill_bytes:
+        input_digests["waybill_photo"] = audit.sha256_field(waybill_bytes)
     application = {"name": "lynceus", "version": __version__}
 
     # Resolve the AI clients before the record is begun: an unreachable live
