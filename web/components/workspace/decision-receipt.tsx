@@ -9,6 +9,7 @@ import type { ReceiptRule, RuleEffect } from "@/lib/inspect-api";
 import { cn } from "@/lib/utils";
 
 const EFFECT: Record<RuleEffect, { word: string; cls: string }> = {
+  refuse: { word: "Refuse (missing input)", cls: "text-verdict-red" },
   reject: { word: "Reject", cls: "text-verdict-red" },
   hold: { word: "Hold", cls: "text-amber" },
   accept: { word: "Accept", cls: "text-verdict-green" },

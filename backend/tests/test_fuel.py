@@ -98,6 +98,19 @@ def test_window_excludes_older_and_later_trucks(ledger):
     assert fuel.kiln_intake(ledger, "all", now="2026-10-14T01:02:00Z")["trucks_accepted"] == 1
 
 
+def test_unweighed_loads_are_counted_but_left_out_of_totals(ledger):
+    write_record(ledger, 9, supplier="CV B", weight_kg=0.0)  # accepted, never weighed
+    intake = fuel.kiln_intake(ledger, "all", now=NOW)
+    assert intake["trucks_accepted"] == 5
+    assert (intake["weight_unknown_loads"], intake["weight_unknown_record_ids"]) == (
+        1, ["inspection-000009"])
+    assert "inspection-000009" not in {r["record_id"] for r in intake["rows"]}
+    # Totals unchanged from the four weighed loads.
+    assert (intake["accepted_t"], intake["energy_gj"], intake["chlorine_kg"]) == (50.0, 686.0, 240.0)
+    assert intake["method_mix"].endswith("; weight unknown: 1 load")
+    assert intake["notes"][-1].startswith("Weight unknown: 1 accepted load")
+
+
 def test_bad_window_raises(ledger):
     with pytest.raises(ValueError):
         fuel.kiln_intake(ledger, "week", now=NOW)
@@ -108,7 +121,7 @@ def test_empty_ledger(tmp_path):
     assert intake["trucks_accepted"] == 0
     assert intake["weighted"] == {"moisture_pct": None, "ncv_mj_kg": None, "chlorine_pct": None}
     assert intake["chlorine_status"] == "ok"
-    assert intake["method_mix"] == "No accepted loads in this window"
+    assert intake["method_mix"] == "No weighed accepted loads in this window"
 
 
 def test_carbon_gross_and_net(ledger):

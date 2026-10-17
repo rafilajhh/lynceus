@@ -45,6 +45,7 @@ from lynceus.decision import (
     ARITHMETIC_MARKER,
     DECLARED_SORTED_MARKER,
     DETECTOR_MISSED_MARKER,
+    EARLY_MAJORITY_MARKER,
     HARD_CONTAMINANTS,
     MOISTURE_CONFLICT_MARKER,
     PHOTO_QUALITY_MARKER,
@@ -55,6 +56,7 @@ from lynceus.decision import (
     contract_moisture_spec_pct,
     declared_moisture_fraction,
     light_contaminant_hits,
+    plate_camera,
     plate_mismatch,
     poor_image_notes,
     vote_agreement,
@@ -208,8 +210,11 @@ class _Record:
         self.agreement = vote_agreement(self.vlm)
         self.split = vote_split(self.vlm)
         self.poor_photo = poor_image_notes(self.inputs)
-        self.plate = plate_mismatch(
-            {"waybill_fields": self.fields, "observations": self.observations}
+        plate_inputs = {"waybill_fields": self.fields, "observations": self.observations}
+        self.plate = plate_mismatch(plate_inputs)
+        # The demo ANPR echoes the typed truck id: say so wherever it speaks.
+        self.plate_simulated = plate_camera(plate_inputs).startswith("simulated") or (
+            "simulated plate camera" in _reason(self.gates.get("weight_plausibility"))
         )
         fraction, _ = declared_moisture_fraction({"waybill_fields": self.fields})
         self.declared_moisture_pct = None if fraction is None else round(fraction * 100.0, 6)
@@ -226,6 +231,11 @@ class _Record:
         self.supplier = str(self.inputs.get("supplier") or self.fields.get("carrier") or "").strip()
         # The hard contaminants decide() rejects on (allowlist, VLM >= 0.6).
         self.hard = confident_hard_contaminants(None, self.vlm, None)
+        # Hard contaminants the read lists below the 0.6 bar (held, never accepted).
+        self.listed_below_bar = [] if self.hard else sorted({
+            n for n in _dict(self.vlm.get("detected")).get("hard_contaminants") or []
+            if isinstance(n, str) and n in HARD_CONTAMINANTS
+        })
         self.light = light_contaminant_hits(self.vlm)
         self.vlm_confidence = _num(self.vlm.get("confidence"))
 
@@ -339,27 +349,31 @@ def _vision_check(r: _Record) -> Dict[str, Any]:
             "; ".join(f"{s} of {o} vision reads saw {_nice(n)}" for n, (s, o) in sorted(r.split.items()))
             + ": check the load by hand.",
         )
+    if EARLY_MAJORITY_MARKER in _reason(gate):
+        return _check(
+            "vision", "warn", r.agreement or "2 of 3 reads",
+            "Vision decided on an early majority with no detector second opinion behind "
+            "it: check the load by hand.",
+        )
     if r.legacy_reject and not r.failed("weight_plausibility"):
         return _check(
             "vision", "fail", "Hard item (older rule)",
             "Rejected under an older rule that also read the vision model's prose; "
             "check the recorded reasons.",
         )
+    if r.listed_below_bar:
+        listed = r.listed_below_bar
+        return _check(
+            "vision", "warn", f"Possible {_nice(listed[0])} · {conf or 0:.2f}",
+            f"The vision model lists {_names(listed, capital=False)} below its 0.60 trust "
+            + ("bar: not acted on." if r.decision == Decision.ACCEPT
+               else "bar: check the load by hand."),
+        )
     if r.light:
         return _check(
             "vision", "warn", _names(r.light, compact=True),
             f"The vision model sees {_names(r.light, capital=False)}: light contamination "
             "for the pre-sort line.",
-        )
-    listed = [
-        n for n in _dict(r.vlm.get("detected")).get("hard_contaminants") or []
-        if isinstance(n, str) and n in HARD_CONTAMINANTS
-    ]
-    if listed:
-        return _check(
-            "vision", "warn", f"Possible {_nice(listed[0])} · {conf or 0:.2f}",
-            f"The vision model lists {_names(listed, capital=False)} below its 0.60 trust "
-            "bar: not acted on.",
         )
     return _check("vision", "pass", r.agreement or "Nothing hard seen",
                   f"Nothing hard seen: no hard or light contaminant in the photo (confidence "
@@ -464,9 +478,11 @@ def _weight(r: _Record) -> Dict[str, Any]:
         weight_note = (
             f" The scale is also {r.weight_text()} from the waybill net." if r.weight_off else ""
         )
+        camera = "simulated plate camera" if r.plate_simulated else "plate camera"
         return _check(
-            "weight", "fail", f"Plate {read} ≠ waybill",
-            f"The plate camera reads {read}; the waybill says {expected}: verify the truck."
+            "weight", "fail",
+            "Simulated plate ≠ waybill" if r.plate_simulated else f"Plate {read} ≠ waybill",
+            f"The {camera} reads {read}; the waybill says {expected}: verify the truck."
             + weight_note,
         )
     if state in (None, GateState.NOT_RUN):
@@ -561,6 +577,9 @@ def _why(r: _Record) -> str:
                         "inspect the load before tipping.")
             return "Vision model unavailable: a person inspects the load before tipping."
         if r.plate_flagged:
+            if r.plate and r.plate_simulated:
+                return (f"Simulated plate camera reads {r.plate[0]}, not the waybill's "
+                        f"{r.plate[1]}: verify the truck before tipping.")
             if r.plate:
                 return (f"Plate {r.plate[0]} does not match the waybill ({r.plate[1]}): verify "
                         "the truck before tipping.")
@@ -576,6 +595,12 @@ def _why(r: _Record) -> str:
             name, (seen, of) = min(r.split.items())
             return (f"{seen} of {of} vision reads saw {_nice(name)}: check the load by hand "
                     "before tipping.")
+        if r.listed_below_bar:
+            return (f"Possible {_nice(r.listed_below_bar[0])} (vision {r.vlm_confidence or 0:.2f}, "
+                    "below the 0.60 bar): check the load by hand before tipping.")
+        if EARLY_MAJORITY_MARKER in _reason(r.gates.get("vlm_confidence")):
+            return ("Vision decided on 2 of 3 reads with no second look: check the load by "
+                    "hand before tipping.")
         detector_failed = r.failed("detector_second_opinion")
         if detector_failed and flag and flag[0] in HARD_CONTAMINANTS:
             return (f"Second look flags {flag[0]} the vision model did not confirm: the "
@@ -629,7 +654,20 @@ _EFFECT = {
 }
 
 
-def _replay_args(r: _Record) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _current_benchmarked_models() -> Tuple[str, ...]:
+    """``VLM_BENCHMARKED_MODELS`` as configured now (a record does not keep
+    the value it was sealed under), else the decision layer's default."""
+    try:
+        from lynceus.config import get_settings  # lazy: checks stays importable alone
+
+        return tuple(get_settings().vlm_benchmarked_models)
+    except Exception:  # unreadable settings: the stated default
+        return tuple(decision.BENCHMARKED_VLM_MODELS)
+
+
+def _replay_args(
+    r: _Record, benchmarked_vlm_models: Sequence[str]
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Best-effort ``decide`` payload and keyword arguments from a record.
 
     A sealed record keeps the waybill text only as a digest, so a typed
@@ -655,7 +693,7 @@ def _replay_args(r: _Record) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         "observations": r.observations,
     }
     thresholds = _dict(_dict(r.detector).get("thresholds"))
-    kwargs: Dict[str, Any] = {}
+    kwargs: Dict[str, Any] = {"benchmarked_vlm_models": tuple(benchmarked_vlm_models)}
     if _num(thresholds.get("hard")) is not None:
         kwargs["detector_hard_conf"] = float(thresholds["hard"])
     if _num(thresholds.get("light")) is not None:
@@ -665,14 +703,14 @@ def _replay_args(r: _Record) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     return payload, kwargs
 
 
-def _receipt(r: _Record) -> List[Dict[str, Any]]:
+def _receipt(r: _Record, benchmarked_vlm_models: Sequence[str]) -> List[Dict[str, Any]]:
     """The receipt the response carries, else :func:`decision.rule_trace`
     replayed on the record.  When the replay disagrees with the sealed
     verdict (older rules, or inputs kept only as digests) a last row says so:
     the sealed verdict stands."""
     if r.receipt is not None:
         return [row for row in r.receipt if isinstance(row, dict)]
-    payload, kwargs = _replay_args(r)
+    payload, kwargs = _replay_args(r, benchmarked_vlm_models)
     engine = {"recommendation": r.recommendation} if r.recommendation else None
     vlm = r.vlm or None
     replayed, _, _ = decision.decide(payload, vlm, None, engine, r.detector, **kwargs)
@@ -700,6 +738,7 @@ def build_checks(
     response_like: Dict[str, Any],
     supplier_profile: Optional[Dict[str, Any]] = None,
     sampling: Optional[Dict[str, Any]] = None,
+    benchmarked_vlm_models: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """``{"why": str, "checks": [check, ...], "receipt": [rule, ...]}``.
 
@@ -709,7 +748,9 @@ def build_checks(
     or None when there is none.  ``sampling`` is this truck's
     ``suppliers.sampling_for`` call (default: ``response_like["sampling"]``).
     ``receipt`` is ``response_like["receipt"]`` when the caller computed it
-    with :func:`decision.rule_trace`, else replayed from the record.
+    with :func:`decision.rule_trace`, else replayed from the record with
+    ``benchmarked_vlm_models`` (default: the ``VLM_BENCHMARKED_MODELS``
+    setting, as the record does not keep the value it was sealed under).
     """
     r = _Record(response_like if isinstance(response_like, dict) else {}, sampling)
     return {
@@ -722,5 +763,10 @@ def build_checks(
             _weight(r),
             _supplier(r, supplier_profile),
         ],
-        "receipt": _receipt(r),
+        "receipt": _receipt(
+            r,
+            _current_benchmarked_models()
+            if benchmarked_vlm_models is None
+            else benchmarked_vlm_models,
+        ),
     }

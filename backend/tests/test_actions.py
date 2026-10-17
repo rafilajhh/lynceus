@@ -483,7 +483,9 @@ def test_weight_mismatch_with_unconfident_hard_list_is_a_ticket_correction():
     verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
     assert verdict == D.ESCALATE_HUMAN  # a weight gap never rejects
     assert not any(r.startswith("SOP-RDF-4.1") or r.startswith("SOP-RDF-4.2") for r in _refs(steps))
-    assert _refs(steps) == ["SOP-RDF-3.2", "SOP-RDF-3.3", "SOP-RDF-5.2"]
+    # The metal listed below the bar is checked by hand first (SOP 5.2).
+    assert _refs(steps) == ["SOP-RDF-5.2", "SOP-RDF-3.2", "SOP-RDF-3.3"]
+    assert steps[0]["text"].startswith("Hard item listed below the confidence bar")
 
 
 def test_declared_sorted_metal_from_real_decide_gets_breach_notice():
@@ -589,6 +591,15 @@ def test_vote_split_from_real_decide_is_a_hand_check():
         "Vision reads disagree on a hard item: the supervisor checks the load by hand and "
         "records the call.")]
     assert _refs(steps) == ["SOP-RDF-5.2"]
+
+
+def test_unchecked_early_majority_from_real_decide_is_a_hand_check():
+    vlm = {**_CLEAN_VLM, "votes": [{"hard": []}, {"hard": []}], "third_read": "late"}
+    verdict, steps = _decide_and_steps(dict(_WAVE2_INPUTS), vlm, None)
+    assert verdict == D.ESCALATE_HUMAN
+    assert _texts(steps) == [(
+        "Vision decided on two of three reads with no second look: the supervisor checks "
+        "the load by hand and records the call.")]
 
 
 def test_lab_sample_step_quotes_the_sampling_reason():

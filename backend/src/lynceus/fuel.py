@@ -117,15 +117,20 @@ def _quality(
 
 def _intake_rows(
     storage_dir: "str | os.PathLike[str]", since: Optional[str], until: str
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    """``(rows, unweighed record ids)`` of accepted loads in the window."""
     history: Dict[str, List[Dict[str, Any]]] = {}
     rows = []
+    unweighed: List[str] = []
     for row in suppliers.ledger_rows(storage_dir):
         key = suppliers.supplier_key(row["supplier"])
         if row["started_at_utc"] >= until:
             break
         in_window = since is None or row["started_at_utc"] >= since
-        if in_window and _accepted(row):
+        if in_window and _accepted(row) and not row["weight_measured"]:
+            # 0 kg means "never weighed": no tonnage, energy or chlorine.
+            unweighed.append(row["record_id"])
+        elif in_window and _accepted(row):
             method, q = _quality(row, history.get(key, []))
             net_t = row["net_kg"] / 1000.0
             dry_t = net_t * (1.0 - q["moisture_pct"] / 100.0)
@@ -141,7 +146,7 @@ def _intake_rows(
                 "chlorine_kg": round(dry_t * q["chlorine_pct"] * 10.0, 2),
             })
         history.setdefault(key, []).extend(row["labs"])
-    return rows
+    return rows, unweighed
 
 
 def _weighted(rows: List[Dict[str, Any]], key: str, weight: str) -> Optional[float]:
@@ -161,7 +166,7 @@ def kiln_intake(
     window's length (none for ``all``).
     """
     since, until = _window_bounds(window, now)
-    rows = _intake_rows(storage_dir, since, until)
+    rows, unweighed = _intake_rows(storage_dir, since, until)
     hours = WINDOWS[window]
     per_shift = chlorine_budget_kg_per_shift()
     budget = None if hours is None else per_shift * hours / SHIFT_HOURS
@@ -185,7 +190,10 @@ def kiln_intake(
                for m in ("lab", "supplier_average", "contract_spec")}
     return {
         "window": {"name": window, "since": since, "until": until},
-        "trucks_accepted": len(rows),
+        "trucks_accepted": len(rows) + len(unweighed),
+        # Accepted loads with no scale weight: left out of every total below.
+        "weight_unknown_loads": len(unweighed),
+        "weight_unknown_record_ids": unweighed,
         "accepted_t": round(sum(r["net_t"] for r in rows), 2),
         "dry_t": round(sum(r["dry_t"] for r in rows), 2),
         "energy_gj": round(sum(r["energy_gj"] for r in rows), 1),
@@ -215,8 +223,9 @@ def kiln_intake(
             f"Cl from lab on {methods['lab']} load{'' if methods['lab'] == 1 else 's'}, "
             f"supplier average on {methods['supplier_average']}, "
             f"contract limit on {methods['contract_spec']}"
-            if rows else "No accepted loads in this window"
-        ),
+            if rows else "No weighed accepted loads in this window"
+        ) + (f"; weight unknown: {len(unweighed)} load{'' if len(unweighed) == 1 else 's'}"
+             if unweighed else ""),
         "rows": rows,
         "notes": [
             "Accepted loads: ACCEPT verdicts, plus loads a supervisor accepted or "
@@ -227,6 +236,9 @@ def kiln_intake(
             "Energy = net t x NCV as received; chlorine = dry t x Cl % (dry basis). "
             "Moisture and NCV are weighted by net tonnes, chlorine by dry tonnes.",
             contracts.CONTRACT_NOTE,
+            *([f"Weight unknown: {len(unweighed)} accepted "
+               f"load{'' if len(unweighed) == 1 else 's'} carried no scale weight and "
+               "are left out of tonnage, energy and chlorine."] if unweighed else []),
         ],
     }
 

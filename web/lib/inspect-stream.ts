@@ -78,9 +78,31 @@ export async function inspectStreaming(
   }
   if (!resp.ok) throw await errorFrom(resp);
   onMode("stream");
+  // From here the backend has accepted the truck: a lost connection is
+  // "dropped" (the verdict may be sealed), never a retryable network error.
+  let sealedId: string | null = null;
+  const track = (e: StageEvent) => {
+    if (e.stage === "sealed" && typeof e.data.record_id === "string") sealedId = e.data.record_id;
+    onStage(e);
+  };
+  const dropped = () =>
+    new InspectError(
+      "dropped",
+      "The connection dropped after the inspection started; the verdict may already be sealed.",
+      null,
+      sealedId,
+    );
   if (!resp.body) {
     // No readable body (very old browser): the whole stream arrives at once.
-    return parseLines(await resp.text(), onStage);
+    let text: string;
+    try {
+      text = await resp.text();
+    } catch {
+      throw dropped();
+    }
+    const whole = parseLines(text, track);
+    if (!whole) throw dropped();
+    return whole;
   }
 
   const reader = resp.body.getReader();
@@ -93,7 +115,7 @@ export async function inspectStreaming(
       buffer += decoder.decode(value, { stream: !done });
       let nl = buffer.indexOf("\n");
       while (nl >= 0) {
-        result = handleLine(buffer.slice(0, nl), onStage) ?? result;
+        result = handleLine(buffer.slice(0, nl), track) ?? result;
         buffer = buffer.slice(nl + 1);
         nl = buffer.indexOf("\n");
       }
@@ -101,19 +123,17 @@ export async function inspectStreaming(
     }
   } catch (err) {
     if (err instanceof InspectError) throw err;
-    throw new InspectError("network", "The connection dropped before the verdict arrived.", null);
+    throw dropped();
   }
-  result = handleLine(buffer, onStage) ?? result;
-  if (!result) {
-    throw new InspectError("http", "The stream ended without a verdict.", resp.status);
-  }
+  result = handleLine(buffer, track) ?? result;
+  // A stream that ends without a result line was cut short, not refused.
+  if (!result) throw dropped();
   return result;
 }
 
-function parseLines(text: string, onStage: (e: StageEvent) => void): InspectResponse {
+function parseLines(text: string, onStage: (e: StageEvent) => void): InspectResponse | null {
   let result: InspectResponse | null = null;
   for (const line of text.split("\n")) result = handleLine(line, onStage) ?? result;
-  if (!result) throw new InspectError("http", "The stream ended without a verdict.", null);
   return result;
 }
 

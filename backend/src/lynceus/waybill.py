@@ -15,6 +15,9 @@ what was **declared** with what is **seen** and **weighed**.
   processed RDF, and the gross − tare = net arithmetic.
 * :func:`transcript` — a deterministic text of the fields; it becomes the
   inspection's ``manifest_text`` (and its audit digest).
+* :func:`sign_read` / :func:`verify_read` — the ``read_token`` the reader
+  hands out, so ``/inspect`` seals a read as AI-read only when this server
+  made it, for exactly that waybill photo.
 
 Offline, only the bundled sample waybill (``web/public/demo/waybill-1.jpg``,
 fictitious) is "read": its sha256 selects the scripted fields, stated as
@@ -27,7 +30,12 @@ from __future__ import annotations
 import base64
 import copy
 import hashlib
+import hmac
+import json
+import logging
+import os
 import re
+import secrets
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,6 +43,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from lynceus import pipeline
 from lynceus.config import Settings, provider_for_url
 from lynceus.weighbridge import normalize_plate
+
+_log = logging.getLogger(__name__)
 
 #: Fields in reading order (also the transcript order).
 FIELD_NAMES: Tuple[str, ...] = (
@@ -522,3 +532,107 @@ def read(image_bytes: bytes, settings: Settings, *, demo: bool = False) -> Dict[
         provenance="live",
         warnings=warnings,
     )
+
+
+# ---------------------------------------------------------------------------
+# Read tokens: the server vouches for its own read
+# ---------------------------------------------------------------------------
+
+#: The HMAC key file, created once under the storage dir (owner-only).
+READ_TOKEN_KEY_FILE = "waybill-read.key"
+_READ_TOKEN_VERSION = 1
+_KEY_BYTES = 32
+_KEY_LOCK = threading.Lock()
+_KEYS: Dict[str, bytes] = {}
+
+
+def read_token_key(storage_dir: Any) -> bytes:
+    """The HMAC key behind read tokens: random bytes stored once under
+    ``storage_dir`` (so tokens survive a restart and every worker agrees),
+    or a per-process key when that directory cannot be written."""
+    path = Path(storage_dir) / READ_TOKEN_KEY_FILE
+    cache_key = str(path.resolve())
+    with _KEY_LOCK:
+        if cache_key in _KEYS:
+            return _KEYS[cache_key]
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                key = path.read_bytes()
+            else:
+                key = secrets.token_bytes(_KEY_BYTES)
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(key)
+            if len(key) < _KEY_BYTES:
+                raise OSError(f"{READ_TOKEN_KEY_FILE} is truncated")
+        except OSError as exc:
+            _log.warning("waybill read key not stored (%s): using a per-process key", exc)
+            key = secrets.token_bytes(_KEY_BYTES)
+        _KEYS[cache_key] = key
+        return key
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _mac(key: bytes, body: str) -> str:
+    return hmac.new(key, body.encode("ascii"), hashlib.sha256).hexdigest()
+
+
+def sign_read(key: bytes, image_bytes: bytes, response: Dict[str, Any]) -> str:
+    """``read_token`` for one ``POST /waybill/read`` answer: an HMAC over the
+    image digest and what the reader said (fields as read, confidences,
+    model, provenance), never over the operator's final values."""
+    fields = response.get("fields") or {}
+    claims = {
+        "v": _READ_TOKEN_VERSION,
+        "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
+        "fields": values_of(fields),
+        "field_confidences": {
+            name: entry.get("confidence")
+            for name, entry in fields.items()
+            if isinstance(entry, dict)
+        },
+        "confidence": response.get("confidence"),
+        "model": response.get("model"),
+        "provenance": response.get("provenance"),
+        "latency_ms": response.get("latency_ms"),
+    }
+    body = _b64url(json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    return f"{body}.{_mac(key, body)}"
+
+
+def verify_read(key: bytes, token: Any, image_bytes: bytes) -> Optional[Dict[str, Any]]:
+    """The signed read claims when ``token`` is genuine and was issued for
+    exactly ``image_bytes``; ``None`` otherwise (never raises)."""
+    if not isinstance(token, str) or not image_bytes:
+        return None
+    body, dot, mac = token.partition(".")
+    try:
+        genuine = hmac.compare_digest(mac.encode("ascii"), _mac(key, body).encode("ascii"))
+    except UnicodeEncodeError:  # a non-ASCII token is never ours
+        return None
+    if not dot or not genuine:
+        return None
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+    except (ValueError, TypeError):
+        return None
+    if (
+        not isinstance(claims, dict)
+        or claims.get("v") != _READ_TOKEN_VERSION
+        or claims.get("image_sha256") != hashlib.sha256(image_bytes).hexdigest()
+    ):
+        return None
+    return claims
+
+
+def edited_fields(read_values: Dict[str, Any], confirmed: Dict[str, Any]) -> List[str]:
+    """The fields whose confirmed value differs from what the reader read
+    (both cleaned like a read, so "16.340" vs 16340 is no edit)."""
+    read = clean_values(read_values)
+    final = clean_values(confirmed)
+    return sorted(name for name in set(read) | set(final) if read.get(name) != final.get(name))

@@ -40,8 +40,10 @@ def test_structured_metal_at_confidence_threshold_rejects():
 
 def test_structured_metal_below_confidence_threshold_does_not_hard_reject():
     verdict, _, reasons = _decide("possible metal", ["metal"], 0.59)
-    assert verdict != Decision.REJECT
-    assert not any("metal" in reason.lower() for reason in reasons)
+    # Below the bar: never a reject, never an accept either; a person checks it.
+    assert verdict == Decision.ESCALATE_HUMAN
+    assert not any(reason.startswith("Hard contamination detected") for reason in reasons)
+    assert any("below the confidence bar" in reason for reason in reasons)
 
 
 @pytest.mark.parametrize("hard_contaminants", [None, "metal", {"metal": True}, ["no metal", 7, "tyre"]])

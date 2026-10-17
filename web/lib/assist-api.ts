@@ -163,10 +163,12 @@ function handleLine(line: string, onProgress: (p: PythiaProgress) => void): Assi
 
 /**
  * POST /assist/stream: the same answer as {@link askPythia}, with each lookup
- * and model turn reported through `onProgress` as it happens. Any failure of
- * the stream itself (old backend, dropped connection, error line, no result)
- * falls back to one plain POST /assist, whose errors are the operator-facing
- * ones.
+ * and model turn reported through `onProgress` as it happens. Only a stream
+ * that delivered nothing (old backend, refused request, empty body) falls
+ * back to one plain POST /assist. Once any line has arrived the question is
+ * being answered: an error line or a dropped connection is reported as an
+ * AssistError instead of asking the model a second time, and the steps
+ * already shown stay valid.
  */
 export async function askPythiaStreaming(
   question: string,
@@ -198,24 +200,33 @@ export async function askPythiaStreaming(
   const decoder = new TextDecoder();
   let buffer = "";
   let result: AssistResponse | null = null;
+  let received = false;
+  const take = (line: string) => {
+    if (line.trim()) received = true;
+    result = handleLine(line, onProgress) ?? result;
+  };
   try {
     for (;;) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
       let nl = buffer.indexOf("\n");
       while (nl >= 0) {
-        result = handleLine(buffer.slice(0, nl), onProgress) ?? result;
+        take(buffer.slice(0, nl));
         buffer = buffer.slice(nl + 1);
         nl = buffer.indexOf("\n");
       }
       if (done) break;
     }
-    result = handleLine(buffer, onProgress) ?? result;
+    take(buffer);
   } catch (err) {
     if (signal?.aborted) throw err;
+    if (err instanceof AssistError) throw err; // the backend's own error line
+    if (received) throw new AssistError("The connection dropped before Pythia's answer arrived.");
     return fallback();
   }
-  return result ?? fallback();
+  if (result) return result;
+  if (received) throw new AssistError("Pythia's answer stream ended without an answer.");
+  return fallback();
 }
 
 // ---------------------------------------------------------------------------

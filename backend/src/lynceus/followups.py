@@ -44,7 +44,7 @@ from typing import Annotated, Any, Dict, Iterable, Iterator, List, Literal, Opti
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
-from lynceus import audit, contracts
+from lynceus import audit, contracts, decision as decision_rules
 from lynceus.config import get_settings, provider_for_url
 
 __all__ = [
@@ -65,6 +65,7 @@ __all__ = [
     "append_notice",
     "read_chain",
     "verify_chain",
+    "weight_measured",
     "load_many",
     "ledger_row",
     "notice_facts",
@@ -81,6 +82,11 @@ RESOLUTION_DECISIONS = ("accept", "sort_then_accept", "reject", "retake")
 
 _FILENAME_RE = re.compile(r"^(\d{3,})-(resolution|lab_result|notice)\.json$")
 _LOCK_NAME = ".append.lock"
+#: The chain's tail anchor ``{record_id, seq, digest, kind, updated_at_utc}``,
+#: rewritten atomically after every append: deleting the newest follow-up
+#: no longer leaves a chain that verifies.
+TIP_FILENAME = ".tip.json"
+TAIL_NOT_ANCHORED_NOTE = "tail not anchored (pre-dates tip file)"
 #: A lock file older than this is a crashed writer's leftover, not a writer.
 _STALE_LOCK_S = 30.0
 _LOCK_WAIT_S = 5.0
@@ -162,9 +168,10 @@ class ContractEval(_Strict):
     base_price_idr_per_t: int
     adjusted_price_idr_per_t: int
     adjustment_pct: float
-    net_t: float
-    payable_idr: int
-    deduction_idr: int
+    #: ``None`` (with ``weight_measured`` false) when the truck was not weighed.
+    net_t: Optional[float]
+    payable_idr: Optional[int]
+    deduction_idr: Optional[int]
     refused: bool
     note: str
     #: Indicative class code; absent on lab results sealed before it existed.
@@ -175,6 +182,9 @@ class ContractEval(_Strict):
     settlement_price_idr_per_t: Optional[int] = None
     settlement_idr: Optional[int] = None
     premium_idr: Optional[int] = None
+    #: False when the record carries no weighbridge weight (absent on older results).
+    weight_measured: Optional[bool] = None
+    settlement_note: Optional[str] = None
 
 
 class LabBody(_Strict):
@@ -323,7 +333,8 @@ def read_chain(
     good: List[tuple[int, Dict[str, Any]]] = []
     problems: List[str] = []
     for path in folder.iterdir():
-        if not path.is_file() or path.name == _LOCK_NAME or path.name.endswith(".tmp"):
+        if (not path.is_file() or path.name in (_LOCK_NAME, TIP_FILENAME)
+                or path.name.endswith(".tmp")):
             continue
         match = _FILENAME_RE.match(path.name)
         if not match:
@@ -353,8 +364,52 @@ def read_chain(
     return [data for _, data in good], problems
 
 
+def _read_tip(folder: Path) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """``(tip, problem)``: the anchor, ``(None, None)`` when there is none."""
+    path = folder / TIP_FILENAME
+    if not path.is_file():
+        return None, None
+    try:
+        tip = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"{TIP_FILENAME}: unreadable: {exc}"
+    if (not isinstance(tip, dict) or isinstance(tip.get("seq"), bool)
+            or not isinstance(tip.get("seq"), int) or not isinstance(tip.get("digest"), str)):
+        return None, f"{TIP_FILENAME}: malformed"
+    return tip, None
+
+
+def _tail(folder: Path, chain: List[Dict[str, Any]]) -> tuple[List[str], List[str], bool]:
+    """``(problems, notes, anchored)`` for the chain's end against the tip.
+
+    * tip ahead of the files, or its digest differs: "chain truncated" (a
+      newest follow-up was deleted or replaced).
+    * tip exactly one behind with a matching digest: an append that crashed
+      between the follow-up and its tip; a note, and the next append fixes it.
+    * no tip: an older chain; it verifies as before, with a note.
+    """
+    tip, problem = _read_tip(folder)
+    if problem:
+        return [problem], [], False
+    if tip is None:
+        return [], ([TAIL_NOT_ANCHORED_NOTE] if chain else []), not chain
+    seq = tip["seq"]
+    if seq > len(chain) or (seq >= 1 and chain[seq - 1]["digest"] != tip["digest"]):
+        last = chain[-1]["seq"] if chain else 0
+        return [
+            f"chain truncated: the tip anchors seq {seq} ({tip['digest'][:19]}...), "
+            f"the last follow-up on disk is seq {last}"
+        ], [], True
+    if seq == len(chain) - 1:
+        return [], [f"tail one past the tip (seq {len(chain)}): an interrupted append"], True
+    if seq < len(chain):
+        return [f"{len(chain) - seq} follow-ups after the tip (seq {seq}): written outside Lynceus"], [], True
+    return [], [], True
+
+
 def _verify(
-    chain: List[Dict[str, Any]], problems: List[str], parent_digest: Optional[str]
+    chain: List[Dict[str, Any]], problems: List[str], parent_digest: Optional[str],
+    folder: Optional[Path] = None,
 ) -> Dict[str, Any]:
     problems = list(problems)
     previous: Optional[str] = None
@@ -367,16 +422,23 @@ def _verify(
         if parent_digest is not None and item["parent_record_digest"] != parent_digest:
             problems.append(f"{name}: parent_record_digest does not match the inspection record")
         previous = item["digest"]
-    return {"ok": not problems, "problems": problems}
+    notes: List[str] = []
+    anchored = True
+    if folder is not None:
+        tail_problems, notes, anchored = _tail(folder, chain)
+        problems += tail_problems
+    return {"ok": not problems, "problems": problems, "anchored": anchored, "notes": notes}
 
 
 def verify_chain(storage_dir: "str | os.PathLike[str]", record_id: str) -> Dict[str, Any]:
-    """``{ok, problems}`` for the record's follow-up chain.
+    """``{ok, problems, anchored, notes}`` for the record's follow-up chain.
 
     Detects a file edited after sealing (digest), a deleted, inserted or
-    reordered follow-up (seq and ``previous_digest``), and a follow-up that
-    does not answer this record (``parent_record_digest``).  An unreadable
-    parent record is itself a problem.
+    reordered follow-up (seq and ``previous_digest``), a deleted or replaced
+    newest follow-up (the tip file, :data:`TIP_FILENAME`), and a follow-up
+    that does not answer this record (``parent_record_digest``).  An
+    unreadable parent record is itself a problem.  ``anchored`` is false for
+    a chain written before tip files (it verifies as before, with a note).
     """
     chain, problems = read_chain(storage_dir, record_id)
     try:
@@ -384,7 +446,8 @@ def verify_chain(storage_dir: "str | os.PathLike[str]", record_id: str) -> Dict[
     except RecordNotFound as exc:
         parent = None
         problems = [*problems, f"inspection record unreadable: {exc}"]
-    return _verify(chain, problems, parent)
+    folder = _record_dir(storage_dir, record_id) / FOLLOWUPS_DIRNAME
+    return _verify(chain, problems, parent, folder)
 
 
 def load_many(
@@ -467,7 +530,7 @@ def append(
 
     with _PROCESS_LOCK, _folder_lock(folder):
         chain, problems = read_chain(storage_dir, record_id)
-        state = _verify(chain, problems, parent)
+        state = _verify(chain, problems, parent, folder)
         if not state["ok"]:
             raise ChainBroken(
                 "follow-up chain fails verification; nothing appended: "
@@ -496,6 +559,15 @@ def append(
         if path.exists():
             raise ChainBroken(f"{path.name} already exists")
         audit._atomic_write_json(path, payload)
+        # Anchor the new tail (atomic replace; a crash between the two
+        # writes leaves the tip one behind, which verifies with a note).
+        audit._atomic_write_json(folder / TIP_FILENAME, {
+            "record_id": record_id,
+            "seq": seq,
+            "kind": kind,
+            "digest": payload["digest"],
+            "updated_at_utc": payload["created_at_utc"],
+        })
     return payload
 
 
@@ -538,6 +610,17 @@ def append_resolution(
     return append(storage_dir, record_id, "resolution", body, actor)
 
 
+#: ``inputs.weight.source`` values that mean no scale reading exists.
+UNMEASURED_WEIGHT_SOURCES = ("not_measured", "missing", "none")
+
+
+def weight_measured(record: audit.AuditRecord) -> bool:
+    """True when the record carries a real scale weight (> 0 kg).  Records
+    sealed without one carry 0 kg; their load totals are unknown, not 0."""
+    weight = record.inputs.weight
+    return weight.value_kg > 0 and weight.source not in UNMEASURED_WEIGHT_SOURCES
+
+
 def append_lab(
     storage_dir: "str | os.PathLike[str]",
     record_id: str,
@@ -572,8 +655,10 @@ def append_lab(
         "hg_mg_mj": None if hg_mg_mj is None else float(hg_mg_mj),
         "lab": (lab or "").strip() or "Site laboratory",
         "sampled_at_utc": audit.now_utc(),
+        # An unweighed truck gets its tier but no load totals (never Rp 0).
         "contract_eval": contracts.evaluate(
-            {**values, "hg_mg_mj": hg_mg_mj}, record.inputs.weight.value_kg
+            {**values, "hg_mg_mj": hg_mg_mj},
+            record.inputs.weight.value_kg if weight_measured(record) else None,
         ),
     }
     return append(storage_dir, record_id, "lab_result", body, actor)
@@ -624,9 +709,14 @@ def ledger_row(record: audit.AuditRecord, chain: List[Dict[str, Any]]) -> Dict[s
     """What the ops loop counts for one record.
 
     * ``hard_contaminant_load``: a REJECT that names a hard contaminant.
-    * ``declaration_conflict``: the ``manifest_crosscheck`` gate FAILED.
-    * ``breach_fee_idr``: both at once (declared sorted, carried a hard
-      contaminant): the example contract's flat fee.
+    * ``declaration_conflict``: the ``manifest_crosscheck`` gate FAILED
+      (for any reason: sorted-but-contaminated, moisture, arithmetic).
+    * ``declared_sorted``: the waybill declared sorted / processed RDF, read
+      from the gate reason's :data:`decision.DECLARED_SORTED_MARKER` or the
+      recorded waybill fields (load type, remarks).
+    * ``breach_fee_idr``: a hard-contaminant load declared as sorted RDF:
+      the example contract's flat fee.  A conflict alone (an MSW waybill
+      whose moisture disagreed) is not that breach.
     * the latest resolution decides ``reviewed`` / ``confirmed`` /
       ``overridden``; ``spec_breach_samples`` counts lab samples with a
       refusal or penalty (warnings excluded).
@@ -635,7 +725,16 @@ def ledger_row(record: audit.AuditRecord, chain: List[Dict[str, Any]]) -> Dict[s
     detected = record.ai_outputs.vlm.detected or {}
     hard = _strings(detected.get("hard_contaminants"))
     hard_load = decision == audit.Decision.REJECT and bool(hard)
-    conflict = record.gates.manifest_crosscheck.state == audit.GateState.FAILED
+    crosscheck = record.gates.manifest_crosscheck
+    conflict = crosscheck.state == audit.GateState.FAILED
+    fields = {
+        name: item.get("value") if isinstance(item, dict) else item
+        for name, item in (record.inputs.manifest_text.extracted_fields or {}).items()
+    }
+    declared_sorted = (
+        decision_rules.DECLARED_SORTED_MARKER in (crosscheck.reason or "")
+        or decision_rules.declares_processed_rdf(fields)
+    )
     resolutions = [f["body"] for f in chain if f["kind"] == "resolution"]
     labs = [f["body"] for f in chain if f["kind"] == "lab_result"]
     latest = resolutions[-1] if resolutions else None
@@ -648,8 +747,10 @@ def ledger_row(record: audit.AuditRecord, chain: List[Dict[str, Any]]) -> Dict[s
         "hard_contaminants": hard,
         "hard_contaminant_load": hard_load,
         "declaration_conflict": conflict,
-        "breach_fee_idr": contracts.BREACH_FEE_IDR if (hard_load and conflict) else 0,
+        "declared_sorted": declared_sorted,
+        "breach_fee_idr": contracts.BREACH_FEE_IDR if (hard_load and declared_sorted) else 0,
         "net_kg": float(record.inputs.weight.value_kg),
+        "weight_measured": weight_measured(record),
         "resolution": latest,
         "reviewed": latest is not None,
         "confirmed": bool(latest and latest["agrees_with_ai"] is True),
@@ -659,7 +760,8 @@ def ledger_row(record: audit.AuditRecord, chain: List[Dict[str, Any]]) -> Dict[s
             1 for lab in labs
             if any(b["severity"] != "warning" for b in lab["contract_eval"]["breaches"])
         ),
-        "deductions_idr": sum(int(lab["contract_eval"]["deduction_idr"]) for lab in labs),
+        # An unweighed load's deduction is unknown (None), not counted as 0 owed.
+        "deductions_idr": sum(int(lab["contract_eval"]["deduction_idr"] or 0) for lab in labs),
         "notices": sum(1 for f in chain if f["kind"] == "notice"),
     }
 
@@ -768,10 +870,15 @@ def notice_facts(record: audit.AuditRecord, chain: List[Dict[str, Any]]) -> List
         facts.append(f"Supervisor decision: {row['resolution']['decision'].replace('_', ' ')}")
     for lab in row["labs"]:
         effect = lab["contract_eval"]
+        settlement = (
+            f"contract deduction Rp {effect['deduction_idr']:,}"
+            if effect["deduction_idr"] is not None
+            else "weight not measured, settlement needs the weighbridge ticket"
+        )
         facts.append(
             f"Lab sample {lab['sample_id']}: moisture {lab['moisture_pct']:g} %, "
             f"NCV {lab['ncv_mj_kg']:g} MJ/kg, chlorine {lab['chlorine_pct']:g} %; "
-            f"contract deduction Rp {effect['deduction_idr']:,}"
+            + settlement
         )
     return facts
 
@@ -902,9 +1009,41 @@ PACK_NOTE = (
 )
 
 
-def _file_entry(path: Path, rel: str, role: str, recorded: Optional[str] = None) -> Dict[str, Any]:
+#: Archive prefix for files whose bytes no longer match the sealed record.
+TAMPERED_PREFIX = "tampered/"
+TAMPERED_NOTE = (
+    "sha256 does not match the sealed record: kept under tampered/ for "
+    "inspection, not part of the evidence set."
+)
+OUTSIDE_NOTE = "path resolves outside the record folder: not read, not packed."
+
+
+def _confined(folder: Path, rel: str) -> Optional[Path]:
+    """``folder / rel`` resolved (symlinks too), or ``None`` when it leaves
+    the record folder."""
+    root = folder.resolve()
+    try:
+        path = (folder / rel).resolve()
+    except (OSError, RuntimeError):
+        return None
+    return path if path != root and path.is_relative_to(root) else None
+
+
+def _file_entry(
+    folder: Path, rel: str, role: str, recorded: Optional[str] = None
+) -> tuple[Dict[str, Any], Optional[Path]]:
+    """``(manifest entry, disk path to pack or None)`` for one file.
+
+    ``archive_path`` is where the zip carries it: ``rel`` for evidence,
+    ``tampered/<rel>`` for a file whose sha256 differs from ``recorded``,
+    ``None`` for a missing file or one outside the record folder.
+    """
     entry: Dict[str, Any] = {"path": rel, "role": role}
-    if not path.is_file():
+    path = _confined(folder, rel)
+    if path is None:
+        entry.update({"missing": True, "outside_record": True, "sha256": None, "bytes": None,
+                      "note": OUTSIDE_NOTE})
+    elif not path.is_file():
         entry.update({"missing": True, "sha256": None, "bytes": None})
     else:
         data = path.read_bytes()
@@ -912,7 +1051,15 @@ def _file_entry(path: Path, rel: str, role: str, recorded: Optional[str] = None)
     if recorded is not None:
         entry["recorded_sha256"] = recorded
         entry["matches_record"] = entry["sha256"] == recorded
-    return entry
+    if entry["missing"]:
+        entry.update({"in_evidence_set": False, "archive_path": None})
+        return entry, None
+    if recorded is not None and not entry["matches_record"]:
+        entry.update({"in_evidence_set": False, "archive_path": TAMPERED_PREFIX + rel,
+                      "note": TAMPERED_NOTE})
+    else:
+        entry.update({"in_evidence_set": True, "archive_path": rel})
+    return entry, path
 
 
 def _rule_fired(record: audit.AuditRecord) -> Dict[str, Any]:
@@ -943,27 +1090,35 @@ def evidence_pack(
     """``(pack, files)`` for one record: the JSON bundle and the
     ``(archive path, disk path)`` of every file it names, for the zip.
 
+    Every path is resolved and must stay inside the record folder.  A photo
+    whose bytes no longer match the sealed sha256 is not evidence: the zip
+    carries it under ``tampered/`` and the manifest says why.
+
     Raises :class:`InvalidRecordId` or :class:`RecordNotFound`.
     """
     record = _load_record(storage_dir, record_id)
     folder = _record_dir(storage_dir, record_id)
     chain, _problems = read_chain(storage_dir, record_id)
 
-    files: List[tuple[str, Path]] = [(audit.RECORD_FILENAME, folder / audit.RECORD_FILENAME)]
-    manifest = [_file_entry(folder / audit.RECORD_FILENAME, audit.RECORD_FILENAME, "audit_record")]
+    wanted: List[tuple[str, str, Optional[str]]] = [
+        (audit.RECORD_FILENAME, "audit_record", None)]
     photos = [("photo", record.inputs.photo)]
     if record.inputs.waybill_photo is not None:
         photos.append(("waybill_photo", record.inputs.waybill_photo))
     photos += [("extra_photo", p) for p in (getattr(record.inputs, "extra_photos", None) or [])]
-    for role, photo in photos:
-        if photo.path:
-            path = folder / photo.path
-            files.append((photo.path, path))
-            manifest.append(_file_entry(path, photo.path, role, photo.sha256))
-    for item in chain:
-        rel = f"{FOLLOWUPS_DIRNAME}/{item['seq']:03d}-{item['kind']}.json"
-        files.append((rel, folder / rel))
-        manifest.append(_file_entry(folder / rel, rel, f"followup_{item['kind']}"))
+    wanted += [(photo.path, role, photo.sha256) for role, photo in photos if photo.path]
+    wanted += [(f"{FOLLOWUPS_DIRNAME}/{item['seq']:03d}-{item['kind']}.json",
+                f"followup_{item['kind']}", None) for item in chain]
+    if (folder / FOLLOWUPS_DIRNAME / TIP_FILENAME).is_file():
+        wanted.append((f"{FOLLOWUPS_DIRNAME}/{TIP_FILENAME}", "followup_tip", None))
+
+    files: List[tuple[str, Path]] = []
+    manifest = []
+    for rel, role, recorded in wanted:
+        entry, path = _file_entry(folder, rel, role, recorded)
+        manifest.append(entry)
+        if path is not None:
+            files.append((entry["archive_path"], path))
 
     pack: Dict[str, Any] = {
         "format": PACK_FORMAT,

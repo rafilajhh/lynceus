@@ -147,6 +147,18 @@ def test_tier_c_settles_at_the_adjusted_price():
     assert refused["tier_reason"].startswith("Refused")
 
 
+@pytest.mark.parametrize("net", [None, 0])
+def test_unweighed_load_has_no_money_totals(net):
+    result = contracts.evaluate(_lab(moisture_pct=25.0), net)
+    assert result["weight_measured"] is False
+    assert "weighbridge ticket" in result["settlement_note"]
+    assert (result["tier"], result["adjusted_price_idr_per_t"]) == ("C", 324_000)
+    assert [result[k] for k in ("net_t", "payable_idr", "deduction_idr", "settlement_idr",
+                                "premium_idr")] == [None] * 5
+    weighed = contracts.evaluate(GOOD, 10_000)
+    assert (weighed["weight_measured"], weighed["settlement_note"]) == (True, None)
+
+
 def test_contract_lists_the_example_tiers():
     assert [t["tier"] for t in contracts.DEFAULT_CONTRACT["settlement_tiers"]] == ["A", "B", "C"]
 

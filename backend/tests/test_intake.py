@@ -339,9 +339,21 @@ def test_weighbridge_rejects_bad_queries(client):
 # ---------------------------------------------------------------------------
 
 
+#: The waybill photo the signed reads below were made from.
+WAYBILL_IMAGE = b"\xff\xd8\xff\xe0waybill"
+
+
+def _read_token(image: bytes = WAYBILL_IMAGE) -> str:
+    """A genuine read_token, as POST /waybill/read signs the sample read
+    (the storage dir is the client fixture's)."""
+    key = waybill.read_token_key(get_settings().storage_dir)
+    return waybill.sign_read(key, image, waybill.stub_response())
+
+
 def _waybill_payload(**overrides):
     payload = {
         "photo_base64": _jpeg(b"load"),
+        "waybill_image_base64": base64.b64encode(WAYBILL_IMAGE).decode("ascii"),
         "waybill_fields": dict(CONFIRMED_FIELDS),
         "waybill_read": {
             "confidence": 0.89,
@@ -349,6 +361,7 @@ def _waybill_payload(**overrides):
             "provenance": "stub",
             "latency_ms": None,
             "edited_fields": [],
+            "read_token": _read_token(),
         },
         "weight_kg": 16340,
         "weight_source": "weighbridge_simulated",
@@ -430,6 +443,25 @@ def test_inspect_edited_waybill_and_explicit_values_win(client, tmp_path):
     assert rec.inputs.weight.source == "manual_entry"
     caveats = resp.json()["engine_outputs"]["recommendation"]["caveats"]
     assert not any("assumed 24 h" in c for c in caveats)
+
+
+def test_the_edited_field_list_is_sealed_and_served(client, tmp_path):
+    payload = _waybill_payload()
+    payload["waybill_fields"]["driver"] = "Budi Santoso"  # one field changed after the read
+    record_id = client.post("/inspect", json=payload).json()["record_id"]
+    served = client.get(f"/inspections/{record_id}").json()["inputs"]["manifest_text"]
+    assert served["source"] == "waybill_photo_ai_read_operator_edited"
+    assert served["edited_fields"] == ["driver"]
+    # load_record re-verifies the record digest with the list sealed in it.
+    assert _record(tmp_path, record_id).inputs.manifest_text.edited_fields == ["driver"]
+
+    untouched = client.post("/inspect", json=_waybill_payload()).json()["record_id"]
+    assert _record(tmp_path, untouched).inputs.manifest_text.edited_fields == []
+    typed = _waybill_payload()
+    typed.pop("waybill_read")
+    typed_id = client.post("/inspect", json=typed).json()["record_id"]
+    raw = json.loads((tmp_path / typed_id / audit.RECORD_FILENAME).read_text("utf-8"))
+    assert "edited_fields" not in raw["inputs"]["manifest_text"]  # nothing was read
 
 
 def test_inspect_typed_fields_without_a_read(client, tmp_path):
@@ -788,3 +820,185 @@ def test_vlm_frames_reads_each_angle_once(monkeypatch):
     assert sorted(r["frame"] for r in reads) == [0, 1]
     assert {r["of"] for r in reads} == {2}
     assert sorted(r["index"] for r in reads) == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# Request size caps
+# ---------------------------------------------------------------------------
+
+
+def _detail_text(resp) -> str:
+    return json.dumps(resp.json()["detail"])
+
+
+def test_oversized_photo_fields_are_refused_before_decoding(client, monkeypatch):
+    monkeypatch.setattr(api, "MAX_PHOTO_BASE64_CHARS", 64)
+    big = _jpeg(b"x" * 100)
+    for body in (
+        {"photo_base64": big, "weight_kg": 1000},
+        {"photo_base64": _jpeg(b"x"), "waybill_image_base64": big, "weight_kg": 1000},
+        {"photo_base64": _jpeg(b"x"), "extra_photos_base64": [_jpeg(b"y"), big]},
+    ):
+        resp = client.post("/inspect", json=body)
+        assert resp.status_code == 422, resp.text
+        assert "base64 limit" in _detail_text(resp)
+    assert "extra_photos_base64[1]" in _detail_text(resp)
+    resp = client.post("/waybill/read", json={"image_base64": big})
+    assert resp.status_code == 422 and "base64 limit" in _detail_text(resp)
+    # Within the cap the request goes through.
+    ok = client.post("/inspect", json={"photo_base64": _jpeg(b"x"), "weight_kg": 1000})
+    assert ok.status_code == 200, ok.text
+
+
+def test_overlong_manifest_text_is_refused(client):
+    resp = client.post(
+        "/inspect",
+        json={"photo_base64": _jpeg(b"x"), "manifest_text": "a" * (api.MAX_MANIFEST_CHARS + 1)},
+    )
+    assert resp.status_code == 422
+    assert str(api.MAX_MANIFEST_CHARS) in _detail_text(resp)
+
+
+def test_photo_caps_fit_the_decoded_limit_and_the_console_photos():
+    import io
+    import random
+
+    from PIL import Image
+
+    # The decoded-size limit stays reachable: its base64 fits under the cap.
+    assert api.MAX_PHOTO_BYTES * 4 // 3 + 64 < api.MAX_PHOTO_BASE64_CHARS
+    # A 1280 px console JPEG of pure noise (JPEG's worst case) is far under it.
+    noise = Image.frombytes("RGB", (1280, 960), random.Random(0).randbytes(1280 * 960 * 3))
+    out = io.BytesIO()
+    noise.save(out, "JPEG", quality=85)
+    assert len(base64.b64encode(out.getvalue())) < api.MAX_PHOTO_BASE64_CHARS // 4
+
+
+def test_a_body_over_the_global_cap_is_413(tmp_path, monkeypatch):
+    monkeypatch.setenv(LYNCEUS_STORAGE_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(api, "MAX_BODY_BYTES", 1_000)
+    small = TestClient(create_app())
+    resp = small.post("/inspect", json={"manifest_text": "a" * 2_000})
+    assert resp.status_code == 413
+    assert resp.json()["detail"]["error"] == "request_too_large"
+
+    def chunks():  # no Content-Length: the stream itself is counted
+        for _ in range(4):
+            yield b" " * 400
+
+    resp = small.post(
+        "/inspect", content=chunks(), headers={"content-type": "application/json"}
+    )
+    assert resp.status_code == 413
+    assert resp.json()["detail"]["error"] == "request_too_large"
+    assert not list(tmp_path.glob("inspection-*"))
+    ok = small.post("/inspect", json={"weight_kg": 1000})
+    assert ok.status_code == 200, ok.text
+
+
+# ---------------------------------------------------------------------------
+# Waybill read tokens
+# ---------------------------------------------------------------------------
+
+
+@needs_sample
+def test_a_genuine_read_token_seals_the_server_read_not_the_claim(client, tmp_path):
+    read = client.post("/waybill/read", json={"image_base64": SAMPLE_B64}).json()
+    assert read["read_token"]
+    payload = _waybill_payload(waybill_image_base64=SAMPLE_B64)
+    # The client claims more than the server read: the signed values win.
+    payload["waybill_read"] = {
+        "confidence": 0.99,
+        "model": "vision-a",
+        "provenance": "live",
+        "read_token": read["read_token"],
+    }
+    payload["waybill_fields"]["net_kg"] = 16000  # an edit the client did not flag
+    resp = client.post("/inspect", json=payload)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    rec = _record(tmp_path, body["record_id"])
+    assert rec.inputs.manifest_text.source == "waybill_photo_ai_read_operator_edited"
+    assert rec.inputs.manifest_text.ocr_confidence == read["confidence"]
+    sealed_read = body["waybill"]["read"]
+    assert sealed_read["provenance"] == "stub" and sealed_read["model"] == waybill.STUB_MODEL
+    assert sealed_read["edited_fields"] == ["net_kg"]
+    assert "read_token" not in sealed_read
+    assert "read_token" not in json.dumps(body)
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        None,  # a bare claim
+        "forged.0000",
+        "tampered",  # a real token with its claims changed
+        "other_image",  # a real token for another waybill photo
+    ],
+)
+def test_without_a_genuine_token_the_fields_are_operator_typed(client, tmp_path, token):
+    payload = _waybill_payload()
+    if token == "tampered":
+        body, _dot, mac = _read_token().partition(".")
+        claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+        claims["confidence"] = 0.99
+        forged = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+        token = f"{forged}.{mac}"
+    elif token == "other_image":
+        token = _read_token(b"\xff\xd8\xff\xe0another waybill")
+    payload["waybill_read"] = {"confidence": 0.99, "provenance": "live", "read_token": token}
+    resp = client.post("/inspect", json=payload)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    manifest = _record(tmp_path, body["record_id"]).inputs.manifest_text
+    assert manifest.source == "operator_typed_fields"
+    assert manifest.ocr_confidence == api._MANUAL_TEXT_CONFIDENCE
+    assert body["waybill"]["read"] is None
+
+
+def test_the_read_key_is_stored_once_under_the_storage_dir(tmp_path):
+    key = waybill.read_token_key(tmp_path)
+    stored = tmp_path / waybill.READ_TOKEN_KEY_FILE
+    assert stored.read_bytes() == key and len(key) >= 32
+    waybill._KEYS.clear()  # a restarted process reads the same key back
+    assert waybill.read_token_key(tmp_path) == key
+    token = waybill.sign_read(key, WAYBILL_IMAGE, waybill.stub_response())
+    assert waybill.verify_read(key, token, WAYBILL_IMAGE)["confidence"] == 0.89
+    assert waybill.verify_read(b"x" * 32, token, WAYBILL_IMAGE) is None
+    assert waybill.verify_read(key, "ünïcode.mac", WAYBILL_IMAGE) is None
+
+
+# ---------------------------------------------------------------------------
+# Missing weight, non-finite observations
+# ---------------------------------------------------------------------------
+
+
+def test_a_missing_weight_is_not_measured_never_a_0_kg_scale_reading(client, tmp_path):
+    payload = _waybill_payload()
+    payload.pop("weight_kg")
+    resp = client.post("/inspect", json=payload)
+    assert resp.status_code == 200, resp.text
+    rec = _record(tmp_path, resp.json()["record_id"])
+    assert rec.inputs.weight.source == "not_measured"
+    assert not any(o.kind == "weighbridge" for o in rec.inputs.observations)
+
+
+@pytest.mark.parametrize(
+    "observation",
+    [
+        {"source": "s", "kind": "k", "value": float("nan")},
+        {"source": "s", "kind": "k", "value": {"cl_pct": [0.4, float("inf")]}},
+        {"source": "s", "kind": "k", "value": 1.0, "uncertainty": float("-inf")},
+        {"source": "s", "kind": "k", "value": "x" * (api.MAX_OBSERVATION_VALUE_CHARS + 1)},
+    ],
+)
+def test_non_finite_or_huge_observation_values_are_422(client, tmp_path, observation):
+    # Python's json writes NaN / Infinity literals, and so may a sensor gateway.
+    body = {"photo_base64": _jpeg(b"x"), "weight_kg": 1000, "observations": [observation]}
+    resp = client.post(
+        "/inspect",
+        content=json.dumps(body, allow_nan=True),
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert not list(tmp_path.glob("inspection-*"))

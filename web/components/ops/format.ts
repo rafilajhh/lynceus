@@ -47,4 +47,13 @@ export function plainWords(text: string): string {
   return text.replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/g, (key) => key.replace(/_/g, " "));
 }
 
-export const plural =(n: number, one: string, many: string) => (n === 1 ? one : many);
+/**
+ * A supplier's grouping key, exactly as the backend builds it
+ * (suppliers.supplier_key): lower-case, every run of non-alphanumerics one
+ * space. "PT. Hijau Lestari" and "pt hijau lestari" are one supplier.
+ */
+export function supplierKey(name: string | null | undefined): string {
+  return (name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);

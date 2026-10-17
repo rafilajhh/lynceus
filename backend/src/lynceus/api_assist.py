@@ -95,8 +95,19 @@ def shift_briefing(
 def seal_briefing(
     request: SealRequest, http: Request, _user: str | None = Depends(auth.require_auth)
 ) -> Dict[str, Any]:
-    """Store the supervisor's handover under ``briefings/`` with a digest (422 if
-    its ``facts_digest`` does not match its facts)."""
+    """Store the supervisor's handover under ``briefings/`` with a digest.
+
+    413 for a body over the size cap; 422 unless the briefing is one this
+    server drafted (signed facts) whose text still passes the grounding check
+    (:func:`lynceus.briefing.verify_for_seal`).
+    """
+    try:
+        length = int(http.headers.get("content-length") or 0)
+    except ValueError:
+        length = 0
+    if length > briefing.MAX_SEAL_BYTES * 2:  # JSON whitespace/escapes allowance over the canonical cap
+        raise HTTPException(status_code=413, detail={"error": "briefing_too_large",
+                                                     "message": "The briefing is too large to seal."})
     actor = (auth.current_user(http) or "").strip() or "demo"
     try:
         return briefing.seal(get_settings().storage_dir, request.briefing, actor)

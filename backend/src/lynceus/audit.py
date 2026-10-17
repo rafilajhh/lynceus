@@ -398,11 +398,25 @@ class ManifestTextInput(_StrictModel):
     raw_text_sha256: str
     extracted_fields: Dict[str, Any]
     ocr_confidence: float
+    #: The waybill fields the operator changed after the AI read (absent when
+    #: nothing was read, and on records written before it was sealed).
+    edited_fields: Optional[List[str]] = None
 
     @field_validator("raw_text_sha256")
     @classmethod
     def _v_sha256(cls, v: str) -> str:
         return _validate_sha256_field(v, "inputs.manifest_text.raw_text_sha256")
+
+    @field_validator("edited_fields")
+    @classmethod
+    def _v_edited(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is not None and not all(isinstance(name, str) and name for name in v):
+            raise _err(
+                _ERR_FORMAT,
+                "inputs.manifest_text.edited_fields",
+                "must be a list of field names",
+            )
+        return v
 
     @field_validator("ocr_confidence")
     @classmethod

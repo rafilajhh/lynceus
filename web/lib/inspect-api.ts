@@ -47,6 +47,9 @@ export interface InspectPayload {
     edited_fields: string[];
     /** Per-field read confidence, so the "Waybill read" check counts unsure fields. */
     field_confidences?: Record<string, number>;
+    /** From /waybill/read; valid only with byte-identical waybill_image_base64.
+        With it the server uses its own signed read values. */
+    read_token?: string;
   };
   /** Weighbridge net (what the scale says). */
   weight_kg: number;
@@ -54,8 +57,10 @@ export interface InspectPayload {
   declared_weight_kg?: number | null;
   weight_source?: "weighbridge_simulated" | "weighbridge" | "manual_entry";
   stream: string;
-  /** Declared moisture; the backend defaults it from the waybill. */
-  moisture_pct?: number | null;
+  /** Declared moisture as a FRACTION (0.28 for 28 %): the backend reads a
+      value <= 1 as a fraction, so a percent "1" would mean 100 %. Absent:
+      the backend takes it from waybill_fields.moisture_pct (percent). */
+  moisture?: number | null;
   age_h?: number | null;
 }
 
@@ -115,15 +120,24 @@ export interface InspectResponse {
  * - "http": the backend answered with a 4xx/5xx and said why (its own
  *   `detail.message`, e.g. "photo exceeds the 8 MB limit.").
  */
-export class InspectError extends Error {
-  kind: "network" | "http";
-  status: number | null;
+export type InspectErrorKind = "network" | "http" | "dropped";
 
-  constructor(kind: "network" | "http", message: string, status: number | null) {
+/*
+ * - "dropped": the backend accepted the inspection and the connection
+ *   failed afterwards; the verdict may already be sealed, so a retry could
+ *   seal a duplicate. `recordId` is set when the stream had announced it.
+ */
+export class InspectError extends Error {
+  kind: InspectErrorKind;
+  status: number | null;
+  recordId: string | null;
+
+  constructor(kind: InspectErrorKind, message: string, status: number | null, recordId: string | null = null) {
     super(message);
     this.name = "InspectError";
     this.kind = kind;
     this.status = status;
+    this.recordId = recordId;
   }
 }
 
@@ -234,7 +248,7 @@ export function normaliseInspectResponse(raw: Record<string, unknown>): InspectR
   };
 }
 
-export type RuleEffect = "reject" | "hold" | "accept" | "none";
+export type RuleEffect = "refuse" | "reject" | "hold" | "accept" | "none";
 
 /** One row of the decision receipt (decision.rule_trace). */
 export interface ReceiptRule {
@@ -276,7 +290,7 @@ const strList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is
 const objects = (v: unknown): Record<string, unknown>[] =>
   Array.isArray(v) ? v.filter((o): o is Record<string, unknown> => Boolean(o) && typeof o === "object") : [];
 
-const EFFECTS: readonly RuleEffect[] = ["reject", "hold", "accept", "none"];
+const EFFECTS: readonly RuleEffect[] = ["refuse", "reject", "hold", "accept", "none"];
 const OBS_STATUSES: readonly ObservationStatus[] = ["ok", "poor", "mismatch", "not_installed", "unavailable"];
 
 export function parseReceipt(raw: unknown): ReceiptRule[] {

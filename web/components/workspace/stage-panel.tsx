@@ -65,7 +65,8 @@ function shortModel(model: string): string {
   return model.replace(/-\d+B(-A\d+B)?(-Instruct)?$/i, "");
 }
 
-function streamRows(events: StageEvent[], finished: boolean, single: boolean): Row[] {
+function streamRows(events: StageEvent[], phase: RunState["phase"], single: boolean): Row[] {
+  const finished = phase === "done" || phase === "error";
   const byStage = new Map<string, StageEvent[]>();
   for (const e of events) {
     const list = byStage.get(e.stage) ?? [];
@@ -133,7 +134,9 @@ function streamRows(events: StageEvent[], finished: boolean, single: boolean): R
     const seconds = done ? (latency !== null ? latency / 1000 : Math.max(0, done.t - (start ?? 0))) : null;
 
     let status: RowStatus = done ? "done" : ended ? "skipped" : running ? "running" : "pending";
-    if (single) status = finished ? "done" : "running";
+    // Single request: the stages are only known done when the verdict came
+    // back; after an error none of them can be claimed.
+    if (single) status = phase === "done" ? "done" : finished ? "skipped" : "running";
     else if (finished && status !== "done") status = "skipped";
 
     return { key: s.key, label: s.label, detail, status, seconds, startT: running?.t ?? (single ? 0 : null), reads };
@@ -185,8 +188,8 @@ export const StagePanel = forwardRef<HTMLElement, { run: RunState }>(function St
         startT: null,
       });
     }
-    return [...pre, ...streamRows(run.events, finished, single)];
-  }, [snap, run.events, finished, single]);
+    return [...pre, ...streamRows(run.events, run.phase, single)];
+  }, [snap, run.events, run.phase, single]);
 
   const last = run.events.at(-1);
   const announce = last

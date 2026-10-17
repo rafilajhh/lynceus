@@ -91,6 +91,12 @@ function ChlorineCell({ kiln }: { kiln: KilnIntake | null }) {
             <span className={cn("figure font-semibold", status?.text ?? "text-muted")}>{num(pct)} %</span>
             {status ? ` · ${status.word}` : ""}
             {kiln?.method_mix ? ` · ${kiln.method_mix}` : ""}
+            {kiln?.weight_unknown_loads != null && kiln.weight_unknown_loads > 0 ? (
+              <span className="text-muted">
+                {" "}· weight unknown: {num(kiln.weight_unknown_loads, 0)}{" "}
+                {kiln.weight_unknown_loads === 1 ? "load" : "loads"}
+              </span>
+            ) : null}
           </>
         ) : (
           "Chlorine load not available"

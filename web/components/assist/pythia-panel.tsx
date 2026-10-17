@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 type Turn =
   | { id: number; question: string; status: "pending"; steps: AssistStep[]; turn: number | null }
   | { id: number; question: string; status: "answered"; response: AssistResponse }
-  | { id: number; question: string; status: "error"; message: string };
+  | { id: number; question: string; status: "error"; message: string; steps: AssistStep[] };
 
 /**
  * Suggestion and Ask buttons are never `disabled` while a question is in
@@ -295,10 +295,20 @@ export function PythiaPanel({
           question,
           status: "error",
           message: err instanceof AssistError ? err.message : "Pythia could not answer right now.",
+          steps: [],
         };
       }
       if (inflight.current === controller) inflight.current = null;
-      setTurns((prev) => prev.map((t) => (t.id === id ? settled : t)));
+      // A failed answer keeps the lookups that already landed: they still happened.
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id !== id
+            ? t
+            : settled.status === "error" && t.status === "pending"
+              ? { ...settled, steps: t.steps }
+              : settled,
+        ),
+      );
     },
     [pending, recordId],
   );
@@ -330,9 +340,12 @@ export function PythiaPanel({
             {turn.status === "pending" ? (
               <PendingLine steps={turn.steps} turn={turn.turn} />
             ) : turn.status === "error" ? (
-              <p role="alert" className="m-0 text-[13px] text-verdict-red">
-                {turn.message}
-              </p>
+              <div className="flex flex-col gap-1">
+                <Trace steps={turn.steps} />
+                <p role="alert" className="m-0 text-[13px] text-verdict-red">
+                  {turn.message}
+                </p>
+              </div>
             ) : (
               <Answer response={turn.response} />
             )}

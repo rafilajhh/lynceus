@@ -56,6 +56,8 @@ export const kilnSchema = z.object({
   methods: z.record(z.string(), z.number()).catch({}),
   /** "Cl from lab on 13 loads, supplier average on 10, contract limit on 7". */
   method_mix: text,
+  /** Accepted loads with no measured weight: left out of the tonnage-based figures. */
+  weight_unknown_loads: num,
   notes: strings,
 });
 

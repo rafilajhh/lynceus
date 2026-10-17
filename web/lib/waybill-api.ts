@@ -73,6 +73,10 @@ const waybillReadSchema = z.object({
   latency_ms: z.number().nullish().catch(null),
   provenance: z.string().nullish().catch(null),
   warnings: z.array(z.string()).catch([]),
+  /** Server-signed proof of this read, bound to the image's sha256: sent
+      back as waybill_read.read_token with the SAME image bytes. Without it
+      the fields are sealed as operator-typed. */
+  read_token: z.string().nullish().catch(null),
 });
 
 export type WaybillRead = z.infer<typeof waybillReadSchema>;
@@ -93,7 +97,26 @@ export function readToValues(read: WaybillRead): {
   return { values, confidence };
 }
 
-/** "32.580" / "32,580" / "16340 kg" → 32580; "28,5" → 28.5. Null when empty. */
+/**
+ * A plain decimal: "28,5" / "28.5" / "0.125" / "31.5 %" → the number as
+ * written (a comma is a decimal point). For percentages and lab values,
+ * where "0.125" must stay 0.125. Null when empty or not a number.
+ */
+export function parseDecimal(raw: string): number | null {
+  const s = raw.replace(/\s|%/g, "").replace(",", ".");
+  if (!s || !/^-?\d*\.?\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Waybill fields in kilograms: thousands grouping is read as grouping. */
+const KG_FIELD = /_kg$/;
+
+/**
+ * A weight in kg: "32.580" / "32,580" / "16340 kg" → 32580; "28,5" → 28.5.
+ * The thousands heuristic is for kilograms only: use parseDecimal for
+ * percentages and lab values. Null when empty.
+ */
 export function parseFieldNumber(raw: string): number | null {
   let s = raw.replace(/[^\d.,-]/g, "");
   if (!s) return null;
@@ -109,7 +132,13 @@ export function toWaybillFields(values: WaybillValues): Record<string, string | 
   const out: Record<string, string | number | null> = {};
   for (const { key, kind } of WAYBILL_FIELDS) {
     const v = values[key].trim();
-    out[key] = !v ? null : kind === "number" ? parseFieldNumber(v) : v;
+    out[key] = !v
+      ? null
+      : kind === "number"
+        ? KG_FIELD.test(key)
+          ? parseFieldNumber(v)
+          : parseDecimal(v)
+        : v;
   }
   return out;
 }

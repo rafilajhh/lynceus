@@ -94,18 +94,29 @@ export interface ContractEval {
   base_price_idr_per_t: number;
   adjusted_price_idr_per_t: number;
   adjustment_pct: number;
-  net_t: number;
-  payable_idr: number;
-  deduction_idr: number;
+  /** Money and tonnage are null when the weight was not measured
+      (`weight_measured: false`): `settlement_note` says why. Never shown as 0. */
+  net_t: number | null;
+  payable_idr: number | null;
+  deduction_idr: number | null;
   /** Chlorine above the refusal limit: price 0. */
   refused?: boolean;
   tier?: SettlementTier | string;
   tier_reason?: string;
-  settlement_price_idr_per_t?: number;
-  settlement_idr?: number;
-  premium_idr?: number;
+  settlement_price_idr_per_t?: number | null;
+  settlement_idr?: number | null;
+  premium_idr?: number | null;
+  /** false: no weighbridge ticket, so nothing could be settled in money. */
+  weight_measured?: boolean;
+  /** "Weight not measured: settlement needs the weighbridge ticket." */
+  settlement_note?: string | null;
   iso21640?: Iso21640Class | null;
   note?: string;
+}
+
+/** A money field the backend could compute; null/absent/NaN is "not known". */
+export function knownAmount(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export interface LabBody {
@@ -146,10 +157,37 @@ export type Followup =
   | (FollowupBase & { kind: "lab_result"; body: LabBody })
   | (FollowupBase & { kind: "notice"; body: NoticeBody });
 
+/** followups.verify_chain: re-verified by the backend on every read. */
+export interface ChainState {
+  ok: boolean;
+  problems: string[];
+  /** The chain's tip matches the anchored tip file: nothing was cut off the end. */
+  anchored: boolean;
+  /** Informational, not failures: "tail not anchored (pre-dates tip file)". */
+  notes: string[];
+}
+
 export interface FollowupsResponse {
   record_id: string;
   followups: Followup[];
-  chain: { ok: boolean; problems: string[] };
+  chain: ChainState;
+}
+
+/** A truncated chain lost its tail: a failure even if `ok` were to say otherwise. */
+export function chainFailed(chain: ChainState): boolean {
+  return !chain.ok || chain.problems.some((p) => /truncat/i.test(p));
+}
+
+/** Untrusted chain JSON → ChainState; an older backend has no anchor or notes. */
+function parseChain(raw: unknown): ChainState {
+  const c = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const strings = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
+  return {
+    ok: c.ok === true,
+    problems: strings(c.problems),
+    anchored: c.anchored === true,
+    notes: strings(c.notes),
+  };
 }
 
 // ---- Suppliers and contract ---------------------------------------------
@@ -241,8 +279,9 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown):
 
 const recordPath = (recordId: string) => `/inspections/${encodeURIComponent(recordId)}`;
 
-export function fetchFollowups(recordId: string): Promise<FollowupsResponse> {
-  return request("GET", `${recordPath(recordId)}/followups`);
+export async function fetchFollowups(recordId: string): Promise<FollowupsResponse> {
+  const data = await request<FollowupsResponse & { chain?: unknown }>("GET", `${recordPath(recordId)}/followups`);
+  return { ...data, followups: Array.isArray(data.followups) ? data.followups : [], chain: parseChain(data.chain) };
 }
 
 export function postResolution(

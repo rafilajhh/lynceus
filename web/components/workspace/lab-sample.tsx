@@ -10,9 +10,9 @@
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatRupiah, formatRupiahCompact } from "@/lib/format";
-import { postLabResult, type ContractEval, type Followup, type Sampling } from "@/lib/ops-api";
+import { knownAmount, postLabResult, type ContractEval, type Followup, type Sampling } from "@/lib/ops-api";
 import { cn } from "@/lib/utils";
-import { parseFieldNumber } from "@/lib/waybill-api";
+import { parseDecimal } from "@/lib/waybill-api";
 import { SealedLine, followupError } from "./sealed-line";
 
 const FIELDS = [
@@ -45,7 +45,7 @@ export function LabSample({ recordId, sampling }: { recordId: string; sampling: 
   const submit = async () => {
     const parsed = {} as Record<Key, number | null>;
     for (const f of FIELDS) {
-      parsed[f.key] = parseFieldNumber(values[f.key]);
+      parsed[f.key] = parseDecimal(values[f.key]);
       if (f.required && parsed[f.key] === null) {
         setInvalid(f.key);
         setError(`${f.label} is empty: enter the lab value.`);
@@ -163,6 +163,14 @@ function ContractResult({ evalResult }: { evalResult: ContractEval }) {
   // shared type: absent on an older backend.
   const e = evalResult;
   const breached = e.breaches.length > 0;
+  const settles = knownAmount(e.settlement_idr);
+  const payable = knownAmount(e.payable_idr);
+  const deducted = knownAmount(e.deduction_idr);
+  const netT = knownAmount(e.net_t);
+  const unweighed =
+    e.weight_measured === false || payable === null
+      ? (e.settlement_note ?? "Weight not measured: settlement needs the weighbridge ticket.")
+      : null;
   return (
     <div className="flex flex-col gap-2.5">
       {e.tier ? (
@@ -176,10 +184,13 @@ function ContractResult({ evalResult }: { evalResult: ContractEval }) {
             Tier {e.tier}
             {TIER_NAME[e.tier] ? ` · ${TIER_NAME[e.tier]}` : ""}
           </span>
-          {typeof e.settlement_idr === "number" ? (
+          {settles !== null ? (
             <span className="text-[14px] font-semibold text-ink">
-              Settles at <span className="figure">{formatRupiah(e.settlement_idr)}</span>
+              Settles at <span className="figure">{formatRupiah(settles)}</span>
             </span>
+          ) : unweighed ? (
+            // No weighbridge ticket: the tier stands, the amount cannot be set.
+            <span className="text-[13px] font-semibold text-amber">{unweighed}</span>
           ) : null}
           {e.tier_reason ? <span className="text-[13px] text-muted">{e.tier_reason}</span> : null}
         </div>
@@ -206,9 +217,20 @@ function ContractResult({ evalResult }: { evalResult: ContractEval }) {
           value={`${formatRupiah(e.adjusted_price_idr_per_t)}/t`}
           sub={e.adjustment_pct ? `${e.adjustment_pct > 0 ? "+" : ""}${e.adjustment_pct.toFixed(1)} %` : undefined}
         />
-        <Cell label="Payable" value={formatRupiahCompact(e.payable_idr)} sub={`${e.net_t.toFixed(2)} t net`} />
-        <Cell label="Deduction" value={e.deduction_idr > 0 ? formatRupiahCompact(e.deduction_idr) : "Rp 0"} strong={e.deduction_idr > 0} />
+        {/* No weighbridge ticket: money is null, shown as "—" with the note, never Rp 0. */}
+        <Cell
+          label="Payable"
+          value={payable !== null ? formatRupiahCompact(payable) : "—"}
+          sub={netT !== null ? `${netT.toFixed(2)} t net` : "weight not measured"}
+        />
+        <Cell
+          label="Deduction"
+          value={deducted === null ? "—" : deducted > 0 ? formatRupiahCompact(deducted) : "Rp 0"}
+          strong={deducted !== null && deducted > 0}
+        />
       </dl>
+      {/* Beside the tier when there is one; here on an older backend without tiers. */}
+      {unweighed && !e.tier ? <p className="m-0 text-[13px] text-muted">{unweighed}</p> : null}
       {e.iso21640?.code ? (
         <p className="m-0 text-[13px] text-muted">
           ISO 21640 class (indicative): <span className="figure text-ink">{e.iso21640.code}</span>

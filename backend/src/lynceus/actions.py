@@ -24,17 +24,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from lynceus.audit import Decision, GateState
 from lynceus.decision import (
     DECLARED_SORTED_MARKER,
+    EARLY_MAJORITY_MARKER,
     LIGHT_CONTAMINANTS,
+    LOW_CONFIDENCE_HARD_MARKER,
     MOISTURE_CONFLICT_MARKER,
-)
-from lynceus.decision import (
-    PHOTO_QUALITY_MARKER as _PHOTO_QUALITY_MARKER,
-)
-from lynceus.decision import (
-    PLATE_MISMATCH_MARKER as _PLATE_MISMATCH_MARKER,
-)
-from lynceus.decision import (
-    VOTE_SPLIT_MARKER as _VOTE_SPLIT_MARKER,
+    PHOTO_QUALITY_MARKER,
+    PLATE_MISMATCH_MARKER,
+    VOTE_SPLIT_MARKER,
 )
 
 __all__ = ["next_steps"]
@@ -103,7 +99,7 @@ def _reason(gates: Dict[str, Any], name: str) -> str:
 def _plate_mismatch(gates: Dict[str, Any]) -> bool:
     """The weighbridge gate failed because the truck's plate is not the waybill's."""
     return _failed(gates, "weight_plausibility") and (
-        _PLATE_MISMATCH_MARKER in _reason(gates, "weight_plausibility")
+        PLATE_MISMATCH_MARKER in _reason(gates, "weight_plausibility")
     )
 
 
@@ -112,7 +108,7 @@ def _weight_off(gates: Dict[str, Any]) -> bool:
     if not _failed(gates, "weight_plausibility"):
         return False
     reason = _reason(gates, "weight_plausibility")
-    return _PLATE_MISMATCH_MARKER not in reason or "ticket correction" in reason.lower()
+    return PLATE_MISMATCH_MARKER not in reason or "ticket correction" in reason.lower()
 
 
 def _names(value: Any) -> List[str]:
@@ -180,15 +176,31 @@ def next_steps(
         if _failed(gates, "vlm_confidence"):
             steps.append((
                 "Photo quality poor: retake the load photo from the top platform."
-                if _PHOTO_QUALITY_MARKER in _reason(gates, "vlm_confidence")
+                if PHOTO_QUALITY_MARKER in _reason(gates, "vlm_confidence")
                 else "Photo unreadable: retake the load photo from the top platform.",
                 "SOP-RDF-2.1",
             ))
-        if _VOTE_SPLIT_MARKER in _reason(gates, "vlm_confidence"):
+        if VOTE_SPLIT_MARKER in _reason(gates, "vlm_confidence"):
             steps.append((
                 (
                     "Vision reads disagree on a hard item: the supervisor checks the load "
                     "by hand and records the call."
+                ),
+                "SOP-RDF-5.2",
+            ))
+        if LOW_CONFIDENCE_HARD_MARKER in _reason(gates, "vlm_confidence"):
+            steps.append((
+                (
+                    "Hard item listed below the confidence bar: the supervisor checks the "
+                    "load by hand and records the call."
+                ),
+                "SOP-RDF-5.2",
+            ))
+        if EARLY_MAJORITY_MARKER in _reason(gates, "vlm_confidence"):
+            steps.append((
+                (
+                    "Vision decided on two of three reads with no second look: the "
+                    "supervisor checks the load by hand and records the call."
                 ),
                 "SOP-RDF-5.2",
             ))

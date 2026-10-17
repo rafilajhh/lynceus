@@ -343,19 +343,22 @@ def collect(
     measured_at_utc: str,
 ) -> List[Dict[str, Any]]:
     """This inspection's observations: what the site sent first, then the
-    computed and simulated ones for every kind it did not send."""
+    computed and simulated ones for every kind it did not send.
+
+    A caller can never switch a check off: ``image_quality`` is always
+    computed from the frames themselves (a sent one only sits beside it),
+    and a sent ``plate`` replaces the simulated ANPR reading only when that
+    reading agrees with the waybill (a mismatch is kept and still holds)."""
     out = [dict(o) for o in supplied]
     sent = {o.get("kind") for o in out}
-    if "image_quality" not in sent:
-        out += [image_quality(data, i, measured_at_utc) for i, data in enumerate(frames) if data]
+    out += [image_quality(data, i, measured_at_utc) for i, data in enumerate(frames) if data]
     if "weighbridge" not in sent:
         reading = weighbridge_reading(weight_kg, weight_source, measured_at_utc)
         if reading:
             out.append(reading)
-    if "plate" not in sent:
-        plate = plate_reading(registered_plate, waybill_plate, measured_at_utc)
-        if plate:
-            out.append(plate)
+    plate = plate_reading(registered_plate, waybill_plate, measured_at_utc)
+    if plate and ("plate" not in sent or plate["status"] == "mismatch"):
+        out.append(plate)
     out += [o for o in not_installed(measured_at_utc) if o["kind"] not in sent]
     return out
 

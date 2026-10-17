@@ -530,17 +530,60 @@ def test_poor_photo_is_on_the_load_photo_tile():
 
 
 def test_plate_mismatch_is_on_the_weighbridge_tile():
-    inputs = _inputs(observations=[_obs("plate", "mismatch", "B 9406 KXW")])
+    # A real ANPR camera.
+    inputs = _inputs(observations=[{**_obs("plate", "mismatch", "B 9406 KXW"),
+                                    "simulated": False}])
     result = _both(_response(inputs))
     c = _by_key(result)
     assert c["weight"]["status"] == "fail"
     assert c["weight"]["finding"] == "Plate B 9406 KXW ≠ waybill"
     assert len(c["weight"]["finding"]) <= checks.FINDING_MAX
-    assert "verify the truck" in c["weight"]["detail"]
+    assert c["weight"]["detail"].startswith("The plate camera reads B 9406 KXW")
     assert result["why"] == (
         "Plate B 9406 KXW does not match the waybill (B 9723 KXW): verify the truck before "
         "tipping.")
     assert [ch["key"] for ch in result["checks"]] == KEYS
+
+
+def test_simulated_plate_camera_says_it_is_simulated():
+    inputs = _inputs(observations=[_obs("plate", "mismatch", "B 9406 KXW")])  # simulated
+    result = _both(_response(inputs))
+    c = _by_key(result)
+    assert (c["weight"]["status"], c["weight"]["finding"]) == ("fail", "Simulated plate ≠ waybill")
+    assert c["weight"]["detail"].startswith(
+        "The simulated plate camera reads B 9406 KXW; the waybill says B 9723 KXW")
+    assert result["why"] == (
+        "Simulated plate camera reads B 9406 KXW, not the waybill's B 9723 KXW: verify the "
+        "truck before tipping.")
+    assert len(result["why"]) <= checks.WHY_MAX
+    row = next(r for r in result["receipt"] if r["id"] == "plate_mismatch")
+    assert "the simulated plate camera reads B 9406 KXW" in row["evidence"]
+    # A record whose observations were dropped still reads the gate's own words.
+    record = _as_record(_response(inputs))
+    del record["inputs"]["observations"]
+    assert _by_key(checks.build_checks(record))["weight"]["finding"] == (
+        "Simulated plate ≠ waybill")
+
+
+def test_replayed_receipt_uses_the_benchmarked_models_setting(monkeypatch):
+    vlm = {**_vlm(hard=["metal"]), "model": "Other-VL", "fallback_from": ["primary: timeout"]}
+    rec = _as_record(_response(vlm=vlm))
+    rec["ai_outputs"]["vlm"]["model"] = "Other-VL"
+    # Sealed as a reject: Other-VL was benchmarked when the record was made.
+    rec["verdict"]["decision"] = D.REJECT
+    monkeypatch.setenv("VLM_BENCHMARKED_MODELS", "Other-VL")
+    rows = checks.build_checks(rec)["receipt"]
+    assert not any(r["id"] == "recorded_verdict" for r in rows)
+    assert not next(r for r in rows if r["id"] == "unbenchmarked_model")["fired"]
+    # The default set does not hold Other-VL: the replay holds, and says the
+    # sealed reject stands.
+    monkeypatch.delenv("VLM_BENCHMARKED_MODELS")
+    rows = checks.build_checks(rec)["receipt"]
+    assert next(r for r in rows if r["id"] == "unbenchmarked_model")["fired"]
+    assert rows[-1]["id"] == "recorded_verdict"
+    # An explicit argument wins over the setting.
+    rows = checks.build_checks(rec, benchmarked_vlm_models=("Other-VL",))["receipt"]
+    assert not any(r["id"] == "recorded_verdict" for r in rows)
 
 
 def test_declared_moisture_above_spec_warns_and_does_not_hold():
@@ -635,10 +678,40 @@ def test_degraded_record_receipt_says_the_vision_model_was_unavailable():
     (None, "Reads 2/2 agree"),
 ])
 def test_early_majority_names_the_third_read(third, finding):
+    # A clean detector second opinion lets the early majority accept.
     vlm = {**_voted([[], []]), "votes_used": 2, "third_read": third}
-    c = _by_key(_both(_response(vlm=vlm)))
+    c = _by_key(_both(_response(vlm=vlm, det=_det(("paper", 0.8)))))
     assert (c["vision"]["status"], c["vision"]["finding"]) == ("pass", finding)
     assert len(finding) <= checks.FINDING_MAX
+
+
+@pytest.mark.parametrize("third", ["late", "failed"])
+def test_early_majority_without_the_detector_holds(third):
+    vlm = {**_voted([[], []]), "votes_used": 2, "third_read": third}
+    response = _response(vlm=vlm)
+    assert response["verdict"]["decision"] == D.ESCALATE_HUMAN
+    result = _both(response)
+    c = _by_key(result)
+    assert (c["vision"]["status"], c["vision"]["finding"]) == (
+        "warn", f"2 of 3 reads (third {third})")
+    assert result["why"] == (
+        "Vision decided on 2 of 3 reads with no second look: check the load by hand before "
+        "tipping.")
+    early = next(row for row in result["receipt"] if row["id"] == "early_majority")
+    assert (early["fired"], early["effect"]) == (True, "hold")
+
+
+def test_hard_listed_below_the_bar_holds_and_says_so():
+    result = _both(_response(vlm=_vlm(hard=["metal"], confidence=0.5)))
+    c = _by_key(result)
+    assert (c["vision"]["status"], c["vision"]["finding"]) == ("warn", "Possible metal · 0.50")
+    assert c["vision"]["detail"].endswith("bar: check the load by hand.")
+    assert result["why"] == (
+        "Possible metal (vision 0.50, below the 0.60 bar): check the load by hand before "
+        "tipping.")
+    row = next(row for row in result["receipt"] if row["id"] == "hard_below_bar")
+    assert (row["fired"], row["effect"]) == (True, "hold")
+    assert result["receipt"][-1]["id"] == "accept" and not result["receipt"][-1]["fired"]
 
 
 def test_early_majority_third_read_arrived_with_metal_still_holds():

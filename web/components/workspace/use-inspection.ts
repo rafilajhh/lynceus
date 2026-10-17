@@ -9,7 +9,12 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { InspectError, type InspectPayload, type InspectResponse } from "@/lib/inspect-api";
+import {
+  InspectError,
+  type InspectErrorKind,
+  type InspectPayload,
+  type InspectResponse,
+} from "@/lib/inspect-api";
 import { inspectStreaming, type InspectMode, type StageEvent } from "@/lib/inspect-stream";
 import type { ScaleReading, WaybillRead, WaybillValues } from "@/lib/waybill-api";
 import type { WaybillStatus } from "./use-intake";
@@ -31,9 +36,11 @@ export interface RunSnapshot {
 }
 
 export interface RunError {
-  kind: "network" | "http";
+  kind: InspectErrorKind;
   message: string;
   status: number | null;
+  /** Record the stream announced as sealed before it dropped. */
+  recordId: string | null;
 }
 
 export interface RunState {
@@ -84,8 +91,13 @@ export function useInspection() {
       if (!mine()) return;
       const error: RunError =
         err instanceof InspectError
-          ? { kind: err.kind, message: err.message, status: err.status }
-          : { kind: "http", message: err instanceof Error ? err.message : "Unexpected error.", status: null };
+          ? { kind: err.kind, message: err.message, status: err.status, recordId: err.recordId }
+          : {
+              kind: "http",
+              message: err instanceof Error ? err.message : "Unexpected error.",
+              status: null,
+              recordId: null,
+            };
       setRun((r) => ({ ...r, phase: "error", error, elapsedMs: performance.now() - startedAt }));
     }
   }, []);

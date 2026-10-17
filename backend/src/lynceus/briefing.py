@@ -23,6 +23,7 @@ which is built from the facts and states that it is a template.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -417,6 +418,7 @@ def draft_briefing(storage_dir: "str | os.PathLike[str]", window: str = "shift",
             "model_latency_ms": model_ms,
             "note": note,
             "facts_digest": facts_digest(facts),
+            "facts_signature": sign(storage_dir, facts_digest(facts)),
             "facts": facts,
         }
 
@@ -470,18 +472,72 @@ def as_text(briefing: Dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 _SEALED_RE = re.compile(r"^briefing-(\d{6})\.json$")
+_KEY_FILENAME = ".signing-key"
+#: A sealed briefing is at most this big (canonical JSON bytes).
+MAX_SEAL_BYTES = 200_000
+
+
+def _signing_key(storage_dir: "str | os.PathLike[str]") -> bytes:
+    """This ledger's briefing key: random, created once in ``briefings/``, never sent out."""
+    folder = Path(storage_dir) / BRIEFINGS_DIRNAME
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / _KEY_FILENAME
+    try:
+        with path.open("x", encoding="ascii") as fh:
+            fh.write(os.urandom(32).hex())
+    except FileExistsError:
+        pass
+    key = path.read_text(encoding="ascii").strip()
+    if len(key) != 64:
+        raise OSError(f"briefing signing key {path} is malformed")
+    return bytes.fromhex(key)
+
+
+def sign(storage_dir: "str | os.PathLike[str]", digest: str) -> str:
+    """HMAC of a facts digest: proof that this server collected those facts."""
+    mac = hmac.new(_signing_key(storage_dir), digest.encode("ascii"), hashlib.sha256)
+    return "hmac-sha256:" + mac.hexdigest()
+
+
+def verify_for_seal(storage_dir: "str | os.PathLike[str]", briefing: Dict[str, Any]) -> None:
+    """Raise ``ValueError`` unless ``briefing`` is one this server drafted, unedited in substance.
+
+    * at most :data:`MAX_SEAL_BYTES`, the six sections, at most 6 items each;
+    * ``facts`` hash to ``facts_digest`` and ``facts_signature`` is this
+      ledger's HMAC of that digest (invented facts with their own sha256 fail);
+    * every item still passes the grounding check against those facts (an
+      edited sentence with a new figure fails).
+    """
+    size = len(json.dumps(briefing, sort_keys=True, separators=(",", ":"), default=str))
+    if size > MAX_SEAL_BYTES:
+        raise ValueError(f"briefing is {size} bytes; the limit is {MAX_SEAL_BYTES}")
+    sections = briefing.get("sections")
+    if not isinstance(sections, list) or len(sections) > len(SECTIONS) or any(
+        not isinstance(s, dict) or not isinstance(s.get("items"), list) or len(s["items"]) > _MAX_ITEMS
+        for s in sections
+    ):
+        raise ValueError(f"a briefing has the {len(SECTIONS)} sections, at most {_MAX_ITEMS} items each")
+    facts = briefing.get("facts")
+    digest = briefing.get("facts_digest")
+    if not isinstance(facts, dict) or not isinstance(digest, str) or facts_digest(facts) != digest:
+        raise ValueError("facts_digest does not match the briefing's facts")
+    signature = briefing.get("facts_signature")
+    if not isinstance(signature, str) or not hmac.compare_digest(signature, sign(storage_dir, digest)):
+        raise ValueError("the facts were not collected by this server (signature mismatch)")
+    pool = assist.Pool()
+    assist._pool_add(pool, facts)
+    checked, problems = _check({"sections": sections}, pool, _citable(facts))
+    if checked is None:
+        raise ValueError("the briefing text no longer matches its facts: " + "; ".join(problems[:3]))
 
 
 def seal(storage_dir: "str | os.PathLike[str]", briefing: Dict[str, Any], actor: str) -> Dict[str, Any]:
     """Store ``briefing`` as signed off by ``actor`` under ``briefings/``; return the sealed record.
 
     ``digest`` is the sha256 of the canonical JSON of everything but itself.
-    Raises ``ValueError`` when the briefing's ``facts_digest`` does not match
-    its own ``facts`` (the text was not written from the facts it carries).
+    Raises ``ValueError`` when :func:`verify_for_seal` refuses the briefing.
     """
-    facts = briefing.get("facts")
-    if not isinstance(facts, dict) or facts_digest(facts) != briefing.get("facts_digest"):
-        raise ValueError("facts_digest does not match the briefing's facts")
+    verify_for_seal(storage_dir, briefing)
     folder = Path(storage_dir) / BRIEFINGS_DIRNAME
     folder.mkdir(parents=True, exist_ok=True)
     taken = [int(m.group(1)) for p in folder.iterdir() if (m := _SEALED_RE.match(p.name))]

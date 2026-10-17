@@ -23,6 +23,7 @@ import importlib
 import inspect as pyinspect
 import json
 import logging
+import math
 import os
 import queue
 import threading
@@ -33,10 +34,20 @@ from types import ModuleType
 from typing import Any, AsyncIterator, Iterator, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from lynceus import __version__
 from lynceus import actions
 from lynceus import assist
@@ -106,16 +117,27 @@ SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
 }
 
-# No OCR is performed on the waybill; this is the fixed confidence attached
-# to operator-typed manifest text, not an OCR score.
+# The fixed confidence attached to operator-typed waybill fields or manifest
+# text (and to a waybill read this server did not vouch for), not a read score.
 _MANUAL_TEXT_CONFIDENCE = 0.95
 #: Most sensor readings one inspection request may carry.
 MAX_SUPPLIED_OBSERVATIONS = 20
+#: Largest supplied observation ``value``, as compact JSON.
+MAX_OBSERVATION_VALUE_CHARS = 4_000
+#: Largest request body accepted at all (three photos, a waybill photo and
+#: the text fields fit well inside); larger ones are refused with HTTP 413.
+MAX_BODY_BYTES = 50 * 1024 * 1024
 #: Waste age the engine assumes when none was entered (stated as a caveat).
 DEFAULT_AGE_H = 24.0
 
 #: Largest accepted load photo, measured on the decoded bytes.
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
+#: Longest base64 photo field a request body may carry, checked before any
+#: decoding: MAX_PHOTO_BYTES is 11,184,812 base64 characters, plus room for a
+#: data: URI header.  The console's 1280 px JPEGs are well under 1 MB.
+MAX_PHOTO_BASE64_CHARS = 11_200_000
+#: Longest waybill / manifest text accepted (it goes into an LLM prompt).
+MAX_MANIFEST_CHARS = 20_000
 #: Accepted image formats, by magic bytes (the data: URI's claim is not trusted).
 _PHOTO_MAGIC = (bytes([0xFF, 0xD8, 0xFF]), bytes([0x89, 0x50, 0x4E, 0x47]))  # JPEG, PNG
 
@@ -165,6 +187,64 @@ def decode_photo(photo_base64: str | None) -> bytes:
     if not raw.startswith(_PHOTO_MAGIC):
         raise PhotoError(422, "invalid_photo", "photo must be a JPEG or PNG image.")
     return raw
+
+
+def _photo_field_within_cap(value: str | None, field: str) -> str | None:
+    """Refuse an oversized base64 photo field at validation (a 422 naming
+    the limit) instead of carrying it any further."""
+    if value is not None and len(value) > MAX_PHOTO_BASE64_CHARS:
+        raise ValueError(
+            f"{field} is larger than the {MAX_PHOTO_BASE64_CHARS:,}-character base64 "
+            f"limit (a {MAX_PHOTO_BYTES // (1024 * 1024)} MB image): send a smaller photo "
+            "(the console sends 1280 px JPEGs)."
+        )
+    return value
+
+
+class _BodyTooLarge(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=413,
+            detail={
+                "error": "request_too_large",
+                "message": f"request body exceeds the {MAX_BODY_BYTES // (1024 * 1024)} MB limit.",
+            },
+        )
+
+
+class BodySizeLimit:
+    """ASGI middleware: HTTP 413 for a body over ``max_bytes``, whether a
+    ``Content-Length`` announces it (refused before any byte is read) or a
+    chunked stream runs past it (the read stops there; FastAPI answers the
+    raised 413)."""
+
+    def __init__(self, app: Any, max_bytes: int | None = None) -> None:
+        self.app = app
+        self.max_bytes = MAX_BODY_BYTES if max_bytes is None else max_bytes
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        announced = dict(scope.get("headers") or []).get(b"content-length")
+        if announced is not None and announced.strip().isdigit():
+            if int(announced) > self.max_bytes:
+                error = _BodyTooLarge()
+                response = JSONResponse({"detail": error.detail}, status_code=413)
+                await response(scope, receive, send)
+                return
+        received = 0
+
+        async def limited_receive() -> Any:
+            nonlocal received
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body") or b"")
+                if received > self.max_bytes:
+                    raise _BodyTooLarge()
+            return message
+
+        await self.app(scope, limited_receive, send)
 
 def _web_file(filename: str) -> Path:
     """Absolute path of a static-export page inside ``web/out``."""
@@ -222,6 +302,11 @@ class WaybillReadRequest(BaseModel):
         default=None, description="Any value forces the offline reader (sample waybill only)."
     )
 
+    @field_validator("image_base64")
+    @classmethod
+    def _image_within_cap(cls, value: str) -> str:
+        return _photo_field_within_cap(value, "image_base64")
+
 
 class ObservationIn(BaseModel):
     """One reading a site's own sensor gateway sends with the inspection
@@ -233,11 +318,34 @@ class ObservationIn(BaseModel):
     kind: str = Field(min_length=1, max_length=40)
     value: Any = None
     unit: str | None = Field(default=None, max_length=20)
-    uncertainty: float | None = None
+    uncertainty: float | None = Field(default=None, allow_inf_nan=False)
     status: Literal["ok", "poor", "mismatch", "not_installed", "unavailable"] = "ok"
     measured_at_utc: str | None = None
     simulated: bool = False
     note: str | None = Field(default=None, max_length=300)
+
+    @field_validator("value")
+    @classmethod
+    def _sane_value(cls, value: Any) -> Any:
+        """Finite numbers only (NaN/Inf cannot be digested or sealed) and a
+        bounded size, however deeply nested."""
+
+        def check(item: Any) -> None:
+            if isinstance(item, float) and not math.isfinite(item):
+                raise ValueError("observations[].value must not contain NaN or Infinity")
+            if isinstance(item, dict):
+                for nested in item.values():
+                    check(nested)
+            elif isinstance(item, list):
+                for nested in item:
+                    check(nested)
+
+        check(value)
+        if len(json.dumps(value, separators=(",", ":"), default=str)) > MAX_OBSERVATION_VALUE_CHARS:
+            raise ValueError(
+                f"observations[].value is larger than {MAX_OBSERVATION_VALUE_CHARS} characters"
+            )
+        return value
 
     @model_validator(mode="after")
     def _valid_time(self) -> "ObservationIn":
@@ -262,6 +370,11 @@ class WaybillReadMeta(BaseModel):
     #: Optional per-field read confidences (the read's ``fields.*.confidence``):
     #: lets the "Waybill read" check count the unsure fields.
     field_confidences: dict[str, float] | None = None
+    #: The ``read_token`` ``POST /waybill/read`` returned.  Only a genuine
+    #: token for the uploaded waybill photo makes the read count as an AI
+    #: read; the signed confidence, model and provenance then replace the
+    #: values above.  Without one the fields are recorded as operator-typed.
+    read_token: str | None = Field(default=None, max_length=8_192)
 
 
 class InspectRequest(BaseModel):
@@ -298,8 +411,10 @@ class InspectRequest(BaseModel):
     )
     waybill_image_base64: str | None = Field(
         default=None,
-        description="Base64 JPEG/PNG of the waybill document — archived as "
-        "evidence in the audit record; no OCR is performed on it.",
+        description="Base64 JPEG/PNG of the waybill document, archived as "
+        "evidence in the audit record.  It is read by POST /waybill/read, not "
+        "here; its digest must match the waybill_read.read_token for the "
+        "fields to count as an AI read.",
     )
     waybill_photo_filename: str | None = Field(
         default=None,
@@ -307,6 +422,7 @@ class InspectRequest(BaseModel):
     )
     manifest_text: str | None = Field(
         default=None,
+        max_length=MAX_MANIFEST_CHARS,
         description="Waybill / transfer-note text (LLM cross-check input).",
     )
     weight_kg: float | None = Field(
@@ -363,9 +479,22 @@ class InspectRequest(BaseModel):
         default=None,
         max_length=MAX_SUPPLIED_OBSERVATIONS,
         description="Readings from the site's own gate sensors (ANPR, radiation "
-        "portal, analysers, ...). A kind sent here replaces the computed or "
-        "simulated one.",
+        "portal, analysers, ...). A kind sent here replaces the simulated "
+        "or not-installed placeholder; the photo-quality check is always "
+        "computed and a simulated plate mismatch is always kept.",
     )
+
+    @field_validator("photo_base64", "waybill_image_base64")
+    @classmethod
+    def _photo_within_cap(cls, value: str | None, info: ValidationInfo) -> str | None:
+        return _photo_field_within_cap(value, info.field_name)
+
+    @field_validator("extra_photos_base64")
+    @classmethod
+    def _extra_photos_within_cap(cls, value: list[str] | None) -> list[str] | None:
+        for index, photo in enumerate(value or []):
+            _photo_field_within_cap(photo, f"extra_photos_base64[{index}]")
+        return value
 
     @model_validator(mode="after")
     def _normalize_moisture(self) -> "InspectRequest":
@@ -524,6 +653,44 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
     }
 
 
+def _verified_waybill_read(
+    payload: dict[str, Any], waybill_bytes: bytes, settings: Any, *, trusted: bool
+) -> dict[str, Any] | None:
+    """The waybill read as this server vouches for it.
+
+    A read counts only with a genuine ``read_token`` from ``POST
+    /waybill/read`` for exactly the uploaded waybill photo: its signed
+    confidence, model, provenance and per-field confidences replace what
+    the client claimed, and every field whose confirmed value differs from
+    the signed read is flagged as edited.  Without one the read is dropped
+    and the fields are recorded as operator-typed.  ``trusted`` is the
+    seeding script's scripted sample shift (``photo_provenance``), which
+    never goes over HTTP.
+    """
+    claimed = payload["waybill_read"]
+    if claimed is None or payload["waybill_fields"] is None:
+        return claimed
+    claimed = dict(claimed)
+    token = claimed.pop("read_token", None)  # proof only: never sealed or echoed
+    if trusted:
+        return claimed
+    claims = waybill.verify_read(
+        waybill.read_token_key(settings.storage_dir), token, waybill_bytes
+    )
+    if claims is None:
+        return None
+    edited = set(waybill.edited_fields(claims.get("fields") or {}, payload["waybill_fields"]))
+    edited |= {str(f) for f in claimed.get("edited_fields") or []}
+    return {
+        "confidence": claims.get("confidence"),
+        "model": claims.get("model"),
+        "provenance": claims.get("provenance"),
+        "latency_ms": claims.get("latency_ms"),
+        "edited_fields": sorted(edited),
+        "field_confidences": claims.get("field_confidences"),
+    }
+
+
 def _manifest_input(payload: dict[str, Any], manifest_text: str) -> dict[str, Any]:
     """``inputs.manifest_text`` of the audit record: where the waybill text
     came from, its digest, the confirmed fields and the read confidence."""
@@ -542,12 +709,16 @@ def _manifest_input(payload: dict[str, Any], manifest_text: str) -> dict[str, An
         source, confidence = "scripted_demo_default", _MANUAL_TEXT_CONFIDENCE
     else:
         source, confidence = "manual_text", _MANUAL_TEXT_CONFIDENCE
-    return {
+    manifest = {
         "source": source,
         "raw_text_sha256": audit.sha256_field(manifest_text.encode("utf-8")),
         "extracted_fields": dict(fields or {}),
         "ocr_confidence": confidence,
     }
+    if fields is not None and read is not None:
+        # Which read fields the operator changed, not only that one did.
+        manifest["edited_fields"] = sorted(str(f) for f in read.get("edited_fields") or [])
+    return manifest
 
 
 def _supplier_profile(
@@ -669,6 +840,9 @@ def _run_inspection_with_audit(
     # the AI, the engine, the decision, the impact estimate, and the audit
     # record — the record reflects what the verdict actually used.
     payload = _inspect_payload(request)
+    payload["waybill_read"] = _verified_waybill_read(
+        payload, waybill_bytes, settings, trusted=photo_provenance is not None
+    )
 
     manifest_text = payload["manifest_text"] or ""
     # Demo photos arrive as site URLs ("/demo/t-metal-1.jpg"); the audit record
@@ -690,9 +864,12 @@ def _run_inspection_with_audit(
         },
         "manifest_text": _manifest_input(payload, manifest_text),
         "weight": {
+            # No weight: 0 kg as a placeholder, never claimed from the scale.
             "value_kg": payload["weight_kg"] if payload["weight_kg"] is not None else 0.0,
             "source": "scripted_demo_default"
             if payload["weight_defaulted"]
+            else "not_measured"
+            if payload["weight_kg"] is None
             else payload["weight_source"] or "weighbridge",
             "measured_at_utc": now,
         },
@@ -1277,6 +1454,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Added before CORS so CORS wraps it: a 413 still carries CORS headers.
+    app.add_middleware(BodySizeLimit)
     # Dev-friendly: the demo UI may be served from any origin.
     app.add_middleware(
         CORSMiddleware,
@@ -1285,6 +1464,25 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        """FastAPI's 422, except that a NaN / Infinity the request sent is
+        echoed as text: strict JSON cannot carry it (the default handler
+        would fail with a 500 while reporting it)."""
+
+        def safe(item: Any) -> Any:
+            if isinstance(item, float) and not math.isfinite(item):
+                return str(item)
+            if isinstance(item, dict):
+                return {key: safe(value) for key, value in item.items()}
+            if isinstance(item, list):
+                return [safe(value) for value in item]
+            return item
+
+        return JSONResponse(
+            status_code=422, content={"detail": safe(jsonable_encoder(exc.errors()))}
+        )
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Any) -> Any:
@@ -1520,8 +1718,9 @@ def create_app() -> FastAPI:
             image = decode_photo(request.image_base64)
         except PhotoError as exc:
             raise _inspect_http_error(exc) from exc
+        settings = get_settings()
         try:
-            return waybill.read(image, get_settings(), demo=bool(request.demo_case))
+            response = waybill.read(image, settings, demo=bool(request.demo_case))
         except waybill.WaybillRateLimited as exc:
             raise HTTPException(
                 status_code=429, detail={"error": "rate_limited", "message": str(exc)}
@@ -1535,6 +1734,11 @@ def create_app() -> FastAPI:
                 status_code=503,
                 detail={"error": "waybill_reader_offline", "message": str(exc)},
             ) from exc
+        # Sent back in /inspect's waybill_read: proof this server made the read.
+        response["read_token"] = waybill.sign_read(
+            waybill.read_token_key(settings.storage_dir), image, response
+        )
+        return response
 
     @app.get("/sensors")
     def list_sensors(_user: str | None = Depends(auth.require_auth)) -> dict[str, Any]:

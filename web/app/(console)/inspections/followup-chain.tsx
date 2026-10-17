@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 import {
   OpsError,
+  chainFailed,
   fetchFollowups,
+  knownAmount,
   type Followup,
   type FollowupsResponse,
 } from "@/lib/ops-api";
 import { formatRupiah } from "@/lib/format";
+import { plainWords } from "@/components/ops/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -89,6 +92,9 @@ export function FollowupChain({ recordId }: { recordId: string }) {
 
   const followups = state.kind === "ready" ? state.data.followups : [];
   const chain = state.kind === "ready" ? state.data.chain : null;
+  const failed = chain ? chainFailed(chain) : false;
+  const truncated = chain ? chain.problems.some((p) => /truncat/i.test(p)) : false;
+  const sealed = `${followups.length} sealed ${followups.length === 1 ? "record" : "records"}`;
 
   return (
     <section aria-labelledby={`chain-${recordId}`}>
@@ -100,19 +106,28 @@ export function FollowupChain({ recordId }: { recordId: string }) {
           <span
             className={cn(
               "inline-flex items-center gap-1.5 text-[12px] font-semibold",
-              chain.ok ? "text-muted" : "text-verdict-red",
+              failed ? "text-verdict-red" : "text-muted",
             )}
           >
             <span
               aria-hidden="true"
-              className={cn("h-1.5 w-1.5 rounded-full", chain.ok ? "bg-dot-ok" : "bg-dot-down")}
+              className={cn("h-1.5 w-1.5 rounded-full", failed ? "bg-dot-down" : "bg-dot-ok")}
             />
-            {chain.ok
-              ? `Chain verified · ${followups.length} sealed ${followups.length === 1 ? "record" : "records"}`
-              : "Chain broken: a follow-up was altered or removed"}
+            {failed
+              ? truncated
+                ? "Chain truncated: sealed follow-ups are missing from the end"
+                : "Chain broken: a follow-up was altered or removed"
+              : `${chain.anchored ? "Chain anchored" : "Chain verified"} · ${sealed}`}
           </span>
         ) : null}
       </div>
+      {chain && followups.length > 0 && chain.notes.length > 0 ? (
+        <ul className="m-0 mb-2 flex list-none flex-col gap-0.5 p-0 text-[12px] text-faint">
+          {chain.notes.map((note) => (
+            <li key={note}>{plainWords(note)}</li>
+          ))}
+        </ul>
+      ) : null}
 
       {state.kind === "loading" ? (
         <div role="status" className="rounded-[8px] border border-seam bg-ground px-3.5 py-3">
@@ -136,7 +151,7 @@ export function FollowupChain({ recordId }: { recordId: string }) {
         </p>
       ) : (
         <>
-          {chain && !chain.ok && chain.problems.length > 0 ? (
+          {chain && failed && chain.problems.length > 0 ? (
             <ul className="m-0 mb-2 list-disc pl-5 text-[12.5px] text-verdict-red">
               {chain.problems.map((p) => (
                 <li key={p}>{p}</li>
@@ -205,6 +220,14 @@ function FollowupBody({ followup }: { followup: Followup }) {
     const isoCode = ev?.iso21640?.code ?? null;
     const isoLabel = ev?.iso21640?.label ?? null;
     const tier = ev?.tier ? (SETTLEMENT_NAME[ev.tier] ? `${ev.tier} · ${SETTLEMENT_NAME[ev.tier]}` : ev.tier) : null;
+    // No weighbridge ticket: money is null, never shown as Rp 0 or NaN.
+    const settles = knownAmount(ev?.settlement_idr);
+    const payable = knownAmount(ev?.payable_idr);
+    const deducted = knownAmount(ev?.deduction_idr);
+    const unweighed =
+      ev && (ev.weight_measured === false || payable === null)
+        ? (ev.settlement_note ?? "Weight not measured: settlement needs the weighbridge ticket.")
+        : null;
     return (
       <div className="flex flex-col gap-1 text-[13px] text-muted">
         <span className="figure text-[12.5px] text-ink">
@@ -220,9 +243,9 @@ function FollowupBody({ followup }: { followup: Followup }) {
         {tier ? (
           <span className="text-[12.5px]">
             Settlement tier <span className="font-semibold text-ink">{tier}</span>
-            {typeof ev?.settlement_idr === "number" ? (
+            {settles !== null ? (
               <>
-                {" "}· settles at <span className="figure text-ink">{rp(ev.settlement_idr)}</span>
+                {" "}· settles at <span className="figure text-ink">{rp(settles)}</span>
               </>
             ) : null}
             {ev?.tier_reason ? <span className="block text-faint">{ev.tier_reason}</span> : null}
@@ -242,17 +265,22 @@ function FollowupBody({ followup }: { followup: Followup }) {
               </ul>
               <span>
                 Price {rp(ev.adjusted_price_idr_per_t)}/t ({ev.adjustment_pct > 0 ? "+" : ""}
-                {ev.adjustment_pct} %) · payable{" "}
-                <span className="figure text-ink">{rp(ev.payable_idr)}</span>
-                {ev.deduction_idr > 0 ? (
+                {ev.adjustment_pct} %)
+                {payable !== null ? (
                   <>
-                    {" "}· deducted <span className="figure font-semibold text-ink">{rp(ev.deduction_idr)}</span>
+                    {" "}· payable <span className="figure text-ink">{rp(payable)}</span>
+                  </>
+                ) : null}
+                {deducted !== null && deducted > 0 ? (
+                  <>
+                    {" "}· deducted <span className="figure font-semibold text-ink">{rp(deducted)}</span>
                   </>
                 ) : null}
               </span>
             </>
           )
         ) : null}
+        {unweighed ? <span className="text-[12.5px] text-muted">{unweighed}</span> : null}
         {warnings.map((br) => (
           <span key={`warn-${br.param}`} className="text-[12.5px] text-verdict-amber">
             {br.effect}

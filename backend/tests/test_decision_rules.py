@@ -89,7 +89,7 @@ def test_threshold_constants():
     assert decision.WAYBILL_READ_MIN_CONFIDENCE == 0.6
 
 
-@pytest.mark.parametrize("confidence,expected", [(0.6, D.REJECT), (0.59, D.ACCEPT)])
+@pytest.mark.parametrize("confidence,expected", [(0.6, D.REJECT), (0.59, D.ESCALATE_HUMAN)])
 def test_confident_hard_contaminant_still_rejects_at_0_6(confidence, expected):
     plain = _inputs(waybill_fields={}, waybill_read=None)
     assert _decide(plain, _vlm(hard=["metal"], confidence=confidence))[0] == expected
@@ -433,13 +433,20 @@ def test_image_quality_ok_or_unavailable_does_not_hold(status):
     assert _decide(_inputs(observations=[_obs("image_quality", status)]))[0] == D.ACCEPT
 
 
-def test_plate_mismatch_holds_on_the_weighbridge_gate():
-    obs = [_obs("plate", "mismatch", value="B 9406 KXW")]
+@pytest.mark.parametrize("simulated,camera", [
+    (True, "the simulated plate camera"),  # the demo ANPR echoes the typed truck id
+    (False, "the camera"),  # a real ANPR camera
+])
+def test_plate_mismatch_holds_on_the_weighbridge_gate(simulated, camera):
+    obs = [{**_obs("plate", "mismatch", value="B 9406 KXW"), "simulated": simulated}]
     verdict, gates, reasons = _decide(_inputs(observations=obs))
     assert verdict == D.ESCALATE_HUMAN
-    assert reasons[0] == (
-        "Plate mismatch: the camera reads B 9406 KXW, the waybill says B 9723 KXW; "
-        "verify the truck.")
+    reason = (f"Plate mismatch: {camera} reads B 9406 KXW, the waybill says B 9723 KXW; "
+              "verify the truck.")
+    assert reasons[0] == reason
+    assert decision.plate_camera(_inputs(observations=obs)) == camera.removeprefix("the ")
+    row = next(r for r in _trace(_inputs(observations=obs)) if r["id"] == "plate_mismatch")
+    assert row["evidence"] == reason
     assert gates["weight_plausibility"]["state"] == G.FAILED
     assert gates["weight_plausibility"]["reason"].startswith(decision.PLATE_MISMATCH_MARKER)
     assert "within tolerance" in gates["weight_plausibility"]["reason"]
@@ -538,3 +545,78 @@ def test_receipt_is_pure():
     assert _trace(inputs, vlm) == _trace(inputs, vlm)
     assert inputs == _inputs()
     assert decision.decide(inputs, vlm, _LLM, ENGINE) == _decide(inputs, vlm)
+
+
+# ---------------------------------------------------------------------------
+# A hard contaminant below the bar holds; an unchecked early majority holds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("confidence", [0.3, 0.5, 0.59])
+def test_hard_contaminant_listed_below_the_bar_holds_never_accepts(confidence):
+    plain = _inputs(waybill_fields={}, waybill_read=None)
+    verdict, gates, reasons = _decide(plain, _vlm(hard=["metal"], confidence=confidence))
+    assert verdict == D.ESCALATE_HUMAN
+    assert reasons == [(
+        f"Hard contaminant listed below the confidence bar: metal at VLM confidence "
+        f"{confidence:.2f} (bar 0.60); check by hand.")]
+    assert decision.LOW_CONFIDENCE_HARD_MARKER in gates["vlm_confidence"]["reason"]
+    assert gates["vlm_confidence"]["state"] == G.PASSED
+    row = next(r for r in _trace(plain, _vlm(hard=["metal"], confidence=confidence))
+               if r["id"] == "hard_below_bar")
+    assert (row["fired"], row["effect"]) == (True, "hold")
+
+
+def test_majority_metal_at_a_low_median_holds():
+    vlm = _voted([["metal"], ["metal"], []], hard=["metal"], confidence=0.5)
+    verdict, _, reasons = _decide(vlm=vlm)
+    assert verdict == D.ESCALATE_HUMAN
+    assert reasons[0].startswith("Hard contaminant listed below the confidence bar: metal")
+
+
+def test_engine_tie_or_refusal_does_not_hide_a_low_confidence_hard_item():
+    unusable = {"recommendation": {"actionable": False, "headline": "no data"}}
+    assert _decide(vlm=_vlm(hard=["tire"], confidence=0.5), engine=unusable)[0] == (
+        D.ESCALATE_HUMAN)
+
+
+def _early(third, hard=()):
+    return {**_voted([list(hard), list(hard)], hard=hard), "votes_used": 2,
+            "third_read": third}
+
+
+@pytest.mark.parametrize("third", ["late", "failed"])
+def test_clean_early_majority_without_the_detector_holds(third):
+    verdict, gates, reasons = _decide(vlm=_early(third))
+    assert verdict == D.ESCALATE_HUMAN
+    assert reasons == [(
+        "Vision decided on 2 of 3 reads and the detector second opinion is unavailable: "
+        "check by hand.")]
+    assert decision.EARLY_MAJORITY_MARKER in gates["vlm_confidence"]["reason"]
+    row = next(r for r in _trace(vlm=_early(third)) if r["id"] == "early_majority")
+    assert (row["fired"], row["effect"]) == (True, "hold")
+
+
+@pytest.mark.parametrize("third", ["late", "failed"])
+def test_clean_early_majority_with_a_clean_detector_accepts(third):
+    verdict, _, _ = _decide(vlm=_early(third), detector=_det(("paper", 0.8)))
+    assert verdict == D.ACCEPT
+    row = next(r for r in _trace(vlm=_early(third), detector=_det(("paper", 0.8)))
+               if r["id"] == "early_majority")
+    assert row["fired"] is False and "detector second opinion ran" in row["evidence"]
+
+
+def test_early_majority_with_a_detector_hard_flag_holds_on_the_detector():
+    verdict, _, reasons = _decide(vlm=_early("late"), detector=_det(("metal", 0.9)))
+    assert verdict == D.ESCALATE_HUMAN
+    assert not any(r.startswith("Vision decided on") for r in reasons)
+    assert any("did not confirm" in r for r in reasons)
+
+
+@pytest.mark.parametrize("third", ["arrived", None])
+def test_every_read_waited_for_is_not_the_early_majority_rule(third):
+    assert _decide(vlm=_early(third))[0] == D.ACCEPT
+
+
+def test_early_majority_of_metal_still_rejects():
+    assert _decide(vlm=_early("late", hard=["metal"]))[0] == D.REJECT

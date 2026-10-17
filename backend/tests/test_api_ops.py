@@ -61,13 +61,13 @@ def test_get_followups_empty_then_listed(records):
     response = client.get(f"/inspections/{ids['reject']}/followups")
     assert response.status_code == 200
     assert response.json() == {"record_id": ids["reject"], "followups": [],
-                               "chain": {"ok": True, "problems": []}}
+                               "chain": {"ok": True, "problems": [], "anchored": True, "notes": []}}
 
     sealed = client.post(f"/inspections/{ids['reject']}/resolution",
                          json={"decision": "reject", "note": "Confirmed refusal"}).json()
     listed = client.get(f"/inspections/{ids['reject']}/followups").json()
     assert listed["followups"] == [sealed]
-    assert listed["chain"] == {"ok": True, "problems": []}
+    assert listed["chain"] == {"ok": True, "problems": [], "anchored": True, "notes": []}
 
 
 def test_get_followups_on_in_progress_record_is_empty(records):
@@ -289,15 +289,16 @@ def test_evidence_pack_json(records):
     assert pack["input_digests"] == {"photo": pack["record"]["inputs"]["photo"]["sha256"]}
     assert [f["kind"] for f in pack["followups"]] == ["resolution", "lab_result"]
     assert pack["followups"][1]["body"]["contract_eval"]["iso21640"]["code"] == "NCV 4; Cl 2; Hg 2"
-    assert pack["chain"] == {"ok": True, "problems": []}
+    assert pack["chain"] == {"ok": True, "problems": [], "anchored": True, "notes": []}
     rule = pack["rule_fired"]
     assert rule["decision"] == "reject"
     assert rule["failed_gates"] == {
         "manifest_crosscheck": "Waybill declares sorted RDF fluff; the camera sees metal"}
     assert rule["gate_states"]["manifest_crosscheck"] == "failed"
     by_path = {f["path"]: f for f in pack["files"]}
-    assert set(by_path) == {audit.RECORD_FILENAME, "photo.jpg",
+    assert set(by_path) == {audit.RECORD_FILENAME, "photo.jpg", "followups/.tip.json",
                             "followups/001-resolution.json", "followups/002-lab_result.json"}
+    assert all(f["in_evidence_set"] and f["archive_path"] == f["path"] for f in pack["files"])
     photo = by_path["photo.jpg"]
     assert (photo["role"], photo["missing"], photo["matches_record"]) == ("photo", False, True)
     record_bytes = (storage / record_id / audit.RECORD_FILENAME).read_bytes()
@@ -328,7 +329,7 @@ def test_evidence_pack_zip_carries_the_files(records):
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         names = set(archive.namelist())
         assert names == {"evidence-pack.json", audit.RECORD_FILENAME, "photo.jpg",
-                         "followups/001-resolution.json"}
+                         "followups/001-resolution.json", "followups/.tip.json"}
         pack = json.loads(archive.read("evidence-pack.json"))
         for entry in pack["files"]:
             assert audit.sha256_field(archive.read(entry["path"])) == entry["sha256"]

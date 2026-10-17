@@ -8,14 +8,17 @@ priority order, fired or not, with its effect and evidence.
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
+from test_early_majority import _LLM_JSON, CONFIRMED_FIELDS, PHOTO, _Script
 from test_intake import _jpeg, _waybill_payload
 
 from lynceus import api, audit, decision, pipeline
 from lynceus.api import create_app
 from lynceus.config import LYNCEUS_STORAGE_DIR_ENV
+from lynceus.pipeline import VLLMClient
 
 RULE_IDS = [rule_id for rule_id, _, _ in decision.RULES]
 EFFECT = {
@@ -76,6 +79,81 @@ def test_get_inspection_carries_the_receipt(client):
     # Replayed from the sealed outputs: the same rules fire as at the gate.
     fired = [row["id"] for row in body["receipt"] if row["fired"]]
     assert fired == [row["id"] for row in created["receipt"] if row["fired"]]
+
+
+@pytest.fixture()
+def live_client(tmp_path, monkeypatch):
+    """The real vision client with scripted model calls, no detector."""
+    monkeypatch.setenv(LYNCEUS_STORAGE_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(pipeline, "safe_detect", lambda *a, **k: None)
+    monkeypatch.setattr(
+        pipeline, "resolve_clients", lambda payload, settings=None: VLLMClient(settings)
+    )
+    monkeypatch.setenv("VLM_VOTES", "3")
+    monkeypatch.delenv("VLM_FALLBACK_MODELS", raising=False)
+    return TestClient(create_app())
+
+
+def _inspect(client, *routes):
+    created = client.post(
+        "/inspect", json={"photo_base64": PHOTO, "waybill_fields": CONFIRMED_FIELDS,
+                          "weight_kg": 16340},
+    ).json()
+    return created, client.get(f"/inspections/{created['record_id']}").json()
+
+
+def _fired(body):
+    return [row["id"] for row in body["receipt"] if row["fired"]]
+
+
+def test_api_holds_a_hard_item_listed_below_the_bar(live_client, monkeypatch):
+    low_metal = json.dumps({"contamination": "x", "moisture": 0.1, "hard_contaminants": ["metal"],
+                            "light_contaminants": [], "confidence": 0.5, "locations": []})
+
+    def chat_once(client, base_url, model, messages, max_tokens=512):
+        return low_metal if "image_url" in json.dumps(messages) else _LLM_JSON
+
+    monkeypatch.setattr(VLLMClient, "_chat_once", chat_once)
+    created, fetched = _inspect(live_client)
+    assert created["verdict"]["decision"] == audit.Decision.ESCALATE_HUMAN
+    assert any("below the confidence bar" in r for r in created["reasons"])
+    for body in (created, fetched):
+        _assert_receipt(body)
+        assert "hard_below_bar" in _fired(body) and "accept" not in _fired(body)
+
+
+@pytest.fixture()
+def held():
+    """Holds the third vision read past the grace window; released after."""
+    gate = threading.Event()
+    yield gate
+    gate.set()
+
+
+def test_api_holds_a_clean_early_majority_without_the_detector(live_client, monkeypatch, held):
+    monkeypatch.setenv("VLM_VOTE_GRACE_S", "0.2")
+    _Script([{"hard": []}, {"hard": []}, {"hard": [], "gate": held}]).install(monkeypatch)
+    created, fetched = _inspect(live_client)
+    assert created["ai_outputs"]["vlm"]["third_read"] == "late"
+    assert created["verdict"]["decision"] == audit.Decision.ESCALATE_HUMAN
+    assert created["reasons"][0].startswith("Vision decided on 2 of 3 reads")
+    for body in (created, fetched):
+        _assert_receipt(body)
+        assert "early_majority" in _fired(body)
+
+
+def test_api_says_the_plate_camera_is_simulated(client):
+    # The demo ANPR echoes the typed truck id; this one is not the waybill's.
+    created = client.post("/inspect", json=_waybill_payload(truck_id="B 9406 KXW")).json()
+    fetched = client.get(f"/inspections/{created['record_id']}").json()
+    assert created["verdict"]["decision"] == audit.Decision.ESCALATE_HUMAN
+    assert created["reasons"][0].startswith(
+        "Plate mismatch: the simulated plate camera reads B 9406 KXW")
+    for body in (created, fetched):
+        weight = next(c for c in body["checks"] if c["key"] == "weight")
+        assert weight["finding"] == "Simulated plate ≠ waybill"
+        plate = next(r for r in body["receipt"] if r["id"] == "plate_mismatch")
+        assert plate["fired"] and "simulated plate camera" in plate["evidence"]
 
 
 def test_checks_failure_keeps_the_response(client, monkeypatch):

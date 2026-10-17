@@ -13,6 +13,7 @@
  * when it lands; an inspect attempt with a missing input focuses that field.
  */
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -21,6 +22,7 @@ import type { InspectPayload } from "@/lib/inspect-api";
 import { cn } from "@/lib/utils";
 import {
   WAYBILL_FIELDS,
+  parseDecimal,
   parseFieldNumber,
   streamFromDeclaration,
   toWaybillFields,
@@ -63,6 +65,8 @@ export function WorkspaceClient() {
   const verdictRef = useRef<HTMLElement>(null);
   /** Bumped by every preset load and clear: an older flow stops at its next await. */
   const flow = useRef(0);
+  /** The flow whose inspection is in flight; null when none is. */
+  const inFlight = useRef<number | null>(null);
 
   // Wake the vision model while the visitor reads the page.
   useEffect(() => {
@@ -78,7 +82,9 @@ export function WorkspaceClient() {
     if (run.phase === "done") requestAnimationFrame(() => scrollToPanel(verdictRef.current));
   }, [run.phase, run.runId]);
 
-  const inspect = useCallback(async () => {
+  /** Validate, build the payload and start; bails once the gate is cleared. */
+  const inspectOnce = useCallback(async (mine: number) => {
+    const stale = () => mine !== flow.current;
     setFormError(null);
     const fail = (message: string, field: InvalidField, focusId?: string) => {
       setFormError({ message, field });
@@ -89,6 +95,7 @@ export function WorkspaceClient() {
     if (w.status === "reading") return fail("The waybill is still being read: inspect once its fields are in.", null);
 
     const photos = await intake.encodedPhotos();
+    if (stale()) return;
     if (photos.length === 0) return fail("Add a load photo: it is what the AI inspects.", "photo", "load-photo-0");
     if (!w.values.plate.trim()) {
       return fail("The plate is empty: read the waybill photo or type the plate.", "plate", waybillFieldId("plate"));
@@ -102,7 +109,18 @@ export function WorkspaceClient() {
     const hasFields = WAYBILL_FIELDS.some((f) => values[f.key].trim());
     const read = w.status === "read" ? w.read : null;
     const waybillPhoto = await intake.encodedWaybill();
+    if (stale()) return;
     const declaredNet = parseFieldNumber(values.net_kg);
+    const declaredMoisturePct = parseDecimal(values.moisture_pct);
+    // Read confidences only for fields that hold a value the AI read and the
+    // operator left as read: an empty field is not "confidence 0", and an
+    // edited one no longer carries the read's confidence.
+    const fieldConfidences = Object.fromEntries(
+      WAYBILL_FIELDS.flatMap(({ key }) => {
+        const c = w.confidence[key];
+        return values[key].trim() && !now.editedFields.includes(key) && typeof c === "number" ? [[key, c]] : [];
+      }),
+    );
     const scale = now.scale;
     const weightSource =
       scale.status === "live" && scale.reading
@@ -136,22 +154,41 @@ export function WorkspaceClient() {
             provenance: read.provenance ?? "live",
             latency_ms: read.latency_ms ?? null,
             edited_fields: now.editedFields,
-            field_confidences: w.confidence,
+            field_confidences: fieldConfidences,
+            // Bound to the bytes posted to /waybill/read: waybill_image_base64
+            // below is that same encode (intake.encodedWaybill), not a re-encode.
+            ...(read.read_token ? { read_token: read.read_token } : {}),
           }
         : undefined,
       weight_kg: now.scaleNetKg,
       declared_weight_kg: declaredNet,
       weight_source: weightSource,
       stream: streamFromDeclaration(values),
-      moisture_pct: parseFieldNumber(values.moisture_pct),
+      // A fraction: the backend reads a value <= 1 as a fraction, so "1 %"
+      // sent as percent would become 100 %.
+      moisture: declaredMoisturePct === null ? null : declaredMoisturePct / 100,
     };
     const snapshot: RunSnapshot = {
       frames: photos.map((p) => ({ src: dataUrl(p.photo), filename: p.photo.filename })),
       waybill: { values, status: w.status, read, editedFields: now.editedFields },
       scale: { netKg: now.scaleNetKg, declaredNetKg: declaredNet, source: weightSource, reading: scale.reading },
     };
+    if (stale()) return;
     await start(payload, snapshot);
   }, [intake, start]);
+
+  const inspect = useCallback(async () => {
+    // One inspection per gate flow: a double click must not seal two
+    // records. Clearing the gate (a new flow) frees it.
+    const mine = flow.current;
+    if (inFlight.current === mine) return;
+    inFlight.current = mine;
+    try {
+      await inspectOnce(mine);
+    } finally {
+      if (inFlight.current === mine) inFlight.current = null;
+    }
+  }, [inspectOnce]);
 
   const loadPreset = useCallback(
     async (key: PresetKey, thenInspect: boolean) => {
@@ -350,6 +387,30 @@ function IntakeBar({
 
 /** A run that stopped before a verdict: what happened and what to do. */
 function RunError({ error, onRetry }: { error: NonNullable<RunState["error"]>; onRetry: () => void }) {
+  if (error.kind === "dropped") {
+    // The backend had the truck: it may be sealed. A blind retry would seal a
+    // second record for the same load, so send the operator to the trail.
+    const href = error.recordId ? `/inspections?record=${encodeURIComponent(error.recordId)}` : "/inspections";
+    return (
+      <div role="alert" className="flex flex-col gap-2 rounded-[14px] border border-amber-line bg-amber-dim px-4 py-3">
+        <p className="m-0 text-[14px] font-semibold text-amber">The connection dropped mid-inspection</p>
+        <p className="m-0 text-[13px] leading-relaxed text-ink">{error.message}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="m-0 text-[13px] text-muted">
+            {error.recordId
+              ? `The record ${error.recordId} was sealed before the connection dropped.`
+              : "Check the audit trail for this truck before inspecting it again."}
+          </p>
+          <Link
+            href={href}
+            className="rounded-[6px] border border-seam-strong px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-100 hover:bg-seam"
+          >
+            {error.recordId ? "Open the sealed record" : "Open the audit trail"}
+          </Link>
+        </div>
+      </div>
+    );
+  }
   const title =
     error.kind === "network"
       ? "The backend could not be reached"

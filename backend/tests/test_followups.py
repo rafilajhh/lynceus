@@ -61,12 +61,12 @@ def test_followups_are_sealed_and_hash_chained(rejected):
     assert [first["actor"], second["actor"], third["actor"]] == ["supervisor", "lab", "procurement"]
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", f["digest"]) for f in (first, second, third))
     assert sorted(p.name for p in (storage / record_id / "followups").iterdir()) == [
-        "001-resolution.json", "002-lab_result.json", "003-notice.json"]
+        ".tip.json", "001-resolution.json", "002-lab_result.json", "003-notice.json"]
 
     chain, problems = followups.read_chain(storage, record_id)
     assert problems == []
     assert chain == [first, second, third]
-    assert followups.verify_chain(storage, record_id) == {"ok": True, "problems": []}
+    assert followups.verify_chain(storage, record_id) == {"ok": True, "problems": [], "anchored": True, "notes": []}
     # The parent record itself is untouched (a terminal record is never rewritten).
     assert load(storage, record_id).digest.record_sha256 == parent
 
@@ -113,6 +113,88 @@ def test_deleted_followup_is_detected(rejected):
     state = followups.verify_chain(storage, record_id)
     assert state["ok"] is False
     assert any("missing" in p for p in state["problems"])
+
+
+# ---------------------------------------------------------------------------
+# Tail anchor (tip file)
+# ---------------------------------------------------------------------------
+
+
+def _two(storage, record_id):
+    followups.append_resolution(storage, record_id, "sort_then_accept", actor="s")
+    followups.append_lab(storage, record_id, moisture_pct=25, ncv_mj_kg=14, chlorine_pct=0.5,
+                         actor="s")
+
+
+def test_tip_anchors_the_newest_followup(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    tip = json.loads(_file(storage, record_id, followups.TIP_FILENAME).read_text(encoding="utf-8"))
+    chain, _ = followups.read_chain(storage, record_id)
+    assert (tip["seq"], tip["kind"], tip["digest"]) == (2, "lab_result", chain[-1]["digest"])
+    assert followups.verify_chain(storage, record_id)["anchored"] is True
+
+
+def test_deleting_the_newest_followup_fails_as_truncated(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    # The lab result (and its deduction) vanishes: the files alone still chain.
+    _file(storage, record_id, "002-lab_result.json").unlink()
+    state = followups.verify_chain(storage, record_id)
+    assert state["ok"] is False
+    assert any(p.startswith("chain truncated") for p in state["problems"])
+    with pytest.raises(followups.ChainBroken):
+        followups.append_resolution(storage, record_id, "reject", actor="s")
+
+
+def test_deleting_every_followup_fails_as_truncated(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    for name in ("001-resolution.json", "002-lab_result.json"):
+        _file(storage, record_id, name).unlink()
+    assert followups.verify_chain(storage, record_id)["ok"] is False
+
+
+def test_replacing_the_newest_followup_fails(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    # Re-sealed with a smaller deduction: digest valid, chain links valid, tip not.
+    _rewrite(_file(storage, record_id, "002-lab_result.json"),
+             lambda d: d["body"]["contract_eval"].update(deduction_idr=1), restamp=True)
+    state = followups.verify_chain(storage, record_id)
+    assert state["ok"] is False and "chain truncated" in state["problems"][0]
+
+
+def test_chain_without_a_tip_verifies_with_a_note(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    _file(storage, record_id, followups.TIP_FILENAME).unlink()  # an older chain
+    state = followups.verify_chain(storage, record_id)
+    assert state == {"ok": True, "problems": [], "anchored": False,
+                     "notes": ["tail not anchored (pre-dates tip file)"]}
+    # The next append anchors it.
+    followups.append_resolution(storage, record_id, "reject", actor="s")
+    assert followups.verify_chain(storage, record_id)["anchored"] is True
+
+
+def test_interrupted_append_tip_one_behind_is_a_note_and_heals(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    first = followups.read_chain(storage, record_id)[0][0]
+    _file(storage, record_id, followups.TIP_FILENAME).write_text(
+        json.dumps({"record_id": record_id, "seq": 1, "kind": "resolution",
+                    "digest": first["digest"]}), encoding="utf-8")
+    state = followups.verify_chain(storage, record_id)
+    assert state["ok"] is True and "interrupted append" in state["notes"][0]
+    followups.append_resolution(storage, record_id, "reject", actor="s")
+    assert followups.verify_chain(storage, record_id)["notes"] == []
+
+
+def test_malformed_tip_is_a_problem(rejected):
+    storage, record_id = rejected
+    _two(storage, record_id)
+    _file(storage, record_id, followups.TIP_FILENAME).write_text("{", encoding="utf-8")
+    assert followups.verify_chain(storage, record_id)["ok"] is False
 
 
 def test_parent_mismatch_is_detected(rejected):
@@ -331,3 +413,109 @@ def test_ledger_row_counts(rejected):
     assert row["spec_breach_samples"] == 1  # the chlorine warning alone is not a breach
     assert row["deductions_idr"] == 588_240
     assert row["supplier"] == "PT. Hijau Lestari Transport"
+
+
+def test_breach_fee_needs_a_sorted_rdf_declaration(tmp_path):
+    # MSW waybill, moisture conflict, confident metal reject: no breach fee.
+    msw = write_record(
+        tmp_path, 1, decision="reject", hard=["metal"], conflict=True,
+        conflict_reason="Moisture conflict: the waybill declares 18 %; the camera sees about 35 %.",
+        fields={"load_type": "MSW (sampah campuran)", "moisture_pct": 18})
+    row = followups.ledger_row(load(tmp_path, msw), [])
+    assert (row["hard_contaminant_load"], row["declaration_conflict"]) == (True, True)
+    assert (row["declared_sorted"], row["breach_fee_idr"]) == (False, 0)
+
+
+@pytest.mark.parametrize("reason, fields", [
+    # Live records: the gate reason carries the marker.
+    ("Waybill declares sorted RDF (RDF fluff); the camera sees metal.", {}),
+    # A sorted declaration in the recorded fields ({value, confidence} or plain).
+    ("Moisture conflict: declared 18 %.", {"load_type": {"value": "RDF fluff", "confidence": 0.9}}),
+    ("Moisture conflict: declared 18 %.", {"remarks": "hasil proses pemilahan"}),
+])
+def test_breach_fee_on_sorted_rdf_with_a_hard_contaminant(tmp_path, reason, fields):
+    record_id = write_record(tmp_path, 1, decision="reject", hard=["metal"], conflict=True,
+                             conflict_reason=reason, fields=fields)
+    row = followups.ledger_row(load(tmp_path, record_id), [])
+    assert (row["declared_sorted"], row["breach_fee_idr"]) == (True, 1_500_000)
+
+
+def test_no_breach_fee_without_a_hard_contaminant_reject(tmp_path):
+    held = write_record(tmp_path, 1, decision="escalate_human", hard=["metal"], conflict=True,
+                        fields={"load_type": "RDF fluff"})
+    assert followups.ledger_row(load(tmp_path, held), [])["breach_fee_idr"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Unweighed loads
+# ---------------------------------------------------------------------------
+
+
+def test_lab_on_an_unweighed_load_has_a_tier_but_no_money(tmp_path):
+    record_id = write_record(tmp_path, 1, weight_kg=0.0)
+    sealed = followups.append_lab(tmp_path, record_id, moisture_pct=25, ncv_mj_kg=14,
+                                  chlorine_pct=0.5, actor="lab")
+    effect = sealed["body"]["contract_eval"]
+    assert effect["weight_measured"] is False
+    assert effect["settlement_note"] == (
+        "Weight not measured: settlement needs the weighbridge ticket.")
+    assert (effect["tier"], effect["adjusted_price_idr_per_t"]) == ("C", 324_000)
+    for key in ("net_t", "payable_idr", "deduction_idr", "settlement_idr", "premium_idr"):
+        assert effect[key] is None, key
+    chain, problems = followups.read_chain(tmp_path, record_id)
+    assert problems == []
+    row = followups.ledger_row(load(tmp_path, record_id), chain)
+    assert (row["weight_measured"], row["deductions_idr"], row["spec_breach_samples"]) == (False, 0, 1)
+    facts = "\n".join(followups.notice_facts(load(tmp_path, record_id), chain))
+    assert "weight not measured, settlement needs the weighbridge ticket" in facts
+    assert "Rp 0" not in facts
+
+
+# ---------------------------------------------------------------------------
+# Evidence pack: confinement and tampered files
+# ---------------------------------------------------------------------------
+
+
+def _with_photo(storage, record_id, data=b"\xff\xd8 jpeg"):
+    path = storage / record_id / audit.RECORD_FILENAME
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["inputs"]["photo"].update(path="photo.jpg", sha256=audit.sha256_field(data))
+    audit._stamp_record_digest(raw)
+    path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    (storage / record_id / "photo.jpg").write_bytes(data)
+
+
+def test_evidence_pack_moves_a_changed_photo_to_tampered(rejected):
+    storage, record_id = rejected
+    _with_photo(storage, record_id)
+    (storage / record_id / "photo.jpg").write_bytes(b"swapped")
+    pack, files = followups.evidence_pack(storage, record_id)
+    photo = next(f for f in pack["files"] if f["role"] == "photo")
+    assert (photo["matches_record"], photo["in_evidence_set"], photo["archive_path"]) == (
+        False, False, "tampered/photo.jpg")
+    assert "not part of the evidence set" in photo["note"]
+    assert ("tampered/photo.jpg", (storage / record_id / "photo.jpg").resolve()) in files
+    assert "photo.jpg" not in {arc for arc, _ in files}
+
+
+def test_evidence_pack_never_reads_outside_the_record_folder(rejected):
+    storage, record_id = rejected
+    (storage / "secret.txt").write_text("not evidence", encoding="utf-8")
+    folder = storage / record_id
+    entry, path = followups._file_entry(folder, "../secret.txt", "photo", "sha256:" + "0" * 64)
+    assert path is None
+    assert (entry["outside_record"], entry["missing"], entry["in_evidence_set"]) == (True, True, False)
+    assert entry["sha256"] is None and entry["archive_path"] is None
+
+
+def test_evidence_pack_rejects_a_symlink_out_of_the_record(rejected):
+    storage, record_id = rejected
+    secret = storage / "secret.jpg"
+    secret.write_bytes(b"outside")
+    link = storage / record_id / "photo.jpg"
+    try:
+        link.symlink_to(secret)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks need privileges on this machine")
+    entry, path = followups._file_entry(storage / record_id, "photo.jpg", "photo")
+    assert path is None and entry["outside_record"] is True

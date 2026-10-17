@@ -23,6 +23,10 @@ pattern 14):
    * VLM confidence < 0.3: the photo is unreadable, retake it;
    * some vision reads (``votes``) saw a hard contaminant the majority
      dropped: check by hand (R1);
+   * the vision read lists a hard contaminant below the 0.6 bar: check by
+     hand (never an accept);
+   * a clean early majority (``third_read`` late or failed) without a
+     detector second opinion behind it: check by hand;
    * weighbridge vs declared weight beyond 5 %: ticket correction;
    * the waybill photo read below 0.6 confidence: check the fields;
    * the load looks wetter than declared (waybill field: visual moisture
@@ -96,9 +100,12 @@ __all__ = [
     "PHOTO_QUALITY_MARKER",
     "VOTE_SPLIT_MARKER",
     "PLATE_MISMATCH_MARKER",
+    "LOW_CONFIDENCE_HARD_MARKER",
+    "EARLY_MAJORITY_MARKER",
     "RULES",
     "confident_hard_contaminants",
     "contract_moisture_spec_pct",
+    "plate_camera",
     "plate_mismatch",
     "poor_image_notes",
     "vote_agreement",
@@ -159,6 +166,11 @@ DETECTOR_MISSED_MARKER = "Second look did not find it"
 PHOTO_QUALITY_MARKER = "Photo quality poor"
 VOTE_SPLIT_MARKER = "Reads split"
 PLATE_MISMATCH_MARKER = "Plate mismatch"
+#: ``vlm_confidence`` reason markers: a hard contaminant the vision read
+#: lists below :data:`HARD_CONTAMINANT_CONFIDENCE`, and an early-majority
+#: clean read (third read late or failed) with no detector second opinion.
+LOW_CONFIDENCE_HARD_MARKER = "Hard contaminant listed below the confidence bar"
+EARLY_MAJORITY_MARKER = "Decided on an early majority"
 #: Load-type / remarks wording that declares processed (sorted) RDF.
 _PROCESSED_RDF_RE = re.compile(
     r"\b(?:rdf|srf|fluff)\b|pemilahan|hasil proses", re.IGNORECASE
@@ -377,9 +389,9 @@ def _norm_plate(plate: Any) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(plate or "").upper())
 
 
-def plate_mismatch(inputs: Optional[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
-    """``(camera plate, waybill plate)`` when an ANPR ``plate`` observation
-    disagrees with the waybill plate (spaces and case ignored), else None (R3)."""
+def _plate_mismatch_obs(
+    inputs: Optional[Dict[str, Any]],
+) -> Optional[Tuple[str, str, Dict[str, Any]]]:
     waybill_plate = str(_waybill_fields(inputs).get("plate") or "").strip()
     for obs in _observations(inputs):
         if obs.get("kind") != "plate":
@@ -387,8 +399,23 @@ def plate_mismatch(inputs: Optional[Dict[str, Any]]) -> Optional[Tuple[str, str]
         read = str(obs.get("value") or "").strip()
         differs = bool(read and waybill_plate) and _norm_plate(read) != _norm_plate(waybill_plate)
         if differs or (obs.get("status") == "mismatch" and read):
-            return read, waybill_plate or "another plate"
+            return read, waybill_plate or "another plate", obs
     return None
+
+
+def plate_mismatch(inputs: Optional[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
+    """``(camera plate, waybill plate)`` when an ANPR ``plate`` observation
+    disagrees with the waybill plate (spaces and case ignored), else None (R3)."""
+    found = _plate_mismatch_obs(inputs)
+    return None if found is None else (found[0], found[1])
+
+
+def plate_camera(inputs: Optional[Dict[str, Any]]) -> str:
+    """Who read the mismatching plate: "simulated plate camera" when that
+    observation is simulated (the demo ANPR echoes the typed truck id),
+    else "camera"."""
+    found = _plate_mismatch_obs(inputs)
+    return "simulated plate camera" if found and found[2].get("simulated") is True else "camera"
 
 
 def contract_moisture_spec_pct() -> float:
@@ -416,6 +443,11 @@ RULES: Tuple[Tuple[str, str, str], ...] = (
     ("vlm_confidence",
      f"VLM confidence below {UNSAFE_VLM_CONFIDENCE:.2f}: retake the photo", "hold"),
     ("vote_split", "A hard item seen by only some vision reads is checked by hand", "hold"),
+    ("hard_below_bar",
+     "Hard contaminant listed below the confidence bar: check by hand", "hold"),
+    ("early_majority",
+     "Vision decided on 2 of 3 reads: accept only with a clean detector second opinion",
+     "hold"),
     ("weight_tolerance",
      f"Scale within {WEIGHT_TOLERANCE:.0%} of the waybill net, else ticket correction", "hold"),
     ("waybill_read",
@@ -863,7 +895,7 @@ def _fuse(
     # ----- Plate (ANPR) vs waybill: a wrong truck is held (R3) -------------
     plate = plate_mismatch(inputs)
     plate_reason = (
-        f"{PLATE_MISMATCH_MARKER}: the camera reads {plate[0]}, the waybill says "
+        f"{PLATE_MISMATCH_MARKER}: the {plate_camera(inputs)} reads {plate[0]}, the waybill says "
         f"{plate[1]}; verify the truck."
         if plate
         else None
@@ -894,6 +926,29 @@ def _fuse(
         vlm_reason += f" {VOTE_SPLIT_MARKER}: " + "; ".join(
             f"{seen} of {of} saw {name}" for name, (seen, of) in sorted(split.items())
         ) + "."
+    # A hard contaminant the read lists below the bar is neither a reject nor
+    # a clean load: a person checks it.
+    listed_hard = _listed_hard(vlm_result)
+    below_bar = [] if confident_hard else listed_hard
+    if below_bar:
+        vlm_reason += (
+            f" {LOW_CONFIDENCE_HARD_MARKER}: {', '.join(below_bar)} at "
+            f"{vlm_confidence:.2f} (bar {HARD_CONTAMINANT_CONFIDENCE:.2f})."
+        )
+    # An early majority (the third read late or failed) clears a clean load
+    # only with the detector's second opinion behind it.
+    third_read = (vlm_result or {}).get("third_read")
+    reads_used = len(_votes(vlm_result)) or 2
+    early_unchecked = (
+        third_read in ("late", "failed")
+        and not listed_hard
+        and not isinstance(detector_result, dict)
+    )
+    if early_unchecked:
+        vlm_reason += (
+            f" {EARLY_MAJORITY_MARKER}: {reads_used} of {reads_used + 1} reads (third "
+            f"{third_read}) and no detector second opinion."
+        )
     vlm_gate = _gate(
         GateState.FAILED if unreadable or poor_photo else GateState.PASSED,
         value=vlm_confidence,
@@ -1119,6 +1174,16 @@ def _fuse(
         )
     for name, (seen, of) in sorted(split.items()):
         escalate_reasons.append(f"{seen} of {of} vision reads saw {name}: check by hand.")
+    if below_bar:
+        escalate_reasons.append(
+            f"{LOW_CONFIDENCE_HARD_MARKER}: {', '.join(below_bar)} at VLM confidence "
+            f"{vlm_confidence:.2f} (bar {HARD_CONTAMINANT_CONFIDENCE:.2f}); check by hand."
+        )
+    if early_unchecked:
+        escalate_reasons.append(
+            f"Vision decided on {reads_used} of {reads_used + 1} reads and the detector "
+            "second opinion is unavailable: check by hand."
+        )
     if weight_off:
         assert declared_weight_kg is not None and actual_weight_kg is not None
         escalate_reasons.append(
@@ -1197,7 +1262,6 @@ def _fuse(
         ]
 
     # ----- Decision receipt: every rule, in priority order ----------------
-    listed_hard = _listed_hard(vlm_result)
     spec_pct = contract_moisture_spec_pct()
     declared_pct = None if moisture_claim is None else round(moisture_claim * 100.0, 6)
     above_spec = declared_pct is not None and declared_pct > spec_pct
@@ -1232,7 +1296,12 @@ def _fuse(
             bool(plate_reason),
             plate_reason
             or (
-                "The ANPR plate matches the waybill."
+                (
+                    "The simulated ANPR plate matches the waybill."
+                    if all(o.get("simulated") is True for o in observations
+                           if o.get("kind") == "plate")
+                    else "The ANPR plate matches the waybill."
+                )
                 if any(o.get("kind") == "plate" for o in observations)
                 else "No ANPR plate reading."
             ),
@@ -1257,6 +1326,27 @@ def _fuse(
             else f"{agreement}."
             if agreement
             else "One vision read: no votes to compare.",
+        ),
+        "hard_below_bar": (
+            bool(below_bar),
+            f"{', '.join(below_bar)} listed at VLM confidence {vlm_confidence:.2f}, below "
+            f"the {HARD_CONTAMINANT_CONFIDENCE:.2f} bar."
+            if below_bar
+            else "No hard contaminant listed below the bar.",
+        ),
+        "early_majority": (
+            early_unchecked,
+            f"{reads_used} of {reads_used + 1} reads (third {third_read}); the detector "
+            "second opinion is unavailable."
+            if early_unchecked
+            else f"Third read {third_read}; "
+            + (
+                "the majority lists a hard contaminant."
+                if listed_hard
+                else "the detector second opinion ran."
+            )
+            if third_read in ("late", "failed")
+            else "Every vision read was waited for.",
         ),
         "weight_tolerance": (weight_off, weight_evidence),
         "waybill_read": (read_uncertain, str(ocr_gate.get("reason") or "")),

@@ -7,7 +7,7 @@
 import type { InspectResponse } from "@/lib/inspect-api";
 import type { Sampling } from "@/lib/ops-api";
 import { cn } from "@/lib/utils";
-import { parseFieldNumber } from "@/lib/waybill-api";
+import { parseDecimal, parseFieldNumber } from "@/lib/waybill-api";
 import { visionHard, visionLight } from "./vision-findings";
 import { IconCheck, IconDash, IconInfo, IconWarn, IconCross } from "./gate-icons";
 import type { RunSnapshot } from "./use-inspection";
@@ -47,7 +47,7 @@ function rowsOf(data: InspectResponse, snap: RunSnapshot, sampling: Sampling | n
   const light = visionLight(data);
   const detected = data.ai_outputs.vlm?.detected as Record<string, unknown> | null | undefined;
   const visualMoisture = typeof detected?.moisture === "number" ? detected.moisture * 100 : null;
-  const declaredMoisture = parseFieldNumber(v.moisture_pct);
+  const declaredMoisture = parseDecimal(v.moisture_pct);
   const declaredNet = parseFieldNumber(v.net_kg);
   const gross = parseFieldNumber(v.gross_kg);
   const tare = parseFieldNumber(v.tare_kg);

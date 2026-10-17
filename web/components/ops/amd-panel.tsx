@@ -14,12 +14,13 @@ import { MONTHS, num, plainWords, utcParts } from "./format";
 const PROVIDER: Record<string, string> = { "amd-token-factory": "AMD Token Factory" };
 
 /**
- * The benchmark machine, verified: "AMD64 Family 25 Model 117" is the Ryzen 5
- * 8645HS laptop CPU. Any other AMD CPU stays generic; anything else as given.
+ * The CPU id names a family, not a chip: "AMD64 Family 25 Model 117" is a
+ * Ryzen mobile part but covers several models, so no model name is claimed.
+ * Any other AMD CPU stays generic; anything else as given.
  */
 function cpuName(cpu: string | null | undefined): string {
   if (!cpu) return "CPU";
-  if (/family 25 model 117\b/i.test(cpu)) return "AMD Ryzen 5 8645HS (laptop CPU)";
+  if (/family 25 model 117\b/i.test(cpu)) return "AMD Ryzen laptop CPU";
   return /authenticamd/i.test(cpu) ? "AMD CPU" : cpu;
 }
 
@@ -79,8 +80,8 @@ export function AmdPanel({
   const agreement = h?.read_agreement;
   const unanimous = agreement?.["3/3"];
   const detector = measured.detector_cpu;
-  const provider =
-    measured.provider_label ?? PROVIDER[measured.provider ?? ""] ?? measured.provider ?? "AMD Token Factory";
+  // A run that does not say where it ran is not assumed to be Token Factory.
+  const provider = measured.provider_label ?? PROVIDER[measured.provider ?? ""] ?? measured.provider ?? null;
   const window = runWindow(measured.started_at_utc, measured.finished_at_utc);
 
   const cells: Cell[] = [
@@ -150,7 +151,7 @@ export function AmdPanel({
       <PanelHead title="Inference on AMD" meta={runDay(measured.run_date ?? measured.started_at_utc) ?? undefined} />
       <div className="px-5 pt-4 pb-4">
         <h2 id="amd-head" className="m-0 text-[15px] leading-snug font-semibold text-ink">
-          {measured.model ?? "The vision model"} on {provider}, measured
+          {measured.model ?? "The vision model"} on {provider ?? "an unknown provider"}, measured
         </h2>
         <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-muted">
           One run{window ? ` on ${window}` : ""}

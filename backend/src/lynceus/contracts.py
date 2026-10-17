@@ -261,7 +261,11 @@ def iso21640_class(
     }
 
 
-def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
+#: Shown instead of load totals when the truck was never weighed.
+WEIGHT_NOT_MEASURED_NOTE = "Weight not measured: settlement needs the weighbridge ticket."
+
+
+def evaluate(lab: Mapping[str, Any], net_kg: Optional[float]) -> Dict[str, Any]:
     """Contract effect of one lab result on a load of ``net_kg`` kilograms.
 
     ``lab`` carries ``moisture_pct``, ``ncv_mj_kg`` (as received) and
@@ -269,15 +273,23 @@ def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
     for a missing or non-finite number or a negative weight.  Each breach
     carries ``severity``: ``refusal``, ``penalty`` or ``warning`` (a warning
     has no price effect).
+
+    ``net_kg`` of ``None`` or 0 means the truck was not weighed: the tier and
+    the per-tonne prices still hold, but every load total (``net_t``,
+    ``payable_idr``, ``deduction_idr``, ``settlement_idr``, ``premium_idr``)
+    is ``None``, ``weight_measured`` is false and ``settlement_note`` says
+    the settlement needs the weighbridge ticket.  Never Rp 0 for a load.
     """
     moisture = _finite(lab.get("moisture_pct"), "moisture_pct")
     ncv = _finite(lab.get("ncv_mj_kg"), "ncv_mj_kg")
     chlorine = _finite(lab.get("chlorine_pct"), "chlorine_pct")
     hg = lab.get("hg_mg_mj")
     hg = None if hg is None else _finite(hg, "hg_mg_mj")
-    net_kg = _finite(net_kg, "net_kg")
-    if net_kg < 0:
-        raise ValueError(f"net_kg must be non-negative (got {net_kg!r})")
+    if net_kg is not None:
+        net_kg = _finite(net_kg, "net_kg")
+        if net_kg < 0:
+            raise ValueError(f"net_kg must be non-negative (got {net_kg!r})")
+    weighed = net_kg is not None and net_kg > 0
 
     base = float(BASE_PRICE_IDR_PER_T)
     breaches: list[Dict[str, Any]] = []
@@ -324,9 +336,6 @@ def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
             })
 
     adjusted = max(0.0, round(base * factor))
-    net_t = round(net_kg / 1000.0, 3)
-    full = round(base * net_t)
-    payable = round(adjusted * net_t)
 
     if any(b["severity"] != "warning" for b in breaches):
         tier = "C"
@@ -349,7 +358,16 @@ def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
         tier = "B"
         tier_reason = "Within spec: base price."
         settlement_price = base
-    settlement = round(settlement_price * net_t)
+
+    if weighed:
+        net_t: Optional[float] = round(net_kg / 1000.0, 3)
+        full = round(base * net_t)
+        payable: Optional[int] = int(round(adjusted * net_t))
+        settlement: Optional[int] = int(round(settlement_price * net_t))
+        deduction: Optional[int] = int(full - payable)
+        premium: Optional[int] = settlement - payable
+    else:
+        net_t = payable = settlement = deduction = premium = None
     return {
         "spec": dict(SPECS),
         "breaches": breaches,
@@ -357,14 +375,16 @@ def evaluate(lab: Mapping[str, Any], net_kg: float) -> Dict[str, Any]:
         "adjusted_price_idr_per_t": int(adjusted),
         "adjustment_pct": round((adjusted / base - 1.0) * 100.0, 2),
         "net_t": net_t,
-        "payable_idr": int(payable),
-        "deduction_idr": int(full - payable),
+        "payable_idr": payable,
+        "deduction_idr": deduction,
         "refused": refused,
         "tier": tier,
         "tier_reason": tier_reason,
         "settlement_price_idr_per_t": int(settlement_price),
-        "settlement_idr": int(settlement),
-        "premium_idr": int(settlement - payable),
+        "settlement_idr": settlement,
+        "premium_idr": premium,
+        "weight_measured": weighed,
+        "settlement_note": None if weighed else WEIGHT_NOT_MEASURED_NOTE,
         "iso21640": iso21640_class(ncv, chlorine, hg),
         "note": CONTRACT_NOTE,
     }

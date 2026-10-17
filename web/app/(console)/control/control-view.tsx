@@ -59,20 +59,35 @@ function windowMeta(d: ControlSummary): string | undefined {
   return `shift ${utcClock(w.since).replace(" UTC", "")}–${utcClock(w.until)}`;
 }
 
-function LiveState({ hidden, failed, at }: { hidden: boolean; failed: string | null; at: string | null }) {
-  const tone = failed ? "bg-dot-down" : hidden ? "bg-dot-idle" : "bg-dot-ok";
+function LiveState({
+  hidden,
+  failed,
+  delayed,
+  at,
+}: {
+  hidden: boolean;
+  failed: string | null;
+  /** The data on screen is older than 2 polling periods. */
+  delayed: boolean;
+  at: string | null;
+}) {
+  const tone = failed ? "bg-dot-down" : hidden ? "bg-dot-idle" : delayed ? "bg-dot-warn" : "bg-dot-ok";
   const word = failed
     ? `Update failed · showing ${utcClock(at)}`
     : hidden
       ? "Paused while hidden"
-      : `Live · ${utcClock(at)}`;
+      : delayed
+        ? `Update delayed · showing ${utcClock(at)}`
+        : `Live · ${utcClock(at)}`;
+  const live = !failed && !hidden && !delayed;
   return (
-    <span role="status" title={failed ?? undefined} className="flex items-center gap-2 text-[12px] font-semibold tracking-normal normal-case">
-      <span
-        aria-hidden="true"
-        className={cn("size-2 rounded-full", tone, !failed && !hidden && "motion-safe:animate-pulse")}
-      />
-      <span className={failed ? "text-verdict-red" : "text-muted"}>{word}</span>
+    <span
+      role="status"
+      title={failed ?? (delayed ? "The latest summary is taking longer than usual; the figures are from the time shown." : undefined)}
+      className="flex items-center gap-2 text-[12px] font-semibold tracking-normal normal-case"
+    >
+      <span aria-hidden="true" className={cn("size-2 rounded-full", tone, live && "motion-safe:animate-pulse")} />
+      <span className={failed ? "text-verdict-red" : delayed ? "text-verdict-amber" : "text-muted"}>{word}</span>
     </span>
   );
 }
@@ -109,24 +124,35 @@ export function ControlView() {
   const [contract, setContract] = useState<ContractTerms | null>(null);
   const [reload, setReload] = useState(0);
 
+  // When the data on screen arrived (browser clock). Aged on the browser's own
+  // clock, not against the server's generated_at, so a skewed client clock
+  // never reads as a delay.
+  const [receivedAt, setReceivedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
   // Poll the one-call summary; a failed refresh keeps the last good room on
-  // screen and says so, it never blanks it.
+  // screen and says so, it never blanks it. A summary slower than the period
+  // is never aborted by the next tick: the tick is skipped until it lands,
+  // and the room reads "Update delayed" once its data is 2 periods old.
   useEffect(() => {
     let alive = true;
     let inflight: AbortController | null = null;
 
     const tick = async () => {
-      if (document.hidden) return;
-      inflight?.abort();
+      if (document.hidden || inflight) return;
       const controller = new AbortController();
       inflight = controller;
       try {
         const data = await fetchControlSummary(controller.signal);
-        if (alive) setState({ kind: "ready", data, failed: null });
+        if (!alive) return;
+        setState({ kind: "ready", data, failed: null });
+        setReceivedAt(Date.now());
       } catch (err) {
         if (!alive || controller.signal.aborted) return;
         const message = err instanceof ControlError ? err.message : "The control room could not be loaded.";
         setState((prev) => (prev.kind === "ready" ? { ...prev, failed: message } : { kind: "error", message }));
+      } finally {
+        if (inflight === controller) inflight = null;
       }
     };
 
@@ -138,11 +164,14 @@ export function ControlView() {
     setHidden(document.hidden);
     void tick();
     const timer = window.setInterval(() => void tick(), POLL_MS);
+    // Re-reads the clock between polls so a delay shows without waiting for one.
+    const clock = window.setInterval(() => setNow(Date.now()), POLL_MS / 4);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       alive = false;
       inflight?.abort();
       window.clearInterval(timer);
+      window.clearInterval(clock);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [reload]);
@@ -191,7 +220,12 @@ export function ControlView() {
     <div className="flex flex-col gap-4">
       <Panel aria-labelledby="control-headline">
         <PanelHead title="Control room" meta={windowMeta(d)}>
-          <LiveState hidden={hidden} failed={state.failed} at={d.generated_at_utc ?? null} />
+          <LiveState
+            hidden={hidden}
+            failed={state.failed}
+            delayed={!hidden && receivedAt !== null && now - receivedAt > 2 * POLL_MS}
+            at={d.generated_at_utc ?? null}
+          />
         </PanelHead>
         <div className="px-5 py-5">
           <h1

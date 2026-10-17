@@ -251,8 +251,59 @@ def test_seal_stores_with_a_digest_and_refuses_edited_facts(ledger):
     assert briefing.facts_digest(body) == stored["digest"]
     tampered = json.loads(json.dumps(draft))
     tampered["facts"]["totals"]["rejected"] = 0
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="facts_digest"):
         briefing.seal(ledger, tampered, "supervisor")
+
+
+def _copy(draft):
+    return json.loads(json.dumps(draft))
+
+
+def test_seal_refuses_invented_facts_with_their_own_digest(ledger):
+    forged = _copy(_draft(ledger))
+    forged["facts"]["totals"]["rejected"] = 0
+    forged["facts_digest"] = briefing.facts_digest(forged["facts"])
+    with pytest.raises(ValueError, match="signature"):
+        briefing.seal(ledger, forged, "supervisor")
+    forged["facts_signature"] = "hmac-sha256:" + "0" * 64
+    with pytest.raises(ValueError, match="signature"):
+        briefing.seal(ledger, forged, "supervisor")
+    assert not list((ledger / "briefings").glob("briefing-*.json"))
+
+
+def test_seal_refuses_a_draft_signed_by_another_ledger(ledger, tmp_path_factory):
+    other = tmp_path_factory.mktemp("other")
+    _seed(other, _at_fixed)
+    with pytest.raises(ValueError, match="signature"):
+        briefing.seal(ledger, _draft(other), "supervisor")
+
+
+def test_seal_rechecks_the_text_against_the_facts(ledger):
+    draft = _draft(ledger)
+    assert draft["facts_signature"].startswith("hmac-sha256:")
+    edited = _copy(draft)
+    edited["sections"][0]["items"][0]["text"] = "17 trucks crossed the gate."
+    with pytest.raises(ValueError, match="no longer matches its facts"):
+        briefing.seal(ledger, edited, "supervisor")
+    reworded = _copy(draft)
+    reworded["sections"][0]["items"].append({"text": "A quiet shift at the gate.", "citations": []})
+    assert briefing.seal(ledger, reworded, "supervisor")["briefing_id"] == "briefing-000001"
+
+
+def test_seal_refuses_oversize_or_overlong_briefings(ledger):
+    draft = _draft(ledger)
+    big = _copy(draft)
+    big["note"] = "x" * (briefing.MAX_SEAL_BYTES + 1)
+    with pytest.raises(ValueError, match="limit"):
+        briefing.seal(ledger, big, "supervisor")
+    many = _copy(draft)
+    many["sections"][1]["items"] = [{"text": "Metal.", "citations": []}] * 7
+    with pytest.raises(ValueError, match="sections"):
+        briefing.seal(ledger, many, "supervisor")
+    extra = _copy(draft)
+    extra["sections"].append({"title": "More", "items": []})
+    with pytest.raises(ValueError, match="sections"):
+        briefing.seal(ledger, extra, "supervisor")
 
 
 # ---------------------------------------------------------------------------
@@ -308,3 +359,7 @@ def test_seal_route(api, tmp_path):
     assert (tmp_path / "briefings" / "briefing-000001.json").is_file()
     draft["facts"]["totals"]["trucks"] = 99
     assert api.post("/shift/briefing/seal", json={"briefing": draft}).status_code == 422
+    draft["facts_digest"] = briefing.facts_digest(draft["facts"])
+    assert api.post("/shift/briefing/seal", json={"briefing": draft}).status_code == 422
+    huge = {"briefing": {"note": "x" * (briefing.MAX_SEAL_BYTES * 2 + 10)}}
+    assert api.post("/shift/briefing/seal", json=huge).status_code == 413

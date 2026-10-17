@@ -260,6 +260,70 @@ def test_inspect_records_observations_and_hands_them_to_the_rules(client, tmp_pa
     assert [o["kind"] for o in seen["observations"]] == [o.kind for o in rec.inputs.observations]
 
 
+@needs_demo
+def test_a_supplied_reading_never_switches_a_check_off():
+    blurred = _blurred("t-clean-1.jpg")
+    supplied = [
+        {"source": "x", "kind": "image_quality", "status": "ok"},
+        {"source": "x", "kind": "plate", "value": "B 9723 KXW", "status": "ok"},
+    ]
+    obs = observations.collect(
+        supplied=supplied,
+        frames=[blurred],
+        weight_kg=None,
+        weight_source=None,
+        registered_plate="B 9406 KXW",
+        waybill_plate="B 9723 KXW",
+        measured_at_utc=NOW,
+    )
+    quality = [o for o in obs if o["kind"] == "image_quality"]
+    assert [o["source"] for o in quality] == ["x", "camera:main"]  # computed beside it
+    assert quality[1]["status"] == "poor"
+    plates = [o for o in obs if o["kind"] == "plate"]
+    assert [o["status"] for o in plates] == ["ok", "mismatch"]  # the mismatch stays
+    inputs = {"observations": obs, "waybill_fields": {"plate": "B 9723 KXW"}}
+    assert decision.poor_image_notes(inputs)
+    assert decision.plate_mismatch(inputs) == ("B 9406 KXW", "B 9723 KXW")
+
+
+def test_a_supplied_plate_replaces_only_an_agreeing_simulated_one():
+    supplied = [{"source": "anpr-1", "kind": "plate", "value": "B 9723 KXW", "status": "ok"}]
+    obs = observations.collect(
+        supplied=supplied,
+        frames=[],
+        weight_kg=None,
+        weight_source=None,
+        registered_plate="B 9723 KXW",
+        waybill_plate="B 9723 KXW",
+        measured_at_utc=NOW,
+    )
+    assert [o["source"] for o in obs if o["kind"] == "plate"] == ["anpr-1"]
+
+
+@needs_demo
+def test_supplied_ok_readings_cannot_clear_a_blurred_wrong_truck(client):
+    resp = client.post(
+        "/inspect",
+        json={
+            "truck_id": "B 9406 KXW",
+            "photo_base64": base64.b64encode(_blurred("t-clean-1.jpg")).decode("ascii"),
+            "photo_filename": "t-clean-1.jpg",
+            "waybill_fields": CONFIRMED_FIELDS,
+            "weight_kg": 16340,
+            "observations": [
+                {"source": "x", "kind": "image_quality", "status": "ok"},
+                {"source": "x", "kind": "plate", "value": "B 9723 KXW", "status": "ok"},
+            ],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["verdict"]["decision"] != audit.Decision.ACCEPT
+    reasons = json.dumps(body)
+    assert decision.PHOTO_QUALITY_MARKER in reasons
+    assert decision.PLATE_MISMATCH_MARKER in reasons
+
+
 def test_bad_supplied_observations_are_422(client):
     base = {"photo_base64": _jpeg(b"x"), "weight_kg": 1000}
     bad_status = {**base, "observations": [{"source": "s", "kind": "k", "status": "great"}]}

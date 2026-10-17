@@ -17,6 +17,7 @@ import {
   briefingText,
   draftBriefing,
   sealBriefing,
+  type Briefing,
   type BriefingDraft,
   type BriefingWindow,
   type SealedBriefing,
@@ -36,6 +37,11 @@ const WINDOW_LABEL: Record<BriefingWindow, string> = {
   day: "last 24 h",
   all: "whole ledger",
 };
+
+/** One draft's identity: the facts it was written from and when it was written. */
+function draftKey(b: Briefing): string {
+  return `${b.facts_digest}|${b.generated_at_utc}`;
+}
 
 function hhmm(ts: string | null | undefined): string {
   return ts && ts.length >= 16 ? ts.slice(11, 16) : "–";
@@ -66,8 +72,10 @@ export function ShiftBriefing({
   className?: string;
 }) {
   const [state, setState] = useState<State>({ status: "idle" });
-  const [sealed, setSealed] = useState<SealedBriefing | null>(null);
-  const [sealError, setSealError] = useState<string | null>(null);
+  // Seal outcomes are keyed to the draft they were sent for, so a seal that
+  // resolves after a redraft can never stamp the new draft.
+  const [sealedFor, setSealedFor] = useState<{ key: string; result: SealedBriefing } | null>(null);
+  const [sealErrorFor, setSealErrorFor] = useState<{ key: string; message: string } | null>(null);
   const [sealing, setSealing] = useState(false);
   const [copied, setCopied] = useState(false);
   const inflight = useRef<AbortController | null>(null);
@@ -76,13 +84,11 @@ export function ShiftBriefing({
   useEffect(() => () => inflight.current?.abort(), []);
 
   const draft = async () => {
-    if (state.status === "drafting") return;
+    if (state.status === "drafting" || sealing) return;
     const controller = new AbortController();
     inflight.current?.abort();
     inflight.current = controller;
     setState({ status: "drafting" });
-    setSealed(null);
-    setSealError(null);
     setCopied(false);
     try {
       const result = await draftBriefing(window, controller.signal);
@@ -105,20 +111,28 @@ export function ShiftBriefing({
     }
   };
 
+  const b = state.status === "ready" ? state.draft.briefing : null;
+  const key = b ? draftKey(b) : null;
+  const sealed = sealedFor && sealedFor.key === key ? sealedFor.result : null;
+  const sealError = sealErrorFor && sealErrorFor.key === key ? sealErrorFor.message : null;
+
   const seal = async (d: BriefingDraft) => {
     if (sealing || sealed) return;
+    const sentFor = draftKey(d.briefing);
     setSealing(true);
-    setSealError(null);
+    setSealErrorFor(null);
     try {
-      setSealed(await sealBriefing(d));
+      const result = await sealBriefing(d);
+      setSealedFor({ key: sentFor, result });
     } catch (err) {
-      setSealError(err instanceof AssistError ? err.message : "The handover could not be sealed.");
+      setSealErrorFor({
+        key: sentFor,
+        message: err instanceof AssistError ? err.message : "The handover could not be sealed.",
+      });
     } finally {
       setSealing(false);
     }
   };
-
-  const b = state.status === "ready" ? state.draft.briefing : null;
 
   return (
     <section aria-labelledby={headingId} className={cn("flex flex-col rounded-[10px] border border-seam", className)}>
@@ -135,7 +149,7 @@ export function ShiftBriefing({
           type="button"
           variant={b ? "default" : "primary"}
           size="sm"
-          aria-disabled={state.status === "drafting"}
+          aria-disabled={state.status === "drafting" || sealing}
           onClick={() => void draft()}
           className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
         >

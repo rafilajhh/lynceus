@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { supplierKey } from "@/components/ops/format";
 import { InspectionDetailPanel, REFUSED_EXPLANATION } from "./inspection-detail-panel";
 import { useFollowupKinds } from "./use-followup-kinds";
 
@@ -121,6 +122,12 @@ function LedgerViewInner() {
     void load();
   }, [load]);
 
+  // A later ?supplier= link on this same page (an alarm, the scorecard)
+  // replaces the chip: the state follows the address, not just its first value.
+  useEffect(() => {
+    if (supplierParam) setSupplierFilter(supplierParam);
+  }, [supplierParam]);
+
   // Keep the address bar honest with the supplier chip: clear ?supplier=
   // when the chip is dismissed so a refresh doesn't silently re-filter.
   useEffect(() => {
@@ -149,8 +156,11 @@ function LedgerViewInner() {
   }, [ready]);
 
   const rows = useMemo(() => {
-    const filteredBySupplier = supplierFilter
-      ? ready.filter((item) => (item.supplier ?? "").trim() === supplierFilter)
+    // Grouped as the backend groups suppliers (its counts in alarms and the
+    // scorecard): "PT. Hijau Lestari" and "PT Hijau Lestari" are one supplier.
+    const supplierFilterKey = supplierKey(supplierFilter);
+    const filteredBySupplier = supplierFilterKey
+      ? ready.filter((item) => supplierKey(item.supplier) === supplierFilterKey)
       : ready;
     const filteredByVerdict =
       filter === "all"
@@ -200,7 +210,7 @@ function LedgerViewInner() {
     setMissingRecord(null);
     setFilter("all");
     setSearch("");
-    if (supplierFilter && (target.supplier ?? "").trim() !== supplierFilter) setSupplierFilter("");
+    if (supplierFilter && supplierKey(target.supplier) !== supplierKey(supplierFilter)) setSupplierFilter("");
     setSelectedId(recordParam);
     setPendingRecord(recordParam);
   }, [recordParam, state, supplierFilter]);
