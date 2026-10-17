@@ -20,7 +20,7 @@ export function Segmented<T extends string>({
 }: {
   /** Accessible name of the group. */
   label: string;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; title?: string }[];
   /** The pressed option; null = none pressed. */
   value: T | null;
   onSelect: (value: T) => void;
@@ -42,6 +42,7 @@ export function Segmented<T extends string>({
             key={o.value}
             type="button"
             aria-pressed={pressed}
+            title={o.title}
             disabled={disabled}
             onClick={() => onSelect(o.value)}
             className={cn(

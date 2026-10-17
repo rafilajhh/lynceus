@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import {
   Camera,
   ImageUp,
+  Images,
   Info,
   ScanSearch,
   Sparkles,
@@ -678,14 +679,27 @@ export function WorkspaceClient() {
                 </div>
                 {/* Quick-pick presets: one tap loads a site photo through the
                     normal upload pipeline — faster than browsing for a file. */}
-                <Segmented
-                  label="Photo presets"
-                  options={QUICK_LOADS.map((p) => ({ value: p.file, label: p.label }))}
-                  value={activePreset}
-                  onSelect={(file) => void pickDemo(file, "load")}
-                  disabled={loading || quickBusy !== null}
-                  busy={quickBusy}
-                />
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="inline-flex items-center gap-1 text-[12px] font-medium text-fg-subtle"
+                  >
+                    <Images className="h-3.5 w-3.5" />
+                    Sample
+                  </span>
+                  <Segmented
+                    label="Sample load photos"
+                    options={QUICK_LOADS.map((p) => ({
+                      value: p.file,
+                      label: p.label,
+                      title: `Load the sample ${p.label.toLowerCase()} load photo`,
+                    }))}
+                    value={activePreset}
+                    onSelect={(file) => void pickDemo(file, "load")}
+                    disabled={loading || quickBusy !== null}
+                    busy={quickBusy}
+                  />
+                </div>
               </div>
 
               <div className="flex flex-1 flex-col gap-3 p-5">
