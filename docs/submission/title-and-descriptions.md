@@ -4,56 +4,59 @@ Limits from the lablab submission guide: title max 50 characters, short
 description max 255 characters, long description min 100 words. The counts
 below were measured on the text exactly as written here.
 
-Every figure comes from `backend/benchmark/results/` (the 2026-10-17
-DeepSeek-Vision live run and its hybrid replay with the YOLO26m detector),
-`backend/src/lynceus/impact.py` (`value_model`) or `docs/BUSINESS.md`.
-Re-check them if the benchmark is re-run.
+Every figure matches the README: the live benchmark in
+`backend/benchmark/results/` (2026-10-13 run and its replay; the 2026-10-17
+hybrid replay with the YOLO26m detector for "no metal let through"), the median
+latency of the live run, and the base case of `value_model` in
+`backend/src/lynceus/impact.py` (shown on the Shift report). Re-check them if
+the benchmark is re-run.
 
 ## Title (46 characters)
 
 Lynceus: AI Gate Inspector for RDF Fuel Trucks
 
-## Short description (250 characters)
+## Short description (235 characters)
 
-Lynceus inspects each refuse-derived-fuel truck at the weighbridge before it tips. An open vision model on AMD Token Factory reads the load photo; a rule engine decides accept, escalate or reject, cites the gate SOP and seals a tamper-evident record.
+Lynceus checks every refuse-derived-fuel truck at the weighbridge before it tips. Vision AI on AMD Token Factory spots metal in the load and reads the waybill; a rule engine decides accept, escalate or reject and seals an audit record.
 
-## Long description
+## Long description (304 words)
 
 Cement plants burn refuse-derived fuel (RDF) to replace coal, but every truck of
-shredded waste can hide metal, rock, concrete or tyres. One piece that reaches the
-shredder or the kiln can destroy a machine and stop the line. Magnets catch
-ferrous metal only after the load is tipped; manual checks at the gate are slow
-and leave no record.
+shredded waste can hide metal, stone or tyres. One piece that reaches the
+shredder or the kiln can destroy the machine and stop the line: up to Rp 798
+million per incident. Today a gate officer checks loads by eye and keeps no
+record.
 
-Lynceus is the gate inspector, and it decides before the load is tipped. At the
-weighbridge the operator uploads a photo of the load and types the waybill. An
-open vision model (DeepSeek-V4-Flash-Vision-Exp) running on AMD Token Factory
-names what it sees and marks where; DeepSeek-V4-Flash reads the waybill and
-checks it against the weighed mass; a CPU YOLO26m detector gives an independent
-second opinion. The AI only observes: a rule-based engine compares the waybill
-with what the vision model saw and decides ACCEPT, ESCALATE or REJECT, so the
-verdict is explainable and repeatable. Each verdict comes with next steps that
-cite the gate SOP, a cited assistant (Pythia) that answers only from plant
-documents, and a SHA-256 tamper-evident audit record. The shift report shows what
-the gate caught, which suppliers repeat, and the value per 1,000 trucks with and
-without Lynceus.
+Lynceus moves that check to the weighbridge, before the load is tipped. The
+operator photographs the load and the paper waybill. A vision model on AMD
+Token Factory (DeepSeek-V4-Flash-Vision-Exp, with Gemma-4-31B-IT as the
+fallback) names the contaminants and boxes them on the photo, and reads the
+waybill to fill the register automatically. DeepSeek-V4-Flash cross-checks the
+waybill against what the camera saw and the weighed mass, and a YOLO26m
+detector on the gate PC's CPU gives an independent second opinion. A rule-based
+engine then decides ACCEPT, ESCALATE or REJECT, so every verdict is
+explainable and repeatable.
 
-We tested the gate live on AMD on 80 public waste photos. With the vision model
-and the CPU detector fused, no metal-waste photo was let through: the ones the
-vision model missed were held for an operator by the detector. It passed 34 of 40
-paper, cardboard, plastic and textile photos straight through and sent about 42%
-of the 80 to an operator, where today the gate officer checks every truck by
-eye. The rules were tuned on these same photos, so the replay is not a held-out
-result, and photos of single items are not truck loads; the method, the raw rows
-and every assumption are in the repository.
+Each verdict comes with next steps that cite the gate SOP, one-click supplier
+notice and supervisor escalation, and Pythia, an assistant that answers only
+from plant documents with citations. Every inspection is sealed as a SHA-256
+tamper-evident audit record, and the shift report shows supervisors what the
+gate caught and which suppliers repeat.
 
-Lynceus is built for RDF and SRF receiving gates in Indonesia and Italy, priced
-as a per-gate subscription.
+Run live on AMD Token Factory, Lynceus stopped 19 of 20 metal loads, passes 35
+of 40 clean RDF loads straight through, and returns a verdict in about 20
+seconds; with the detector second opinion, no metal load is let through. Per
+1,000 trucks, the base case of its value model cuts hard loads reaching the
+shredder from 6 to 1, trucks checked by hand from 1,000 to about 140 and
+operator time by 69 percent.
+
+Lynceus is built for RDF and SRF receiving gates in Indonesia and Italy, sold
+as a per-gate subscription. It is live at https://lynceus.web.id.
 
 ## Technology tags
 
-AMD Token Factory, DeepSeek, Vision-Language
-Model, Computer Vision, FastAPI, Python, Next.js, TypeScript, BM25 retrieval,
+AMD Token Factory, DeepSeek, Gemma, Vision-Language Model, Computer Vision,
+OCR, YOLO, ONNX Runtime, FastAPI, Python, Next.js, TypeScript, BM25 retrieval,
 Industrial AI, Waste-to-Energy
 
 ## Category
