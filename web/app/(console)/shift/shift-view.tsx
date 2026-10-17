@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CircleCheck, Copy, FileDown, Info, ListChecks, TriangleAlert } from "lucide-react";
+import {
+  ArrowRight,
+  CircleCheck,
+  Copy,
+  FileDown,
+  Info,
+  ListChecks,
+  TrendingDown,
+  TriangleAlert,
+} from "lucide-react";
 import { formatUsd, formatUsdCompact } from "@/lib/format";
 import {
   FLAG_MIN_RISK,
@@ -11,6 +20,7 @@ import {
   fetchShiftReport,
   type ShiftReport,
   type SupplierRow,
+  type ValueModel,
 } from "@/lib/shift-api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -182,6 +192,7 @@ export function ShiftView() {
           <SummaryCard report={report} />
           <ResolutionCard report={report} />
         </div>
+        {report.value_model ? <ValueCard model={report.value_model} /> : null}
         <SupplierPanel report={report} />
       </PageBody>
     </>
@@ -308,6 +319,126 @@ function ResolutionCard({ report }: { report: ShiftReport }) {
         <ListChecks aria-hidden="true" className="h-3.5 w-3.5" />
         {open > 0 ? "Open review queue" : "Open audit trail"}
       </Link>
+    </section>
+  );
+}
+
+/** 6 → "6", 1.18 → "1.2", 141.5 → "142": counts per 1,000 trucks. */
+function perThousand(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n);
+}
+
+/** Minutes → "50 h" / "15.4 h". */
+function hours(minutes: number): string {
+  if (!Number.isFinite(minutes)) return "—";
+  const h = minutes / 60;
+  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: h < 100 ? 1 : 0 }).format(h)} h`;
+}
+
+/** Relative change, "−83%"; null when there is no baseline. */
+function change(without: number, withLynceus: number): string | null {
+  if (!Number.isFinite(without) || without <= 0 || !Number.isFinite(withLynceus)) return null;
+  const pct = Math.round(((withLynceus - without) / without) * 100);
+  return pct === 0 ? null : `${pct < 0 ? "−" : "+"}${Math.abs(pct)}%`;
+}
+
+/**
+ * Value per 1,000 trucks (impact.value_model, base case): the measurable
+ * difference the gate makes, without vs with Lynceus. Every parameter is
+ * sourced or an explicit assumption in backend/src/lynceus/impact.py.
+ */
+function ValueCard({ model }: { model: ValueModel }) {
+  const base = model.scenarios.base;
+  const tiles = [
+    {
+      key: "escaped",
+      label: "Hard loads reaching the shredder",
+      without: perThousand(base.without.escaped_hard_loads),
+      with: perThousand(base.with.escaped_hard_loads),
+      delta: change(base.without.escaped_hard_loads, base.with.escaped_hard_loads),
+    },
+    {
+      key: "manual",
+      label: "Trucks checked by hand",
+      without: perThousand(base.without.trucks_checked_by_hand),
+      with: perThousand(base.with.trucks_checked_by_hand),
+      delta: change(base.without.trucks_checked_by_hand, base.with.trucks_checked_by_hand),
+    },
+    {
+      key: "time",
+      label: "Gate operator time",
+      without: hours(base.without.operator_minutes),
+      with: hours(base.with.operator_minutes),
+      delta: change(base.without.operator_minutes, base.with.operator_minutes),
+    },
+    {
+      key: "damage",
+      label: "Expected equipment damage",
+      without: money(base.without.expected_damage_idr, { full: true }),
+      with: money(base.with.expected_damage_idr, { full: true }),
+      delta: change(base.without.expected_damage_idr, base.with.expected_damage_idr),
+    },
+  ];
+  const net = base.net_after_subscription_idr ?? base.net_value_idr;
+
+  return (
+    <section className="card" aria-labelledby="value-title">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line px-5 py-[18px]">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="eyebrow text-brand-deep">Per {model.trucks.toLocaleString("en-US")} trucks</span>
+          <h2 id="value-title" className="m-0 font-display text-[18px] font-medium text-fg">
+            What Lynceus changes at the gate
+          </h2>
+        </div>
+        <div className="flex flex-col items-start gap-0.5 sm:items-end sm:text-right">
+          <span className="text-[12px] text-fg-muted">
+            Net value{base.net_after_subscription_idr != null ? ", after the subscription" : ""}
+          </span>
+          <span
+            className="figure text-[28px] leading-tight font-light tracking-[-0.6px] text-success"
+            title={money(net, { full: true })}
+          >
+            +{money(net)}
+          </span>
+        </div>
+      </div>
+      <dl className="m-0 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((t, i) => (
+          <div
+            key={t.key}
+            className={cn(
+              "flex min-w-0 flex-col gap-2 px-5 py-4",
+              i > 0 && "border-t border-line sm:border-t-0",
+              i % 2 === 1 && "sm:border-l sm:border-line",
+              i >= 2 && "sm:border-t xl:border-t-0",
+              i === 2 && "xl:border-l xl:border-line",
+            )}
+          >
+            <dt className="text-[13px] text-fg-muted">{t.label}</dt>
+            <dd className="m-0 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="figure text-[15px] text-fg-subtle line-through decoration-fg-faint">
+                {t.without}
+              </span>
+              <ArrowRight aria-label="becomes" className="h-3.5 w-3.5 self-center text-fg-faint" />
+              <span className="figure text-[26px] leading-tight font-light tracking-[-0.5px] text-fg">
+                {t.with}
+              </span>
+              {t.delta ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-success-tint px-2 py-px text-[12px] font-medium text-success">
+                  <TrendingDown aria-hidden="true" className="h-3 w-3" />
+                  {t.delta}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="m-0 flex items-start gap-2 border-t border-line px-5 py-3 text-[12px] leading-[17px] text-fg-muted">
+        <Info aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+        Base case of the value model: without Lynceus vs with it, including the cost of
+        loads it holds by mistake. Every figure is sourced or a stated assumption.
+      </p>
     </section>
   );
 }
