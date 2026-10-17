@@ -8,6 +8,7 @@ via :func:`get_settings`; nothing heavy happens at module import time.
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,8 @@ VLM_FALLBACK_MODELS_ENV = "VLM_FALLBACK_MODELS"
 VLM_BENCHMARKED_MODELS_ENV = "VLM_BENCHMARKED_MODELS"
 #: VLM reads per inspection, merged by majority vote (1..3; malformed = 3).
 VLM_VOTES_ENV = "VLM_VOTES"
+#: Seconds to wait for the last read once the others agree (early majority).
+VLM_VOTE_GRACE_ENV = "VLM_VOTE_GRACE_S"
 #: Optional bearer key for the vLLM endpoints (empty = no auth header).
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
 #: Endpoint / model for the Pythia assistant role (default: the LLM's).
@@ -116,6 +119,12 @@ _DEFAULT_VLM_VOTES = 3
 #: The reads run concurrently on pipeline._VLM_READ_SLOTS (3), which leaves
 #: one of the four outbound slots for the waybill / assist calls.
 _MAX_VLM_VOTES = 3
+#: Once 2 of 3 reads agree on the hard contaminants, the third gets this long
+#: (pipeline.VLLMClient._vote_reads); Token Factory reads take 25-45 s, so
+#: waiting for the slowest one is most of an inspection's wall time.
+_DEFAULT_VLM_VOTE_GRACE_S = 4.0
+#: Never longer than one vision read budget (pipeline.VLM_TIMEOUT_S).
+_MAX_VLM_VOTE_GRACE_S = 90.0
 #: The vision model of the committed live benchmark run (2026-10-13).
 _DEFAULT_VLM_BENCHMARKED_MODELS: Tuple[str, ...] = ("MiniCPM-V-4.7-35B-A3B",)
 
@@ -146,6 +155,7 @@ class Settings:
     detector_threads: int = _DEFAULT_DETECTOR_THREADS
     detector_providers: Tuple[str, ...] = _DEFAULT_DETECTOR_PROVIDERS
     vlm_votes: int = _DEFAULT_VLM_VOTES
+    vlm_vote_grace_s: float = _DEFAULT_VLM_VOTE_GRACE_S
 
 def provider_for_url(url: str) -> str:
     """Name the provider behind an endpoint URL, for audit provenance.
@@ -184,6 +194,18 @@ def _env_votes() -> int:
     except ValueError:
         return _DEFAULT_VLM_VOTES
     return min(max(value, 1), _MAX_VLM_VOTES)
+
+
+def _env_vote_grace() -> float:
+    """``VLM_VOTE_GRACE_S`` clamped to 0.._MAX_VLM_VOTE_GRACE_S; malformed
+    values keep the default."""
+    try:
+        value = float(os.environ.get(VLM_VOTE_GRACE_ENV, _DEFAULT_VLM_VOTE_GRACE_S))
+    except ValueError:
+        return _DEFAULT_VLM_VOTE_GRACE_S
+    if math.isnan(value):
+        return _DEFAULT_VLM_VOTE_GRACE_S
+    return min(max(value, 0.0), _MAX_VLM_VOTE_GRACE_S)
 
 
 def _env_threads() -> int:
@@ -255,6 +277,7 @@ def get_settings() -> Settings:
         explain_model=os.environ.get(EXPLAIN_MODEL_ENV) or assist_model,
         localisation_mode=localisation_mode,
         vlm_votes=_env_votes(),
+        vlm_vote_grace_s=_env_vote_grace(),
         storage_dir=os.environ.get(LYNCEUS_STORAGE_DIR_ENV, _DEFAULT_STORAGE_DIR),
         vllm_api_key=os.environ.get(VLLM_API_KEY_ENV, _DEFAULT_VLLM_API_KEY),
         allow_stub_fallback=os.environ.get(

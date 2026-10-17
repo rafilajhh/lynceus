@@ -134,13 +134,18 @@ export function PhotoEvidence({
         : "No contaminant regions marked.");
   const vlmCaption = captionFor({ pending, boxes: shown, localisation, model });
   // Both models named: the VLM's regions are solid, the detector's dashed.
+  // A detector that missed what the vision model marked never reads as an
+  // all-clear: it says it did not mark it, and why its silence is weak.
+  const visionSawHard = shown.some((b) => isHardContaminant(b.label));
   const caption =
     pending || !detector
       ? vlmCaption
       : `${vlmCaption}${shown.length > 0 ? " (solid)" : ""} · ` +
         (detectorShown.length > 0
           ? `${yolo} on CPU (dashed): ${detectorShown.length} region${detectorShown.length === 1 ? "" : "s"}`
-          : `${yolo} on CPU: no metal, glass or organic boxes`);
+          : visionSawHard
+            ? `${yolo} on CPU did not mark it (trained on close-ups, not truck beds); the vision finding stands`
+            : `${yolo} on CPU: nothing flagged`);
   const hasHard =
     shown.some((b) => isHardContaminant(b.label)) ||
     detectorShown.some((b) => isHardContaminant(b.label));

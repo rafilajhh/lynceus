@@ -73,15 +73,87 @@ def test_reject_weight_mismatch():
     ]
 
 
-def test_reject_low_vlm_confidence():
+_SUPERVISOR = (
+    "Supervisor reviews the load and records the call on this record: accept, sort "
+    "then accept, or reject."
+)
+
+
+def test_escalate_low_vlm_confidence_retakes_then_supervisor():
     steps = actions.next_steps(
-        D.REJECT, _gates(vlm_confidence="failed"), _detected(), [], "r1"
+        D.ESCALATE_HUMAN, _gates(vlm_confidence="failed"), _detected(), [], "r1"
     )
     assert _refs(steps) == ["SOP-RDF-2.1", "SOP-RDF-5.2"]
     assert _texts(steps) == [
-        "Retake the load photo from the top platform.",
-        "Supervisor performs a manual visual check.",
+        "Photo unreadable: retake the load photo from the top platform.",
+        _SUPERVISOR,
     ]
+
+
+def test_escalate_weight_ticket_correction():
+    steps = actions.next_steps(
+        D.ESCALATE_HUMAN, _gates(weight_plausibility="failed"), _detected(), [], "r1"
+    )
+    assert _refs(steps) == ["SOP-RDF-3.2", "SOP-RDF-3.3", "SOP-RDF-5.2"]
+    assert _texts(steps)[0].startswith("Ticket correction: re-weigh the truck")
+
+
+def test_escalate_uncertain_waybill_read():
+    steps = actions.next_steps(
+        D.ESCALATE_HUMAN, _gates(ocr_confidence="failed"), _detected(), [], "r1"
+    )
+    assert _refs(steps) == ["SOP-RDF-3.3", "SOP-RDF-5.2"]
+    assert _texts(steps)[0] == (
+        "Waybill read uncertain: check the highlighted fields against the paper waybill."
+    )
+
+
+def test_reject_declared_sorted_adds_contract_breach_notice():
+    gates = _gates()
+    gates["manifest_crosscheck"] = {
+        "state": "failed", "value": None, "threshold": None,
+        "reason": "Waybill declares sorted RDF (RDF fluff); the camera sees metal.",
+    }
+    steps = actions.next_steps(D.REJECT, gates, _detected(hard=["metal"]), [], "inspection-000009")
+    assert _refs(steps) == ["SOP-RDF-4.1", "SOP-RDF-4.2", "SOP-RDF-4.3", "SOP-RDF-4.5"]
+    assert "record inspection-000009" in steps[3]["text"]
+    assert "breach fee per contract" in steps[3]["text"]
+
+
+def test_reject_without_declaration_has_no_breach_notice():
+    steps = actions.next_steps(D.REJECT, _gates(), _detected(hard=["metal"]), [], "r1")
+    assert "SOP-RDF-4.5" not in _refs(steps)
+
+
+@pytest.mark.parametrize("verdict,expected", [
+    (D.ACCEPT, ["SOP-RDF-6.1", "SOP-RDF-5.4"]),
+    (D.ESCALATE_HUMAN, ["SOP-RDF-4.4", "SOP-RDF-5.2", "SOP-RDF-5.4"]),
+    (D.REJECT, ["SOP-RDF-4.1", "SOP-RDF-4.2", "SOP-RDF-4.3"]),
+    (D.REFUSE_INSUFFICIENT_INPUT, ["SOP-RDF-2.2"]),
+])
+def test_risk_based_lab_sample_step(verdict, expected):
+    detected = _detected(hard=["metal"]) if verdict == D.REJECT else _detected(light=["glass"])
+    steps = actions.next_steps(
+        verdict, _gates(), detected, ["photo"], "r1", sampling={"sample_this_truck": True}
+    )
+    assert _refs(steps) == expected
+    if "SOP-RDF-5.4" in expected:
+        assert "risk-based lab sample" in steps[-1]["text"]
+
+
+@pytest.mark.parametrize("sampling", [None, {}, {"sample_this_truck": False},
+                                      {"sample_this_truck": "yes"}])
+def test_no_lab_sample_step_unless_sampling_says_so(sampling):
+    steps = actions.next_steps(D.ACCEPT, _gates(), _detected(), [], "r1", sampling=sampling)
+    assert _refs(steps) == ["SOP-RDF-6.1"]
+
+
+def test_lab_sample_comes_before_the_gas_row():
+    steps = actions.next_steps(
+        D.ACCEPT, _gates(gas_plausibility="failed"), _detected(), [], "r1",
+        sampling={"sample_this_truck": True},
+    )
+    assert _refs(steps) == ["SOP-RDF-6.1", "SOP-RDF-5.4", "SOP-RDF-7.1"]
 
 
 def test_escalate_moisture_conflict():
@@ -121,8 +193,8 @@ def test_escalate_light_contaminant():
     steps = actions.next_steps(
         D.ESCALATE_HUMAN, _gates(), _detected(light=["glass"]), [], "r1"
     )
-    assert _refs(steps) == ["SOP-RDF-4.4"]
-    assert _texts(steps) == ["Tip to the pre-sort line, not direct feed."]
+    assert _refs(steps) == ["SOP-RDF-4.4", "SOP-RDF-5.2"]
+    assert _texts(steps) == ["Tip to the pre-sort line, not direct feed.", _SUPERVISOR]
 
 
 @pytest.mark.parametrize("feedstock", [["plastic_film"], ["textile"], ["plastic_film", "textile"]])
@@ -131,7 +203,7 @@ def test_rdf_feedstock_listed_as_light_does_not_select_pre_sort(feedstock):
     steps = actions.next_steps(
         D.ESCALATE_HUMAN, _gates(manifest_crosscheck="failed"), _detected(light=feedstock), [], "r1"
     )
-    assert _refs(steps) == ["SOP-RDF-3.3"]
+    assert _refs(steps) == ["SOP-RDF-3.3", "SOP-RDF-5.2"]
     assert not any("contamina" in t.lower() for t in _texts(steps))
 
 
@@ -157,8 +229,10 @@ def test_escalate_manifest_crosscheck_failed():
     steps = actions.next_steps(
         D.ESCALATE_HUMAN, _gates(manifest_crosscheck="failed"), _detected(), [], "r1"
     )
-    assert _refs(steps) == ["SOP-RDF-3.3"]
-    assert _texts(steps) == ["Verify the waybill with the driver; correct or void the ticket."]
+    assert _refs(steps) == ["SOP-RDF-3.3", "SOP-RDF-5.2"]
+    assert _texts(steps) == [
+        "Verify the waybill with the driver; correct or void the ticket.", _SUPERVISOR,
+    ]
 
 
 def test_accept():
@@ -215,14 +289,13 @@ def test_combined_reject_hard_plus_weight_dedupes_4_3():
     assert len({s["sop_ref"] for s in steps}) == len(steps)
 
 
-@pytest.mark.parametrize("verdict", [D.REJECT, D.ESCALATE_HUMAN])
-def test_unmatched_reject_or_escalate_falls_back_to_manual_check(verdict):
+@pytest.mark.parametrize("verdict,text", [
+    (D.REJECT, "Hold the ticket; supervisor performs a manual visual check."),
+    (D.ESCALATE_HUMAN, _SUPERVISOR),
+])
+def test_unmatched_reject_or_escalate_falls_back_to_supervisor(verdict, text):
     steps = actions.next_steps(verdict, _gates(), _detected(), [], "r1")
-    assert steps == [{
-        "order": 1,
-        "text": "Hold the ticket; supervisor performs a manual visual check.",
-        "sop_ref": "SOP-RDF-5.2",
-    }]
+    assert steps == [{"order": 1, "text": text, "sop_ref": "SOP-RDF-5.2"}]
 
 
 def test_unmatched_fallback_still_gets_gas_appended():
@@ -238,7 +311,25 @@ def test_escalate_all_rows_in_table_order():
     steps = actions.next_steps(
         D.ESCALATE_HUMAN, gates, _detected(light=["glass"]), [], "r1"
     )
-    assert _refs(steps) == ["SOP-RDF-5.1", "SOP-RDF-5.3", "SOP-RDF-4.4", "SOP-RDF-3.3"]
+    assert _refs(steps) == [
+        "SOP-RDF-5.1", "SOP-RDF-5.3", "SOP-RDF-4.4", "SOP-RDF-3.3", "SOP-RDF-5.2",
+    ]
+
+
+def test_escalate_every_row_in_table_order():
+    gates = _gates(vlm_confidence="failed", manifest_crosscheck="failed",
+                   weight_plausibility="failed", ocr_confidence="failed")
+    gates["manifest_crosscheck"]["reason"] = "Moisture conflict: x"
+    steps = actions.next_steps(
+        D.ESCALATE_HUMAN, gates, _detected(light=["glass"]), [], "r1",
+        sampling={"sample_this_truck": True},
+    )
+    assert _refs(steps) == [
+        "SOP-RDF-2.1", "SOP-RDF-5.1", "SOP-RDF-5.3", "SOP-RDF-4.4", "SOP-RDF-3.2",
+        "SOP-RDF-3.3", "SOP-RDF-5.2", "SOP-RDF-5.4",
+    ]
+    # 3.3 is cited once: the ticket-correction wording (first row) wins.
+    assert steps[5]["text"].startswith("Confirm the corrected net weight")
 
 
 def test_tolerates_missing_or_malformed_inputs():
@@ -262,8 +353,9 @@ def test_steps_validate_as_action_steps():
 
 _ALL_REFS = {
     "SOP-RDF-2.1", "SOP-RDF-2.2", "SOP-RDF-3.2", "SOP-RDF-3.3",
-    "SOP-RDF-4.1", "SOP-RDF-4.2", "SOP-RDF-4.3", "SOP-RDF-4.4",
-    "SOP-RDF-5.1", "SOP-RDF-5.2", "SOP-RDF-5.3", "SOP-RDF-6.1", "SOP-RDF-7.1",
+    "SOP-RDF-4.1", "SOP-RDF-4.2", "SOP-RDF-4.3", "SOP-RDF-4.4", "SOP-RDF-4.5",
+    "SOP-RDF-5.1", "SOP-RDF-5.2", "SOP-RDF-5.3", "SOP-RDF-5.4", "SOP-RDF-6.1",
+    "SOP-RDF-7.1",
 }
 
 
@@ -291,10 +383,14 @@ def test_every_sop_ref_exists_in_sop_doc():
             vlm_confidence="failed",
             manifest_crosscheck="failed",
             gas_plausibility="failed",
+            ocr_confidence="failed",
         )
-        gates["manifest_crosscheck"]["reason"] = "Moisture conflict: x"
+        gates["manifest_crosscheck"]["reason"] = (
+            "Waybill declares sorted RDF (RDF fluff); the camera sees metal. Moisture conflict: x"
+        )
         all_step_refs |= set(_refs(actions.next_steps(
-            verdict, gates, _detected(hard=["metal"], light=["glass"]), ["photo"], "r1"
+            verdict, gates, _detected(hard=["metal"], light=["glass"]), ["photo"], "r1",
+            sampling={"sample_this_truck": True},
         )))
     assert all_step_refs == _ALL_REFS
     assert all_step_refs <= set(sections)
@@ -375,7 +471,7 @@ def test_structured_metal_reject_gets_do_not_tip():
     assert "remove: metal." in steps[1]["text"]
 
 
-def test_weight_mismatch_reject_with_unconfident_hard_list_has_no_sorting_steps():
+def test_weight_mismatch_with_unconfident_hard_list_is_a_ticket_correction():
     inputs = {
         "photo_filename": "p.jpg",
         "manifest_text": "Waste: RDF. Declared weight: 10,000 kg",
@@ -385,9 +481,38 @@ def test_weight_mismatch_reject_with_unconfident_hard_list_has_no_sorting_steps(
                         "hard_contaminants": ["metal"], "light_contaminants": []},
            "confidence": 0.45}
     verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
-    assert verdict == D.REJECT
+    assert verdict == D.ESCALATE_HUMAN  # a weight gap never rejects
     assert not any(r.startswith("SOP-RDF-4.1") or r.startswith("SOP-RDF-4.2") for r in _refs(steps))
-    assert _refs(steps) == ["SOP-RDF-3.2", "SOP-RDF-4.3"]
+    assert _refs(steps) == ["SOP-RDF-3.2", "SOP-RDF-3.3", "SOP-RDF-5.2"]
+
+
+def test_declared_sorted_metal_from_real_decide_gets_breach_notice():
+    inputs = {
+        "photo_filename": "p.jpg",
+        "manifest_text": "SURAT JALAN 007842",
+        "waybill_fields": {"load_type": "RDF fluff", "net_kg": 16340},
+        "weight_kg": 16340.0,
+    }
+    vlm = {"detected": {"contamination": "steel pipe", "moisture": 0.2,
+                        "hard_contaminants": ["metal"], "light_contaminants": []},
+           "confidence": 0.85}
+    verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
+    assert verdict == D.REJECT
+    assert _refs(steps) == ["SOP-RDF-4.1", "SOP-RDF-4.2", "SOP-RDF-4.3", "SOP-RDF-4.5"]
+
+
+def test_wetter_than_declared_from_real_decide_gets_grab_sample():
+    inputs = {
+        "photo_filename": "p.jpg",
+        "manifest_text": "SURAT JALAN 007842",
+        "waybill_fields": {"load_type": "RDF fluff", "moisture_pct": 28},
+    }
+    vlm = {"detected": {"contamination": "none", "moisture": 0.45,
+                        "hard_contaminants": [], "light_contaminants": []},
+           "confidence": 0.85}
+    verdict, steps = _decide_and_steps(inputs, vlm, {"confidence": 0.9})
+    assert verdict == D.ESCALATE_HUMAN
+    assert _refs(steps) == ["SOP-RDF-5.1", "SOP-RDF-5.3", "SOP-RDF-3.3", "SOP-RDF-5.2"]
 
 
 def test_confident_hard_contaminants_unit():

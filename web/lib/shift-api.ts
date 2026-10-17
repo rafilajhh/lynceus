@@ -80,6 +80,40 @@ const valueModelSchema = z.object({
   note: z.string().nullish(),
 });
 
+const optionalCount = z.number().nonnegative().nullish().catch(null);
+
+/**
+ * What the gate measurably changed this shift (shift.build_report
+ * `improvement`): counted from the sealed ledger and its follow-ups. The one
+ * assumption (minutes per manual hand check) is stated in its own field and
+ * in `notes`. Every figure is nullable: an absent one is left out, never
+ * shown as 0.
+ */
+const improvementSchema = z.object({
+  trucks: optionalCount,
+  auto_cleared: optionalCount,
+  held: optionalCount,
+  rejected: optionalCount,
+  refused: optionalCount,
+  hand_checks_avoided: optionalCount,
+  manual_check_minutes_assumed: optionalCount,
+  staff_minutes_freed: optionalCount,
+  median_decision_s: optionalCount,
+  p95_decision_s: optionalCount,
+  hazardous_loads_stopped: optionalCount,
+  declaration_conflicts: optionalCount,
+  supervisor_reviews: optionalCount,
+  ai_confirmed: optionalCount,
+  ai_overridden: optionalCount,
+  lab_samples: optionalCount,
+  spec_breaches: optionalCount,
+  deductions_idr: optionalCount,
+  breach_fees_idr: optionalCount,
+  notices: optionalCount,
+  exposure_if_tipped_idr: optionalCount,
+  notes: z.array(z.string()).catch([]),
+});
+
 const shiftReportSchema = z.object({
   window: z
     .object({
@@ -97,6 +131,8 @@ const shiftReportSchema = z.object({
   prevented_loss_idr: z.number().nonnegative().catch(0),
   loss_exposure_idr: z.number().nonnegative().nullish().catch(null),
   value_model: valueModelSchema.nullish().catch(null),
+  /** Absent on an older backend: the page then falls back to verdict counts. */
+  improvement: improvementSchema.nullish().catch(null),
   median_seconds_per_truck: z.number().nonnegative().nullish().catch(null),
   suppliers: z
     .array(z.unknown())
@@ -117,10 +153,85 @@ export type ShiftReport = z.infer<typeof shiftReportSchema>;
 export type SupplierRow = ShiftReport["suppliers"][number];
 export type ValueModel = NonNullable<ShiftReport["value_model"]>;
 export type ValueScenario = ValueModel["scenarios"]["base"];
+export type Improvement = NonNullable<ShiftReport["improvement"]>;
 
 /** Risk rule, mirrored from backend/src/lynceus/shift.py for the legend. */
 export const FLAG_MIN_TRUCKS = 3;
 export const FLAG_MIN_RISK = 0.34;
+
+// ---- Supplier scorecard (GET /suppliers, GET /contract) -------------------
+
+const nullableNumber = z.number().nullish().catch(null);
+
+/** One supplier's scorecard row (backend suppliers.SupplierProfile). The
+    transport and types live in ops-api.ts; this is the runtime guard. */
+const supplierProfileSchema = z.object({
+  supplier: z.string().min(1),
+  trucks: count,
+  accepted: count,
+  escalated: count,
+  rejected: count,
+  hard_contaminant_loads: count,
+  declaration_conflicts: count,
+  reviews: count,
+  overrides: count,
+  lab_samples: count,
+  avg_moisture_pct: nullableNumber,
+  avg_ncv_mj_kg: nullableNumber,
+  avg_chlorine_pct: nullableNumber,
+  spec_breaches: count,
+  deductions_idr: z.number().nonnegative().catch(0),
+  breach_fees_idr: z.number().nonnegative().catch(0),
+  net_t: z.number().nonnegative().catch(0),
+  risk_score: z.number().min(0).max(1).catch(0),
+  tier: z.enum(["low", "medium", "high", "new"]).catch("new"),
+  /** Why the supplier sits in this tier, one sentence. */
+  tier_reason: z.string().nullish().catch(null),
+  sampling: z
+    .object({ every_n: z.number().int().positive().catch(1), label: z.string().catch("") })
+    .nullish()
+    .catch(null),
+  last_seen_utc: z.string().nullish().catch(null),
+});
+
+const contractSchema = z
+  .object({
+    name: z.string().nullish().catch(null),
+    note: z.string().nullish().catch(null),
+    base_price_idr_per_t: nullableNumber,
+    specs: z.record(z.string(), z.unknown()).catch({}),
+  })
+  .catchall(z.unknown());
+
+const suppliersSchema = z.object({
+  generated_at_utc: z.string().nullish().catch(null),
+  contract: contractSchema.nullish().catch(null),
+  suppliers: z
+    .array(z.unknown())
+    .catch([])
+    .transform((items) =>
+      items.flatMap((raw) => {
+        const parsed = supplierProfileSchema.safeParse(raw);
+        return parsed.success ? [parsed.data] : [];
+      }),
+    ),
+});
+
+export type SupplierScore = z.infer<typeof supplierProfileSchema>;
+export type ContractTerms = z.infer<typeof contractSchema>;
+export type Scorecard = z.infer<typeof suppliersSchema>;
+
+/** Untrusted /suppliers JSON → scorecard; null when it is unreadable. */
+export function parseScorecard(raw: unknown): Scorecard | null {
+  const parsed = suppliersSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
+/** Untrusted /contract JSON → terms; null when it is unreadable. */
+export function parseContract(raw: unknown): ContractTerms | null {
+  const parsed = contractSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
 
 export class ShiftError extends Error {
   constructor(message: string) {

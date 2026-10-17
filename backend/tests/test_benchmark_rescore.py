@@ -119,9 +119,10 @@ def test_current_rules_decide_each_recorded_output(replayed):
     assert rows["plastic_1.jpg"]["predicted"] == "accept"  # prose "concrete" is not evidence
     assert rows["glass_1.jpg"]["predicted"] == "escalate_human"
     assert rows["veg_1.jpg"]["predicted"] == "escalate_human"
-    # The recorded failed cross-check is replayed, so it still escalates.
-    assert rows["paper_1.jpg"]["predicted"] == "escalate_human"
-    assert rows["paper_1.jpg"]["gates"]["manifest_crosscheck"] == "failed"
+    # The recorded LLM cross-check failure no longer moves the verdict, and the
+    # benchmark waybill declares nothing the declaration check compares on.
+    assert rows["paper_1.jpg"]["predicted"] == "accept"
+    assert rows["paper_1.jpg"]["gates"]["manifest_crosscheck"] == "not_evaluated"
     assert rows["textile_1.jpg"]["recorded_predicted"] == "escalate_human"
     for name in ("metal_1.jpg", "textile_1.jpg", "glass_1.jpg"):
         assert rows[name]["provenance"] == "replay"
@@ -166,18 +167,22 @@ def test_summary_kind_framing_and_disclosure(replayed):
 
 def test_summary_metrics_and_changes(replayed):
     s = replayed["summary"]
-    # expected accept: textile, plastic -> accept; paper -> escalate (failed cross-check)
-    assert s["confusion"]["accept"] == {"reject": 0, "escalate": 1, "accept": 2, "error": 0}
+    # expected accept: textile, plastic, paper -> accept (the recorded LLM
+    # cross-check failure no longer escalates)
+    assert s["confusion"]["accept"] == {"reject": 0, "escalate": 0, "accept": 3, "error": 0}
     assert s["recorded_confusion"]["accept"] == {"reject": 1, "escalate": 2, "accept": 0, "error": 0}
-    assert s["clean_accept_rate"] == pytest.approx(2 / 3)
-    assert s["clean_escalate_rate"] == pytest.approx(1 / 3)
+    assert s["clean_accept_rate"] == pytest.approx(1.0)
+    assert s["clean_escalate_rate"] == 0.0
     assert s["clean_reject_rate"] == 0.0
-    # non-error rows 6; escalated: glass, veg, paper
-    assert s["review_rate"] == pytest.approx(3 / 6)
+    # non-error rows 6; escalated: glass, veg
+    assert s["review_rate"] == pytest.approx(2 / 6)
     # expected escalate: glass, veg (escalated), food (error) -> 2/3
     assert s["escalate_recall"] == pytest.approx(2 / 3)
-    assert {c["image"] for c in s["changed"]} == {"textile_1.jpg", "plastic_1.jpg"}
-    assert s["gates_changed"] == []
+    assert {c["image"] for c in s["changed"]} == {"textile_1.jpg", "plastic_1.jpg", "paper_1.jpg"}
+    # Every replayed row: the waybill-read gate is not_run (typed benchmark
+    # waybill) and the declaration check not_evaluated (nothing declared).
+    assert sorted(s["gates_changed"]) == sorted(
+        r["image"] for r in replayed["rows"].values() if not r.get("error"))
 
 
 def test_live_source_untouched_and_globals_restored(replayed):

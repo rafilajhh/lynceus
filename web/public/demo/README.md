@@ -19,6 +19,14 @@ The waybill is fiction: the names, plate, reference numbers, signatures and
 stamps were invented by the image model. Place names (TPST Bantargebang,
 PLTSa Rorotan) are public landmarks used for realism; the stamps are not
 theirs and the document was not issued by them. The phone number was
-pixelated in case it matches a real line. No model reads this image: it is only
-archived (and digested) in the audit record as evidence. The waybill text the
-verdict uses is derived by the console from the registered stream and weight.
+pixelated in case it matches a real line, and the waybill reader is told never
+to read it.
+
+The gate reads this image with the vision model on AMD Token Factory
+(`POST /waybill/read`): plate, carrier, origin, destination, gross, tare and
+net weight, load type and declared moisture. The operator confirms or edits
+the fields, and the confirmed fields (with any edits flagged) are what the
+rules compare against the load photo and the weighbridge. Offline, the reader
+returns the stored fields of this one sample image (matched by its SHA-256)
+and labels them as an offline read; any other image needs the live model or
+typed fields. The image itself is archived and digested in the audit record.

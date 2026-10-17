@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from lynceus import audit, impact, pipeline, shift
+from lynceus import audit, followups, impact, pipeline, shift, suppliers
 from lynceus.api import create_app
 from lynceus.config import LYNCEUS_STORAGE_DIR_ENV
 
@@ -558,31 +558,66 @@ def test_shift_report_window_and_validation(api):
 # ---------------------------------------------------------------------------
 
 
-def test_seed_demo_shift_writes_24_sample_records(tmp_path, monkeypatch):
+def test_seed_demo_shift_writes_36_sample_records_with_followups(tmp_path, monkeypatch):
     scripts = Path(__file__).resolve().parents[1] / "scripts"
     monkeypatch.syspath_prepend(str(scripts))
     monkeypatch.setenv(LYNCEUS_STORAGE_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(pipeline, "_vlm_reachable", lambda *a, **k: False)
+    # Seeding never calls the network: a notice drafted here is a template.
+    monkeypatch.setattr(pipeline, "resolve_assist_client", _no_network)
+    suppliers.clear_cache()
     sys.modules.pop("seed_demo", None)
     seed_demo = importlib.import_module("seed_demo")
 
     (tmp_path / "inspection-000099").mkdir()  # an old record --reset removes
     assert seed_demo.main(["--reset", "--shift", "--storage-dir", str(tmp_path)]) == 0
-    records = [
-        audit.load_record(tmp_path / e["record_id"] / audit.RECORD_FILENAME)
-        for e in audit.list_inspections(tmp_path)
-    ]
-    assert len(records) == 24
+    ids = [e["record_id"] for e in audit.list_inspections(tmp_path)]
+    records = [audit.load_record(tmp_path / i / audit.RECORD_FILENAME) for i in ids]
+    assert len(records) == 36
     assert not (tmp_path / "inspection-000099").exists()
     assert {r.inputs.photo.provenance for r in records} == {"sample"}
+    assert {r.inputs.weight.source for r in records} == {"weighbridge_simulated"}
+    assert all(r.inputs.photo.path == "photo.jpg" for r in records)
+    assert all(r.inputs.manifest_text.extracted_fields.get("load_type") == "RDF fluff"
+               for r in records)
+    # The short-weight ticket: scale 7.2 % over the waybill, held for correction.
+    short = next(r for r in records if r.inputs.truck_id == "B 9118 TRQ")
+    declared = short.inputs.manifest_text.extracted_fields["net_kg"]
+    assert round((short.inputs.weight.value_kg - declared) / declared * 100, 1) == 7.2
+    assert short.verdict.decision == "escalate_human"
 
-    report = shift.build_report(records, None, None)
+    chains = followups.load_many(tmp_path, ids)
+    assert all(followups.verify_chain(tmp_path, i)["ok"] for i in ids)
+    kinds = [f["kind"] for chain in chains.values() for f in chain]
+    by_id = {r.record_id: r for r in records}
+    held = [r for r in records if r.verdict.decision == "escalate_human"]
+    resolved = [r for r in held if any(f["kind"] == "resolution" for f in chains.get(r.record_id, []))]
+    assert len(resolved) >= len(held) - 1  # most holds are resolved
+    assert kinds.count("lab_result") >= 5
+    notices = [f for chain in chains.values() for f in chain if f["kind"] == "notice"]
+    assert notices and {n["body"]["provenance"] for n in notices} == {"template"}
+    assert all(by_id[n["record_id"]].verdict.decision == "reject" for n in notices)
+
+    report = shift.build_report(records, None, None, chains)
     assert report["sample"] is True
-    assert {r["supplier"] for r in report["suppliers"]} == {
-        "CV Sumber Bersih", "PT Daur Ulang Jaya", "UD Sinar Abadi"}
-    assert [r["supplier"] for r in report["suppliers"] if r["flagged"]] == ["UD Sinar Abadi"]
-    assert report["median_seconds_per_truck"] is not None
+    assert {r["supplier"] for r in report["suppliers"]} == set(seed_demo.SUPPLIERS)
+    assert [r["supplier"] for r in report["suppliers"] if r["flagged"]] == [seed_demo.METAL]
     assert report["median_seconds_per_truck"] > 0
+    block = report["improvement"]
+    assert block["trucks"] == 36
+    assert block["ai_overridden"] in (1, 2)
+    assert block["deductions_idr"] > 0
+    assert block["breach_fees_idr"] > 0
+
+    tiers = {p["supplier"]: p["tier"] for p in suppliers.profiles(tmp_path)}
+    assert tiers == {
+        seed_demo.CLEAN: "low", seed_demo.WET: "high", seed_demo.METAL: "high",
+        seed_demo.SHORT: "medium", seed_demo.NEW: "new",
+    }
+
+
+def _no_network(*_args, **_kwargs):
+    raise AssertionError("seeding must not probe the assist endpoint")
 
 
 # ---------------------------------------------------------------------------

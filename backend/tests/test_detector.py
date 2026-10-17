@@ -614,9 +614,9 @@ def test_detector_gate_wording_follows_the_verdict():
     assert held[0] == D.ESCALATE_HUMAN
     assert held[1]["detector_second_opinion"]["reason"].endswith(
         "The truck is held for a manual check.")
-    # A weight mismatch rejects: the detector gate must not claim a hold.
-    heavy = {**_INPUTS, "weight_kg": 9000}
-    rejected = decision.decide(heavy, _vlm(), _LLM, _ENGINE, _det(("metal", 0.93)))
+    # A confident rock rejects: the unconfirmed detector metal must not claim a hold.
+    rejected = decision.decide(
+        _INPUTS, _vlm(hard=["rock"]), _LLM, _ENGINE, _det(("metal", 0.93)))
     assert rejected[0] == D.REJECT
     reason = rejected[1]["detector_second_opinion"]["reason"]
     assert "hold" not in reason.lower() and "held" not in reason.lower()

@@ -219,11 +219,14 @@ def test_get_single_record_returns_full_audit_record(client, tmp_path):
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # The endpoint serves exactly the strict-decoded on-disk record.
+    # The endpoint serves exactly the strict-decoded on-disk record, plus
+    # the operator checks and the supplier scorecard beside its fields.
     on_disk = audit.load_record(
         tmp_path / record_id / RECORD_FILENAME
     ).model_dump()
-    assert body == on_disk
+    assert {key: body[key] for key in on_disk} == on_disk
+    assert set(body) - set(on_disk) == {"checks", "why", "supplier_profile"}
+    assert body["why"] and [c["key"] for c in body["checks"]][0] == "vision"
 
     # Spot-checks against the demo story (PLAN.md §5.1).
     assert body["record_id"] == record_id

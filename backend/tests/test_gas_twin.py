@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from lynceus import decision, gas_twin, pipeline
+from lynceus import decision, gas_ingest, gas_twin, pipeline
 from lynceus.audit import Decision, GateState
 
 pytest.importorskip("lynceus_engine", reason="gas twin requires the Lynceus engine")
@@ -138,6 +138,11 @@ def gas_twin_threshold() -> float:
 # ---------------------------------------------------------------------------
 
 
+def _live(readings: dict) -> dict:
+    """Readings stamped as a live gate sensor's: the only gas the gate uses."""
+    return {"readings_ppm": readings, "source": gas_ingest.LIVE_GAS_SOURCE}
+
+
 def _decide(gas: object, manifest: str, moisture: float):
     """Run the fusion layer with a clean VLM/LLM pair and the given gas."""
     inputs = {
@@ -169,9 +174,7 @@ def test_gas_gate_fails_for_old_organic_load_claimed_dry():
     assert twin is not None, "the twin must run for a complete batch description"
     assert twin["readings_ppm"]["ch4"] > gas_twin_threshold()
 
-    verdict, gates = _decide(
-        {"readings_ppm": twin["readings_ppm"]}, _DRY_MANIFEST, 0.10
-    )
+    verdict, gates = _decide(_live(twin["readings_ppm"]), _DRY_MANIFEST, 0.10)
     assert gates["gas_plausibility"]["state"] == GateState.FAILED
     assert gates["gas_plausibility"]["value"] == pytest.approx(
         twin["readings_ppm"]["ch4"]
@@ -182,17 +185,27 @@ def test_gas_gate_passes_when_reading_matches_wet_claim():
     twin = gas_twin.simulate_gate_readings(
         "organic-rich", 11.45, 0.57, 76.0, truck_id="DK-4418-WR", record_id="r-1"
     )
-    verdict, gates = _decide(
-        {"readings_ppm": twin["readings_ppm"]}, _WET_MANIFEST, 0.57
-    )
+    verdict, gates = _decide(_live(twin["readings_ppm"]), _WET_MANIFEST, 0.57)
     assert twin["readings_ppm"]["ch4"] > gas_twin_threshold()
     assert gates["gas_plausibility"]["state"] == GateState.PASSED
 
 
 def test_gas_gate_not_run_without_gas_data():
-    for absent in (None, {}, {"readings_ppm": {}}):
+    for absent in (None, {}, {"readings_ppm": {}}, _live({})):
         _verdict, gates = _decide(absent, _DRY_MANIFEST, 0.10)
         assert gates["gas_plausibility"]["state"] == GateState.NOT_RUN
+
+
+def test_gas_gate_ignores_simulated_readings():
+    """Twin (simulated) or unlabelled readings are no evidence about this
+    load: the gate says there is no gas sensor at this gate."""
+    for source in (None, gas_twin.GAS_SOURCE, "operator_typed"):
+        gas = {"readings_ppm": {"ch4": 234.0}}
+        if source:
+            gas["source"] = source
+        _verdict, gates = _decide(gas, _DRY_MANIFEST, 0.10)
+        assert gates["gas_plausibility"]["state"] == GateState.NOT_RUN
+        assert gates["gas_plausibility"]["reason"] == "No gas sensor at this gate."
 
 
 def test_gas_gate_never_overrides_the_verdict():
@@ -201,8 +214,8 @@ def test_gas_gate_never_overrides_the_verdict():
     verdicts = set()
     for gas in (
         None,
-        {"readings_ppm": {"ch4": 54.0}},
-        {"readings_ppm": {"ch4": 234.0}},  # failed gate, same verdict
+        _live({"ch4": 54.0}),
+        _live({"ch4": 234.0}),  # failed gate, same verdict
     ):
         verdict, gates = _decide(gas, _DRY_MANIFEST, 0.10)
         verdicts.add(verdict)

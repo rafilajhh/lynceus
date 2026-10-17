@@ -4,6 +4,10 @@ Routes:
     GET  /health   — liveness plus engine availability.
     POST /assess   — one batch assessment through the Lynceus decision engine.
     POST /inspect  — full AI gate inspection (VLM + LLM + engine + fusion verdict).
+    POST /inspect/stream — the same inspection as NDJSON stage events + result.
+    POST /warmup   — wake the vision model and the CPU detector (≤ once a minute).
+    POST /waybill/read — read a waybill photo into confirmed-able fields.
+    GET  /weighbridge/reading — simulated scale ticket for a plate.
     POST /assist   — Pythia: cited answers over plant documents and an audit record.
     GET  /shift-report — shift aggregation with supplier risk and explanations.
     GET  /benchmark/latest — newest committed validation summary (+ framing,
@@ -15,15 +19,22 @@ from __future__ import annotations
 
 import base64
 import binascii
+import importlib
+import inspect as pyinspect
+import json
+import logging
 import os
+import queue
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterator
+from types import ModuleType
+from typing import Any, AsyncIterator, Iterator, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from lynceus import __version__
@@ -38,7 +49,27 @@ from lynceus import gas_twin
 from lynceus import impact
 from lynceus import pipeline
 from lynceus import shift
+from lynceus import waybill
+from lynceus import observations
+from lynceus import weighbridge
 from lynceus.config import get_settings, provider_for_url
+
+_log = logging.getLogger(__name__)
+
+
+def _optional_module(name: str) -> ModuleType | None:
+    """``lynceus.<name>`` when it is installed, else ``None``.
+
+    Only the module itself being absent counts: an import error inside it
+    still raises, so a broken module is never silently skipped.
+    """
+    qualified = f"lynceus.{name}"
+    try:
+        return importlib.import_module(qualified)
+    except ModuleNotFoundError as exc:
+        if exc.name != qualified:
+            raise
+        return None
 
 def _dir_from_env(name: str, default: Path) -> Path:
     """A directory from environment variable ``name``, else the source-tree ``default``.
@@ -78,6 +109,10 @@ SECURITY_HEADERS = {
 # No OCR is performed on the waybill; this is the fixed confidence attached
 # to operator-typed manifest text, not an OCR score.
 _MANUAL_TEXT_CONFIDENCE = 0.95
+#: Most sensor readings one inspection request may carry.
+MAX_SUPPLIED_OBSERVATIONS = 20
+#: Waste age the engine assumes when none was entered (stated as a caveat).
+DEFAULT_AGE_H = 24.0
 
 #: Largest accepted load photo, measured on the decoded bytes.
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
@@ -176,6 +211,59 @@ class AssessRequest(BaseModel):
     )
 
 
+class WaybillReadRequest(BaseModel):
+    """One waybill photo to read (``POST /waybill/read``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    image_base64: str = Field(min_length=1, description="JPEG/PNG base64 or data URI.")
+    filename: str | None = Field(default=None, max_length=200)
+    demo_case: str | None = Field(
+        default=None, description="Any value forces the offline reader (sample waybill only)."
+    )
+
+
+class ObservationIn(BaseModel):
+    """One reading a site's own sensor gateway sends with the inspection
+    (lynceus.observations record shape; the digest is computed here)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(min_length=1, max_length=120)
+    kind: str = Field(min_length=1, max_length=40)
+    value: Any = None
+    unit: str | None = Field(default=None, max_length=20)
+    uncertainty: float | None = None
+    status: Literal["ok", "poor", "mismatch", "not_installed", "unavailable"] = "ok"
+    measured_at_utc: str | None = None
+    simulated: bool = False
+    note: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def _valid_time(self) -> "ObservationIn":
+        if self.measured_at_utc is not None:
+            try:
+                audit.validate_timestamp(self.measured_at_utc, "observations[].measured_at_utc")
+            except audit.AuditError as exc:  # a 422, not a 500
+                raise ValueError(str(exc)) from exc
+        return self
+
+
+class WaybillReadMeta(BaseModel):
+    """How the confirmed waybill fields were read (``/inspect`` input)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    confidence: float = Field(ge=0.0, le=1.0)
+    model: str | None = None
+    provenance: str | None = None
+    latency_ms: float | None = Field(default=None, ge=0.0)
+    edited_fields: list[str] = Field(default_factory=list)
+    #: Optional per-field read confidences (the read's ``fields.*.confidence``):
+    #: lets the "Waybill read" check count the unsure fields.
+    field_confidences: dict[str, float] | None = None
+
+
 class InspectRequest(BaseModel):
     """One truck inspection, as the demo UI submits it.
 
@@ -242,7 +330,41 @@ class InspectRequest(BaseModel):
         "(percent values are normalised to a fraction).",
     )
     age_h: float | None = Field(
-        default=None, ge=0.0, description="Elapsed time since disposal, in hours."
+        default=None,
+        ge=0.0,
+        description="Elapsed time since disposal, in hours (default 24 h, "
+        "stated as a caveat).",
+    )
+    waybill_fields: dict[str, Any] | None = Field(
+        default=None,
+        description="The operator-confirmed waybill fields as plain values "
+        "(POST /waybill/read field names), e.g. {'plate': 'B 9723 KXW', "
+        "'net_kg': 16340}. Defaults truck, supplier, declared weight, waste "
+        "stream, moisture and the manifest text.",
+    )
+    waybill_read: WaybillReadMeta | None = Field(
+        default=None,
+        description="How the waybill fields were read (absent: typed by the operator).",
+    )
+    weight_source: Literal["weighbridge_simulated", "weighbridge", "manual_entry"] | None = Field(
+        default=None, description="Where weight_kg came from (audit inputs.weight.source)."
+    )
+    extra_photos_base64: list[str] | None = Field(
+        default=None,
+        max_length=audit.MAX_FRAMES - 1,
+        description="Up to two extra camera angles of the load (JPEG/PNG base64).",
+    )
+    extra_photo_filenames: list[str] | None = Field(
+        default=None,
+        max_length=audit.MAX_FRAMES - 1,
+        description="Filenames of the extra camera angles, in the same order.",
+    )
+    observations: list[ObservationIn] | None = Field(
+        default=None,
+        max_length=MAX_SUPPLIED_OBSERVATIONS,
+        description="Readings from the site's own gate sensors (ANPR, radiation "
+        "portal, analysers, ...). A kind sent here replaces the computed or "
+        "simulated one.",
     )
 
     @model_validator(mode="after")
@@ -313,6 +435,14 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
     55–60 % moisture (SBI Cilacap §2c).  The InspectRequest contract
     itself is untouched — only the demo defaults are realistic.
 
+    With ``waybill_fields`` (the operator-confirmed waybill) the waybill
+    fills what the operator did not type: truck = plate, supplier =
+    carrier, declared weight = net, waste stream from the load type,
+    moisture from the declared moisture.  The manifest text is then the
+    deterministic transcript of the fields (:func:`waybill.transcript`).
+    A missing ``age_h`` defaults to :data:`DEFAULT_AGE_H` (``age_defaulted``,
+    stated as an engine caveat).
+
     This is the canonical object: the audit record, the AI prompts, the
     engine assessment, the decision, and the impact estimate all derive
     from it, so what the verdict used is exactly what gets recorded.
@@ -324,8 +454,27 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
     waste_stream = request.waste_stream
     age_h = request.age_h
     manifest_text = request.manifest_text
+    truck_id = request.truck_id
+    supplier = (request.supplier or "").strip() or None
+    declared_weight_kg = request.declared_weight_kg
     weight_defaulted = False
     manifest_defaulted = False
+    age_defaulted = False
+    fields = (
+        waybill.clean_values(request.waybill_fields)
+        if request.waybill_fields is not None
+        else None
+    )
+    if fields is not None:
+        truck_id = truck_id or fields.get("plate")
+        supplier = supplier or (str(fields.get("carrier") or "").strip()[:120] or None)
+        if declared_weight_kg is None:
+            declared_weight_kg = fields.get("net_kg")
+        if waste_stream is None:
+            waste_stream = waybill.waste_stream_for(fields.get("load_type"))[0]
+        if moisture is None and fields.get("moisture_pct") is not None:
+            moisture = float(fields["moisture_pct"]) / 100.0
+        manifest_text = waybill.transcript(fields)
     if request.demo_case:
         if weight_kg is None:
             weight_kg = impact.ARM_ROLL_TRIP_KG  # ≈ 5,2 t/trip (ITATS §3a)
@@ -347,22 +496,132 @@ def _inspect_payload(request: InspectRequest) -> dict[str, Any]:
                 "Verifikasi: non-B3, non-medis; kadar air sesuai deklarasi."
             )
             manifest_defaulted = True
+    if age_h is None:
+        age_h = DEFAULT_AGE_H
+        age_defaulted = True
     return {
-        "truck_id": request.truck_id or f"demo-{request.demo_case or 'truck'}",
+        "truck_id": truck_id or f"demo-{request.demo_case or 'truck'}",
         "demo_case": request.demo_case,
         "photo_base64": request.photo_base64,
         "photo_filename": request.photo_filename,
+        "extra_photos_base64": [p for p in request.extra_photos_base64 or [] if p],
+        "extra_photo_filenames": list(request.extra_photo_filenames or []),
         "waybill_image_base64": request.waybill_image_base64,
         "waybill_photo_filename": request.waybill_photo_filename,
         "manifest_text": manifest_text,
         "weight_kg": weight_kg,
-        "declared_weight_kg": request.declared_weight_kg,
+        "declared_weight_kg": declared_weight_kg,
         "waste_stream": waste_stream,
         "moisture": moisture,
         "age_h": age_h,
-        "supplier": (request.supplier or "").strip() or None,
+        "supplier": supplier,
+        "waybill_fields": fields,
+        "waybill_read": request.waybill_read.model_dump() if request.waybill_read else None,
+        "weight_source": request.weight_source,
         "weight_defaulted": weight_defaulted,
         "manifest_defaulted": manifest_defaulted,
+        "age_defaulted": age_defaulted,
+    }
+
+
+def _manifest_input(payload: dict[str, Any], manifest_text: str) -> dict[str, Any]:
+    """``inputs.manifest_text`` of the audit record: where the waybill text
+    came from, its digest, the confirmed fields and the read confidence."""
+    fields = payload["waybill_fields"]
+    read = payload["waybill_read"]
+    if fields is not None and read is not None:
+        source = (
+            "waybill_photo_ai_read_operator_edited"
+            if read.get("edited_fields")
+            else "waybill_photo_ai_read"
+        )
+        confidence = float(read["confidence"])
+    elif fields is not None:
+        source, confidence = "operator_typed_fields", _MANUAL_TEXT_CONFIDENCE
+    elif payload["manifest_defaulted"]:
+        source, confidence = "scripted_demo_default", _MANUAL_TEXT_CONFIDENCE
+    else:
+        source, confidence = "manual_text", _MANUAL_TEXT_CONFIDENCE
+    return {
+        "source": source,
+        "raw_text_sha256": audit.sha256_field(manifest_text.encode("utf-8")),
+        "extracted_fields": dict(fields or {}),
+        "ocr_confidence": confidence,
+    }
+
+
+def _supplier_profile(
+    storage_dir: Any, supplier: str | None, *, exclude_record_id: str | None = None
+) -> dict[str, Any] | None:
+    """The supplier's scorecard (``suppliers.profile``), when there is one."""
+    suppliers = _optional_module("suppliers")
+    if suppliers is None or not supplier:
+        return None
+    try:
+        return suppliers.profile(storage_dir, supplier, exclude_record_id=exclude_record_id)
+    except Exception as exc:  # noqa: BLE001 — a scorecard never fails an inspection
+        _log.warning("supplier profile skipped: %s: %s", type(exc).__name__, exc)
+        return None
+
+
+def _sampling_for(
+    storage_dir: Any,
+    supplier: str | None,
+    declared: dict[str, Any] | None = None,
+    *,
+    exclude_record_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Risk-based lab-sampling call for this truck (``suppliers.sampling_for``);
+    ``declared`` (the confirmed waybill fields) lets a declared moisture above
+    the contract spec call for a sample."""
+    suppliers = _optional_module("suppliers")
+    if suppliers is None or not supplier:
+        return None
+    try:
+        return suppliers.sampling_for(
+            storage_dir, supplier, declared, exclude_record_id=exclude_record_id
+        )
+    except Exception as exc:  # noqa: BLE001 — sampling never fails an inspection
+        _log.warning("sampling skipped: %s: %s", type(exc).__name__, exc)
+        return None
+
+
+def _checks_for(record_like: dict[str, Any], profile: dict[str, Any] | None) -> dict[str, Any]:
+    """``{"checks", "why"}`` from :func:`checks.build_checks` (empty when the
+    module is absent; ``None`` values when it failed on this record)."""
+    checks = _optional_module("checks")
+    if checks is None:
+        return {}
+    try:
+        built = checks.build_checks(record_like, profile)
+    except Exception as exc:  # noqa: BLE001 — the sealed verdict still answers
+        _log.warning("operator checks skipped: %s: %s", type(exc).__name__, exc)
+        return {"checks": None, "why": None}
+    return {"checks": built.get("checks"), "why": built.get("why")}
+
+
+def _vlm_block(vlm_result: dict[str, Any], no_model: str) -> dict[str, Any]:
+    """``ai_outputs.vlm`` (or one ``vlm_frames`` entry) of the audit record."""
+    return {
+        "model": str(vlm_result.get("model", no_model)),
+        "model_version": str(vlm_result.get("model_version", no_model)),
+        "raw_output_sha256": audit.sha256_field(
+            str(vlm_result.get("raw_output", "")).encode("utf-8")
+        ),
+        "detected": vlm_result.get("detected", {}),
+        "confidence": float(vlm_result.get("confidence", 0.0)),
+        # Live clients stamp provider + latency; stub results carry
+        # neither, and the record then honestly says None.
+        "provider": vlm_result.get("provider"),
+        "latency_ms": vlm_result.get("latency_ms"),
+        # Validated contaminant regions; older/stub results without
+        # them stay valid as an empty list / unspecified mode.
+        "boxes": vlm_result.get("boxes", []),
+        "localisation": vlm_result.get("localisation"),
+        # The vision models that failed before this one answered.
+        "fallback_from": vlm_result.get("fallback_from"),
+        # Each read's own answer (absent on results that kept none).
+        **({"votes": vlm_result["votes"]} if vlm_result.get("votes") is not None else {}),
     }
 
 
@@ -371,16 +630,29 @@ def _run_inspection_with_audit(
     settings: Any,
     *,
     photo_provenance: str | None = None,
+    on_progress: pipeline.ProgressFn | None = None,
 ) -> dict[str, Any]:
     """Full inspection: audit begin → AI + engine + decision → audit finish.
 
     ``photo_provenance`` overrides the recorded photo provenance; only the
     seeding script uses it (``"sample"`` for the scripted sample shift).
+    ``on_progress`` hears every stage (``POST /inspect/stream``).
     """
+    emit = pipeline.progress_emitter(on_progress)
     # Validate the uploads first: a rejected photo must not leave an
     # ``inspection-*`` record behind (audit.begin_record is below).
     photo_bytes = decode_photo(request.photo_base64)
     waybill_bytes = decode_photo(request.waybill_image_base64)
+    extra_names = list(request.extra_photo_filenames or [])
+    extra_photos: list[tuple[bytes, str | None]] = []
+    for index, raw in enumerate(p for p in request.extra_photos_base64 or [] if p):
+        extra_photos.append(
+            (decode_photo(raw), extra_names[index] if index < len(extra_names) else None)
+        )
+    if extra_photos and not photo_bytes:
+        raise PhotoError(
+            422, "invalid_photo", "Extra camera angles need the main load photo."
+        )
     # One effective payload: demo defaults applied here flow identically to
     # the AI, the engine, the decision, the impact estimate, and the audit
     # record — the record reflects what the verdict actually used.
@@ -393,6 +665,7 @@ def _run_inspection_with_audit(
     photo_filename = audit.safe_filename(
         payload["photo_filename"] or "photo.jpg"
     )
+    provenance = photo_provenance or payload["demo_case"] or "user_upload"
     now = audit.now_utc()
     gas_input: dict[str, Any] = {"readings_ppm": {}, "source": "not_measured", "measured_at_utc": now}
     inputs = {
@@ -401,24 +674,21 @@ def _run_inspection_with_audit(
             "filename": photo_filename,
             "sha256": audit.sha256_field(photo_bytes),
             "captured_at_utc": now,
-            "provenance": photo_provenance or payload["demo_case"] or "user_upload",
+            "provenance": provenance,
         },
-        "manifest_text": {
-            "source": "scripted_demo_default" if payload["manifest_defaulted"] else "manual_text",
-            "raw_text_sha256": audit.sha256_field(manifest_text.encode("utf-8")),
-            "extracted_fields": {},
-            "ocr_confidence": _MANUAL_TEXT_CONFIDENCE,
-        },
+        "manifest_text": _manifest_input(payload, manifest_text),
         "weight": {
             "value_kg": payload["weight_kg"] if payload["weight_kg"] is not None else 0.0,
-            "source": "scripted_demo_default" if payload["weight_defaulted"] else "weighbridge",
+            "source": "scripted_demo_default"
+            if payload["weight_defaulted"]
+            else payload["weight_source"] or "weighbridge",
             "measured_at_utc": now,
         },
         "gas": gas_input,
         "supplier": payload["supplier"],
     }
-    # The waybill document photo is evidence only (no OCR): digest it into
-    # the audit record when one was uploaded.
+    # The waybill document photo is evidence: digest it into the audit
+    # record when one was uploaded.
     if waybill_bytes:
         inputs["waybill_photo"] = {
             "filename": audit.safe_filename(
@@ -426,7 +696,8 @@ def _run_inspection_with_audit(
             ),
             "sha256": audit.sha256_field(waybill_bytes),
             "captured_at_utc": now,
-            "provenance": "user_upload",
+            # A demo_case names the load story, not where the waybill came from.
+            "provenance": photo_provenance or "user_upload",
         }
     input_digests = {
         "photo": audit.sha256_field(photo_bytes),
@@ -434,6 +705,42 @@ def _run_inspection_with_audit(
     }
     if waybill_bytes:
         input_digests["waybill_photo"] = audit.sha256_field(waybill_bytes)
+    frozen_inputs = {
+        "photo": photo_bytes,
+        "manifest_text": manifest_text.encode("utf-8"),
+    }
+    if extra_photos:
+        # Extra angles are frozen like the main photo: digest at begin,
+        # re-verified at finish (keys photo_2 / photo_3).
+        inputs["extra_photos"] = []
+        for number, (data, name) in enumerate(extra_photos, start=2):
+            inputs["extra_photos"].append(
+                {
+                    "filename": audit.safe_filename(name or f"photo-{number}.jpg"),
+                    "sha256": audit.sha256_field(data),
+                    "captured_at_utc": now,
+                    "provenance": provenance,
+                }
+            )
+            input_digests[f"photo_{number}"] = audit.sha256_field(data)
+            frozen_inputs[f"photo_{number}"] = data
+    # Gate sensors: what the site sent, plus the photo quality computed here
+    # and the simulated scale / plate camera.  Frozen with the inputs and
+    # read by the rules (decide's inputs["observations"]).
+    gate_observations = observations.collect(
+        supplied=[
+            observations.supplied_record(o.model_dump(), now)
+            for o in request.observations or []
+        ],
+        frames=[photo_bytes, *(data for data, _name in extra_photos)],
+        weight_kg=payload["weight_kg"],
+        weight_source=None if payload["weight_defaulted"] else payload["weight_source"],
+        registered_plate=request.truck_id,
+        waybill_plate=(payload["waybill_fields"] or {}).get("plate"),
+        measured_at_utc=now,
+    )
+    payload["observations"] = gate_observations
+    inputs["observations"] = gate_observations
     application = {"name": "lynceus", "version": __version__}
 
     # Resolve the AI clients before the record is begun: an unreachable live
@@ -454,13 +761,24 @@ def _run_inspection_with_audit(
         ai_clients = pipeline.UnavailableAIClients(str(exc))
         detector_kwargs["precomputed_detector"] = early
 
-    # Reserve the record identity first so the gate gas channel — whose
-    # deterministic twin is seeded by it — can run BEFORE the record is
-    # begun.  The readings are then frozen into the begin-time inputs, so
-    # what the verdict answers to is exactly what the record froze
-    # (invariant 3).  The twin/sensor runs exactly once here, not again in
-    # run_inspection.
+    # Reserve the record identity first so the gate gas channel can run
+    # BEFORE the record is begun.  The readings are then frozen into the
+    # begin-time inputs, so what the verdict answers to is exactly what the
+    # record froze (invariant 3).  The sensor is read exactly once here,
+    # not again in run_inspection.
     reserved_id, reserved_path = audit.allocate_inspection_id(settings.storage_dir)
+
+    # The supplier's record and this truck's lab-sampling call, from the
+    # completed records before this one.
+    sampling = _sampling_for(
+        settings.storage_dir,
+        payload["supplier"],
+        payload["waybill_fields"],
+        exclude_record_id=reserved_id,
+    )
+    supplier_profile = _supplier_profile(
+        settings.storage_dir, payload["supplier"], exclude_record_id=reserved_id
+    )
 
     # Persist the evidence bytes inside the reserved record folder so the
     # audit trail can show the photo the verdict answered to (record sha256
@@ -482,7 +800,12 @@ def _run_inspection_with_audit(
     waybill_path = _persist("waybill.jpg", waybill_bytes)
     if waybill_path:
         inputs["waybill_photo"]["path"] = waybill_path
+    for number, (data, _name) in enumerate(extra_photos, start=2):
+        extra_path = _persist(f"photo-{number}.jpg", data)
+        if extra_path:
+            inputs["extra_photos"][number - 2]["path"] = extra_path
 
+    # Gas comes from a live gate sensor only (no sensor: not_measured).
     gas_result = pipeline.collect_gate_gas(payload, reserved_id)
     gas_ai_output: dict[str, Any] | None = None
     if gas_result and gas_result.get("readings_ppm"):
@@ -516,6 +839,7 @@ def _run_inspection_with_audit(
         allow_stub_fallback=settings.allow_stub_fallback,
         precomputed_gas=gas_result,
         settings=settings,
+        on_progress=on_progress,
         **detector_kwargs,
     )
     vlm_result = ai.get("vlm") or {}
@@ -607,6 +931,10 @@ def _run_inspection_with_audit(
             "caveats": list(rec.get("caveats") or []),
             "alternative": rec.get("alternative") or "",
         }
+        if payload["age_defaulted"]:
+            engine_recommendation["caveats"].append(
+                f"Waste age was not entered: the engine assumed {DEFAULT_AGE_H:g} h (defaulted)."
+            )
     if verdict == audit.Decision.REFUSE_INSUFFICIENT_INPUT:
         # The gate-level refusal (no photo, no weight, ...) also makes the
         # recommendation unusable; keep whatever the engine itself listed.
@@ -623,6 +951,9 @@ def _run_inspection_with_audit(
         missing_inputs = list(
             ((engine_result or {}).get("recommendation") or {}).get("missing") or []
         )
+    step_kwargs: dict[str, Any] = {}
+    if "sampling" in pyinspect.signature(actions.next_steps).parameters:
+        step_kwargs["sampling"] = sampling
     next_steps = actions.next_steps(
         verdict,
         gates,
@@ -636,8 +967,10 @@ def _run_inspection_with_audit(
         },
         missing_inputs,
         record_id,
+        **step_kwargs,
     )
     engine_recommendation["actions"] = next_steps
+    emit("rules", "done", {"decision": verdict})
 
     suitability = {
         "classification": audit.Classification.SCREENING_ESTIMATE,
@@ -681,30 +1014,13 @@ def _run_inspection_with_audit(
         )
     uncertainty += " Verdict is a screening estimate, not a validated classification."
 
-    vlm_sha = audit.sha256_field(str(vlm_result.get("raw_output", "")).encode("utf-8"))
     llm_raw = str(llm_result.get("raw_output", ""))
     # Degraded runs got no model output: the record names the models
     # "unavailable" with zero confidence and the digest of an empty output,
     # never a fabricated reading.
     no_model = "unavailable" if degraded else ""
     ai_outputs = {
-        "vlm": {
-            "model": str(vlm_result.get("model", no_model)),
-            "model_version": str(vlm_result.get("model_version", no_model)),
-            "raw_output_sha256": vlm_sha,
-            "detected": vlm_result.get("detected", {}),
-            "confidence": float(vlm_result.get("confidence", 0.0)),
-            # Live clients stamp provider + latency; stub results carry
-            # neither, and the record then honestly says None.
-            "provider": vlm_result.get("provider"),
-            "latency_ms": vlm_result.get("latency_ms"),
-            # Validated contaminant regions; older/stub results without
-            # them stay valid as an empty list / unspecified mode.
-            "boxes": vlm_result.get("boxes", []),
-            "localisation": vlm_result.get("localisation"),
-            # The vision models that failed before this one answered.
-            "fallback_from": vlm_result.get("fallback_from"),
-        },
+        "vlm": _vlm_block(vlm_result, no_model),
         "llm": {
             "model": str(llm_result.get("model", no_model)),
             "model_version": str(llm_result.get("model_version", no_model)),
@@ -719,6 +1035,9 @@ def _run_inspection_with_audit(
         # The CPU detector's second opinion (None when it did not run).
         "detector": detector_result,
     }
+    if ai.get("vlm_frames"):
+        # Each camera angle's own answer; ``vlm`` above is their merge.
+        ai_outputs["vlm_frames"] = [_vlm_block(frame, no_model) for frame in ai["vlm_frames"]]
     audit_gates = {
         k: v
         for k, v in gates.items()
@@ -744,10 +1063,12 @@ def _run_inspection_with_audit(
             engine_outputs,
             verdict_payload,
             audit_gates,
-            frozen_inputs={
-                "photo": photo_bytes,
-                "manifest_text": manifest_text.encode("utf-8"),
-            },
+            frozen_inputs=frozen_inputs,
+        )
+        emit(
+            "sealed",
+            "done",
+            {"record_id": record_id, "record_sha256": record.digest.record_sha256},
         )
 
     # Presentation-layer measurable impact — NOT part of the audit schema:
@@ -761,6 +1082,16 @@ def _run_inspection_with_audit(
         "docs/research/realcase-indonesia.md (dampak Rp, §5) — "
         "every basis row carries its source URL"
     )
+    waybill_block = None
+    if payload["waybill_fields"] is not None:
+        derived, derived_warnings = waybill.derive(payload["waybill_fields"])
+        waybill_block = {
+            "fields": payload["waybill_fields"],
+            "read": payload["waybill_read"],
+            "derived": derived,
+            "transcript": manifest_text,
+            "warnings": derived_warnings,
+        }
     response = {
         "record_id": record_id,
         "verdict": verdict_payload,
@@ -773,10 +1104,129 @@ def _run_inspection_with_audit(
         "failed_stage": failed_stage if degraded else None,
         "ai_outputs": ai_outputs,
         "engine_outputs": engine_outputs,
+        # Declared vs observed: the confirmed waybill and what it implies.
+        "waybill": waybill_block,
+        "sampling": sampling,
+        "supplier_profile": supplier_profile,
     }
     if record is not None:
         response["audit_record"] = record.model_dump()
+
+    # The operator's checks read the sealed record plus what the request
+    # knew that the record keeps only in digest form (per-field read
+    # confidences, the scale's own provenance).
+    check_inputs = dict((response.get("audit_record") or {}).get("inputs") or inputs)
+    check_inputs.update(
+        {
+            "waybill_read": payload["waybill_read"],
+            "weight_kg": payload["weight_kg"],
+            "declared_weight_kg": payload["declared_weight_kg"],
+            "weight_source": inputs["weight"]["source"],
+        }
+    )
+    if payload["waybill_fields"] is not None:
+        confidences = (payload["waybill_read"] or {}).get("field_confidences") or {}
+        check_inputs["waybill_fields"] = {
+            name: {"value": value, "confidence": confidences[name]}
+            if name in confidences
+            else value
+            for name, value in payload["waybill_fields"].items()
+        }
+    response.update(_checks_for({**response, "inputs": check_inputs}, supplier_profile))
     return response
+
+
+def _busy_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "busy",
+            "message": (
+                "The live AMD pipeline is busy — try again in a "
+                "moment or use a scripted case."
+            ),
+        },
+    )
+
+
+#: Errors an inspection maps to an HTTP answer (:func:`_inspect_http_error`).
+_INSPECT_ERRORS = (
+    PhotoError,
+    engine_adapter.UnknownWasteStreamError,
+    engine_adapter.InvalidBatchError,
+    audit.AuditError,
+    pipeline.LiveAIUnavailableError,
+)
+
+
+def _inspect_http_error(exc: Exception) -> HTTPException:
+    """The HTTP answer for one of :data:`_INSPECT_ERRORS` (``/inspect`` and
+    the stream's error line use the same mapping)."""
+    if isinstance(exc, PhotoError):
+        return HTTPException(
+            status_code=exc.status_code,
+            detail={"error": exc.error, "message": str(exc)},
+        )
+    if isinstance(exc, engine_adapter.UnknownWasteStreamError):
+        return HTTPException(
+            status_code=422,
+            detail={
+                "error": "unknown_waste_stream",
+                "message": str(exc),
+                "waste_stream": exc.waste_stream,
+                "available": list(exc.available),
+            },
+        )
+    if isinstance(exc, engine_adapter.InvalidBatchError):
+        return HTTPException(
+            status_code=422,
+            detail={"error": "invalid_batch", "message": str(exc)},
+        )
+    if isinstance(exc, audit.AuditError):
+        return HTTPException(
+            status_code=500,
+            detail={"error": "audit_error", "message": str(exc)},
+        )
+    # Fail-closed (LYNCEUS_ALLOW_STUB_FALLBACK=0): never return a stub
+    # verdict as if the live model answered.
+    return HTTPException(
+        status_code=503,
+        detail={"error": "live_ai_unavailable", "message": str(exc)},
+    )
+
+
+def _error_event(error: HTTPException) -> dict[str, Any]:
+    """An HTTP error as the stream's ``{"event": "error", ...}`` line."""
+    detail = error.detail if isinstance(error.detail, dict) else {"message": str(error.detail)}
+    return {"event": "error", "status": error.status_code, **detail}
+
+
+NDJSON_MEDIA_TYPE = "application/x-ndjson"
+
+
+def _ndjson(event: dict[str, Any]) -> bytes:
+    return (json.dumps(event, default=str) + "\n").encode("utf-8")
+
+
+#: ``POST /warmup`` wakes the models at most once per this many seconds.
+WARMUP_INTERVAL_S = 60.0
+_WARMUP_LOCK = threading.Lock()
+_WARMUP_STATE: dict[str, float | None] = {"last": None}
+
+
+def _warm_backends(settings: Any) -> None:
+    """Load the CPU detector and send the vision model a one-token chat.
+
+    Runs on a background thread; every failure is logged, never raised.
+    """
+    try:
+        detector.warm(settings)
+    except Exception as exc:  # noqa: BLE001 — warm-up is best-effort
+        _log.warning("detector warm-up failed: %s: %s", type(exc).__name__, exc)
+    try:
+        pipeline.VLLMClient(settings=settings).warm()
+    except Exception as exc:  # noqa: BLE001 — warm-up is best-effort
+        _log.info("vision warm-up ping failed: %s", type(exc).__name__)
 
 
 def create_app() -> FastAPI:
@@ -929,53 +1379,152 @@ def create_app() -> FastAPI:
         # Ruling 40: cap concurrent live pipelines (before any record exists).
         live = not request.demo_case
         if live and not _LIVE_SLOTS.acquire(blocking=False):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "busy",
-                    "message": (
-                        "The live AMD pipeline is busy — try again in a "
-                        "moment or use a scripted case."
-                    ),
-                },
-            )
+            raise _busy_error()
         try:
             return _run_inspection_with_audit(request, settings)
-        except PhotoError as exc:
-            raise HTTPException(
-                status_code=exc.status_code,
-                detail={"error": exc.error, "message": str(exc)},
-            ) from exc
-        except engine_adapter.UnknownWasteStreamError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "unknown_waste_stream",
-                    "message": str(exc),
-                    "waste_stream": exc.waste_stream,
-                    "available": list(exc.available),
-                },
-            ) from exc
-        except engine_adapter.InvalidBatchError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail={"error": "invalid_batch", "message": str(exc)},
-            ) from exc
-        except audit.AuditError as exc:
-            raise HTTPException(
-                status_code=500,
-                detail={"error": "audit_error", "message": str(exc)},
-            ) from exc
-        except pipeline.LiveAIUnavailableError as exc:
-            # Fail-closed (LYNCEUS_ALLOW_STUB_FALLBACK=0): never return a
-            # stub verdict as if the live model answered.
-            raise HTTPException(
-                status_code=503,
-                detail={"error": "live_ai_unavailable", "message": str(exc)},
-            ) from exc
+        except _INSPECT_ERRORS as exc:
+            raise _inspect_http_error(exc) from exc
         finally:
             if live:
                 _LIVE_SLOTS.release()
+
+    @app.post("/inspect/stream", response_model=None)
+    def inspect_stream(
+        request: InspectRequest, _user: str | None = Depends(auth.require_auth)
+    ) -> StreamingResponse:
+        """The ``/inspect`` inspection as NDJSON, one event per line.
+
+        ``{"event": "stage", "stage", "status", "t", "data"?}`` lines as the
+        stages happen (queued, detector, vision, vision_read, waybill_audit,
+        rules, sealed), then ``{"event": "result", "data": <the /inspect
+        response>}``, or ``{"event": "error", "status", "error", "message"}``
+        with /inspect's own error mapping.  The inspection runs on a worker
+        thread holding the same live slot as /inspect; a client that hangs
+        up does not stop it, so its record is still sealed.
+        """
+        settings = get_settings()
+        started = time.monotonic()
+        events: queue.Queue = queue.Queue()
+
+        def on_progress(stage: str, status: str, data: dict[str, Any] | None = None) -> None:
+            event: dict[str, Any] = {
+                "event": "stage",
+                "stage": stage,
+                "status": status,
+                "t": round(time.monotonic() - started, 2),
+            }
+            if data:
+                event["data"] = data
+            events.put(event)
+
+        live = not request.demo_case
+        headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
+        if live and not _LIVE_SLOTS.acquire(blocking=False):
+            return StreamingResponse(
+                iter([_ndjson(_error_event(_busy_error()))]),
+                media_type=NDJSON_MEDIA_TYPE,
+                headers=headers,
+            )
+
+        def work() -> None:
+            try:
+                on_progress("queued", "done")
+                result = _run_inspection_with_audit(request, settings, on_progress=on_progress)
+                events.put({"event": "result", "data": result})
+            except _INSPECT_ERRORS as exc:
+                events.put(_error_event(_inspect_http_error(exc)))
+            except Exception:  # noqa: BLE001 — reported as a line, logged in full
+                _log.exception("streamed inspection failed")
+                events.put(
+                    {
+                        "event": "error",
+                        "status": 500,
+                        "error": "internal_error",
+                        "message": "The inspection failed unexpectedly.",
+                    }
+                )
+            finally:
+                if live:
+                    _LIVE_SLOTS.release()
+                events.put(None)
+
+        threading.Thread(target=work, name="lynceus-inspect-stream", daemon=True).start()
+
+        def lines() -> Iterator[bytes]:
+            while (event := events.get()) is not None:
+                yield _ndjson(event)
+
+        return StreamingResponse(lines(), media_type=NDJSON_MEDIA_TYPE, headers=headers)
+
+    @app.post("/warmup")
+    def warmup(_user: str | None = Depends(auth.require_auth)) -> dict[str, Any]:
+        """Wake the vision model (a one-token chat) and load the detector.
+
+        At most once per :data:`WARMUP_INTERVAL_S` process-wide; returns at
+        once and never fails the caller (the work runs on a thread).
+        """
+        now = time.monotonic()
+        with _WARMUP_LOCK:
+            last = _WARMUP_STATE["last"]
+            if last is not None and now - last < WARMUP_INTERVAL_S:
+                return {"warmed": False, "reason": "recent"}
+            _WARMUP_STATE["last"] = now
+        threading.Thread(
+            target=_warm_backends, args=(get_settings(),), name="lynceus-warmup", daemon=True
+        ).start()
+        return {"warmed": True}
+
+    @app.post("/waybill/read")
+    def read_waybill(
+        request: WaybillReadRequest, _user: str | None = Depends(auth.require_auth)
+    ) -> dict[str, Any]:
+        """Read a waybill photo into fields the operator confirms.
+
+        503 ``waybill_reader_offline`` when no reader can answer for this
+        photo (offline, only the bundled sample waybill is "read"), 503
+        ``busy`` when every read slot stays taken, 429 ``rate_limited`` when
+        the shared endpoint throttles every retry.
+        """
+        try:
+            image = decode_photo(request.image_base64)
+        except PhotoError as exc:
+            raise _inspect_http_error(exc) from exc
+        try:
+            return waybill.read(image, get_settings(), demo=bool(request.demo_case))
+        except waybill.WaybillRateLimited as exc:
+            raise HTTPException(
+                status_code=429, detail={"error": "rate_limited", "message": str(exc)}
+            ) from exc
+        except waybill.WaybillReaderBusy as exc:
+            raise HTTPException(
+                status_code=503, detail={"error": "busy", "message": str(exc)}
+            ) from exc
+        except waybill.WaybillReaderOffline as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "waybill_reader_offline", "message": str(exc)},
+            ) from exc
+
+    @app.get("/sensors")
+    def list_sensors(_user: str | None = Depends(auth.require_auth)) -> dict[str, Any]:
+        """The gate sensor plug-ins (installed / simulated / not_installed)
+        and how a site connects its own (:mod:`lynceus.observations`)."""
+        return observations.sensors()
+
+    @app.get("/weighbridge/reading")
+    def weighbridge_reading(
+        plate: str = Query(min_length=1, max_length=20),
+        declared_net_kg: float | None = Query(default=None, gt=0.0, le=200_000.0),
+        _user: str | None = Depends(auth.require_auth),
+    ) -> dict[str, Any]:
+        """A simulated, deterministic scale ticket for ``plate`` (see
+        :mod:`lynceus.weighbridge`); ``source`` is always ``"simulated"``."""
+        try:
+            return weighbridge.reading(plate, declared_net_kg)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail={"error": "invalid_plate", "message": str(exc)}
+            ) from exc
 
     @app.get("/inspections", response_model=None)
     def list_inspections(request: Request) -> dict[str, Any] | FileResponse | RedirectResponse:
@@ -1194,8 +1743,11 @@ def create_app() -> FastAPI:
                 )
             except audit.AuditError:
                 continue
+        from lynceus import followups  # BE-OPS: follow-ups feed report["improvement"]
+
+        chains = followups.load_many(settings.storage_dir, [r.record_id for r in records])
         try:
-            report = shift.build_report(records, since, until)
+            report = shift.build_report(records, since, until, chains)
         except ValueError as exc:
             raise HTTPException(
                 status_code=422,
@@ -1233,9 +1785,17 @@ def create_app() -> FastAPI:
         The record_id is validated against the audit's own closed pattern
         before it ever reaches the filesystem — ``../etc/passwd`` and
         friends are rejected with 422, not probed on disk.
+
+        The record's fields stay at the top level; ``checks``, ``why`` and
+        ``supplier_profile`` (the supplier's current scorecard) are added
+        beside them.
         """
         record = _load_record_or_http(record_id)
-        return record.model_dump()
+        body = record.model_dump()
+        profile = _supplier_profile(get_settings().storage_dir, record.inputs.supplier)
+        body.update(_checks_for(body, profile))
+        body["supplier_profile"] = profile
+        return body
 
     @app.get("/inspections/{record_id}/evidence/{slot}")
     def get_evidence_photo(
@@ -1245,20 +1805,30 @@ def create_app() -> FastAPI:
     ) -> FileResponse:
         """Serve one stored evidence photo for an inspection.
 
-        ``slot`` is the key in ``record.inputs`` ("photo" for the load,
-        "waybill_photo" for the waybill). Only files the record itself names
-        in ``inputs.<slot>.path`` are served — the record is the allow-list,
-        so nothing else inside the inspection folder is reachable. The stored
-        bytes' sha256 is checked against the recorded digest: a tampered or
-        missing file is a 410, never a quiet substitution.
+        ``slot`` is "photo" for the load, "waybill_photo" for the waybill, and
+        "photo-2" / "photo-3" for the extra camera angles
+        (``inputs.extra_photos``). Only files the record itself names in the
+        slot's ``path`` are served — the record is the allow-list, so nothing
+        else inside the inspection folder is reachable. The stored bytes'
+        sha256 is checked against the recorded digest: a tampered or missing
+        file is a 410, never a quiet substitution.
         """
-        if slot not in ("photo", "waybill_photo"):
+        extra_slots = {f"photo-{n}": n - 2 for n in range(2, audit.MAX_FRAMES + 1)}
+        if slot not in ("photo", "waybill_photo") and slot not in extra_slots:
             raise HTTPException(
                 status_code=422,
-                detail={"error": "invalid_slot", "message": "slot must be 'photo' or 'waybill_photo'."},
+                detail={
+                    "error": "invalid_slot",
+                    "message": "slot must be 'photo', 'waybill_photo', 'photo-2' or 'photo-3'.",
+                },
             )
         record = _load_record_or_http(record_id)
-        photo_input = getattr(record.inputs, slot, None) if record.inputs else None
+        if slot in extra_slots:
+            extras = record.inputs.extra_photos or []
+            index = extra_slots[slot]
+            photo_input = extras[index] if index < len(extras) else None
+        else:
+            photo_input = getattr(record.inputs, slot, None) if record.inputs else None
         rel_path = getattr(photo_input, "path", None) if photo_input else None
         if not rel_path:
             raise HTTPException(
@@ -1298,6 +1868,11 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "private, max-age=3600"},
         )
 
+    # BE-OPS: ops-loop routes (follow-ups, suppliers, contract), before the static mount.
+    from lynceus import api_ops
+    app.include_router(api_ops.router)
+    if (api_amd := _optional_module("api_amd")) is not None: app.include_router(api_amd.router)  # AMD-BENCH: GET /benchmark/amd
+    if (api_assist := _optional_module("api_assist")) is not None: app.include_router(api_assist.router)  # AI-AGENT: POST /assist/stream
 
     if _WEB_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")

@@ -7,8 +7,12 @@ clause of the reference gate SOP (``knowledge/sop-rdf-gate.md``).
 Semantics (controller ruling 16): for a verdict, the steps are ALL matching
 rows for that verdict in table order, deduplicated by ``sop_ref`` (the first
 occurrence wins, so a clause is cited once) and renumbered from 1.  An
-unmatched reject / escalate yields the single manual-check fallback.  The gas
-row is appended last whenever ``gas_plausibility`` failed, for any verdict.
+unmatched reject yields the single manual-check fallback; every escalate
+ends with the supervisor review (the only step when nothing else matched).
+The risk-based lab-sample row is appended for an accept or escalate when
+``sampling["sample_this_truck"]`` is true (a rejected load is not tipped).
+The gas row is appended last whenever ``gas_plausibility`` failed, for any
+verdict.
 """
 
 from __future__ import annotations
@@ -16,21 +20,42 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lynceus.audit import Decision, GateState
-from lynceus.decision import LIGHT_CONTAMINANTS
+from lynceus.decision import (
+    DECLARED_SORTED_MARKER,
+    LIGHT_CONTAMINANTS,
+    MOISTURE_CONFLICT_MARKER,
+)
 
 __all__ = ["next_steps"]
 
 _FALLBACK = ("Hold the ticket; supervisor performs a manual visual check.", "SOP-RDF-5.2")
+
+_SUPERVISOR_REVIEW = (
+    (
+        "Supervisor reviews the load and records the call on this record: accept, sort "
+        "then accept, or reject."
+    ),
+    "SOP-RDF-5.2",
+)
+
+_LAB_SAMPLE_STEP = (
+    (
+        "Take a risk-based lab sample as the load is tipped (moisture, NCV, chlorine); "
+        "the supplier's risk tier sets the rate."
+    ),
+    "SOP-RDF-5.4",
+)
 
 _GAS_STEP = (
     "Gas alert: ventilate the tipping area before unloading; keep the cab closed.",
     "SOP-RDF-7.1",
 )
 
-#: Marker in the ``manifest_crosscheck`` gate reason that
-#: ``decision.decide`` writes for a waybill/visual moisture conflict.  A
-#: test feeds real ``decide`` output through here so any drift is caught.
-_MOISTURE_CONFLICT_MARKER = "moisture conflict"
+#: Markers in the ``manifest_crosscheck`` gate reason that ``decision.decide``
+#: writes (imported from there).  A test feeds real ``decide`` output through
+#: here so any drift is caught.
+_MOISTURE_CONFLICT_MARKER = MOISTURE_CONFLICT_MARKER.lower()
+_DECLARED_SORTED_MARKER = DECLARED_SORTED_MARKER.lower()
 
 
 def _gate_state(gates: Dict[str, Any], name: str) -> Optional[str]:
@@ -42,11 +67,16 @@ def _failed(gates: Dict[str, Any], name: str) -> bool:
     return _gate_state(gates, name) == GateState.FAILED
 
 
-def _moisture_conflict(gates: Dict[str, Any]) -> bool:
+def _crosscheck_says(gates: Dict[str, Any], marker: str) -> bool:
+    """True when ``manifest_crosscheck`` failed with ``marker`` in its reason."""
     gate = (gates or {}).get("manifest_crosscheck")
     if not isinstance(gate, dict) or gate.get("state") != GateState.FAILED:
         return False
-    return _MOISTURE_CONFLICT_MARKER in str(gate.get("reason") or "").lower()
+    return marker in str(gate.get("reason") or "").lower()
+
+
+def _moisture_conflict(gates: Dict[str, Any]) -> bool:
+    return _crosscheck_says(gates, _MOISTURE_CONFLICT_MARKER)
 
 
 def _names(value: Any) -> List[str]:
@@ -62,8 +92,15 @@ def next_steps(
     detected: Dict[str, Any],
     missing: Sequence[str],
     record_id: str = "",
+    *,
+    sampling: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """Ordered ``{"order", "text", "sop_ref"}`` steps for the operator."""
+    """Ordered ``{"order", "text", "sop_ref"}`` steps for the operator.
+
+    ``sampling`` is the supplier's risk-based sampling call
+    (``suppliers.sampling_for``: ``{"sample_this_truck": bool, ...}``), or
+    None when there is none.
+    """
     detected = detected if isinstance(detected, dict) else {}
     hard = _names(detected.get("hard_contaminants"))
     # Only the light contaminants decide() itself escalates on: the VLM may
@@ -85,19 +122,25 @@ def next_steps(
                     "SOP-RDF-4.3",
                 ),
             ]
+            if _crosscheck_says(gates, _DECLARED_SORTED_MARKER):
+                steps.append((
+                    "Contract breach: send the supplier notice quoting "
+                    + (f"record {record_id}" if record_id else "the record")
+                    + " and the sealed photo; apply the breach fee per contract.",
+                    "SOP-RDF-4.5",
+                ))
         if _failed(gates, "weight_plausibility"):
             steps += [
                 ("Hold the ticket and re-weigh the truck.", "SOP-RDF-3.2"),
                 ("Ask the driver for the original waybill and notify the supplier.", "SOP-RDF-4.3"),
             ]
-        if _failed(gates, "vlm_confidence"):
-            steps += [
-                ("Retake the load photo from the top platform.", "SOP-RDF-2.1"),
-                ("Supervisor performs a manual visual check.", "SOP-RDF-5.2"),
-            ]
         if not steps:
             steps.append(_FALLBACK)
     elif verdict == Decision.ESCALATE_HUMAN:
+        if _failed(gates, "vlm_confidence"):
+            steps.append(
+                ("Photo unreadable: retake the load photo from the top platform.", "SOP-RDF-2.1")
+            )
         if _moisture_conflict(gates):
             steps += [
                 ("Hold the ticket; supervisor takes a grab sample for moisture.", "SOP-RDF-5.1"),
@@ -105,12 +148,36 @@ def next_steps(
             ]
         if light:
             steps.append(("Tip to the pre-sort line, not direct feed.", "SOP-RDF-4.4"))
+        if _failed(gates, "weight_plausibility"):
+            steps += [
+                (
+                    (
+                        "Ticket correction: re-weigh the truck; if the scale holds, "
+                        "correct the waybill weight."
+                    ),
+                    "SOP-RDF-3.2",
+                ),
+                (
+                    (
+                        "Confirm the corrected net weight with the driver; correct or "
+                        "void the ticket."
+                    ),
+                    "SOP-RDF-3.3",
+                ),
+            ]
+        if _failed(gates, "ocr_confidence"):
+            steps.append((
+                (
+                    "Waybill read uncertain: check the highlighted fields against the "
+                    "paper waybill."
+                ),
+                "SOP-RDF-3.3",
+            ))
         if _failed(gates, "manifest_crosscheck"):
             steps.append(
                 ("Verify the waybill with the driver; correct or void the ticket.", "SOP-RDF-3.3")
             )
-        if not steps:
-            steps.append(_FALLBACK)
+        steps.append(_SUPERVISOR_REVIEW)
     elif verdict == Decision.ACCEPT:
         steps.append(("Tip to the RDF storage bay and release the ticket.", "SOP-RDF-6.1"))
     elif verdict == Decision.REFUSE_INSUFFICIENT_INPUT:
@@ -118,6 +185,13 @@ def next_steps(
         steps.append(
             (f"Collect the missing inputs ({what}) and re-run the inspection.", "SOP-RDF-2.2")
         )
+
+    if (
+        verdict in (Decision.ACCEPT, Decision.ESCALATE_HUMAN)
+        and isinstance(sampling, dict)
+        and sampling.get("sample_this_truck") is True
+    ):
+        steps.append(_LAB_SAMPLE_STEP)
 
     if _failed(gates, "gas_plausibility"):
         steps.append(_GAS_STEP)

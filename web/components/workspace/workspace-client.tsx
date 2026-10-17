@@ -1,546 +1,376 @@
 "use client";
 
 /**
- * WorkspaceClient: route /app (Operate). The whole demo stage:
+ * WorkspaceClient: route /app (Operate), one truck at the gate.
  *
- * LEFT  "Incoming Load": demo-case buttons, photo hero (rounded 16px,
- *       mono caption), intake form.
- * BELOW "Inspection Verdict": banner + provenance, headline, gate
- *       strip, photo evidence with outlined contaminants beside the
- *       SOP-cited next steps, impact counter, reasons, caveats, Pythia,
- *       audit modal.
+ * Header: what this gate does, the one-click demo truck, presets.
+ * Incoming truck: load photos · waybill (AI-read, editable) · weighbridge.
+ * Inspecting: the live stage panel (NDJSON stream from /inspect/stream).
+ * Verdict: banner, why, checks, evidence, declared vs observed, SOP steps,
+ *   value, supervisor decision, supplier notice, lab sample, sealed record.
  *
- * Logic ported from legacy web/app.js: same API contract
- * (POST /inspect), same demo-case data, same race-guarded photo
- * base64 fetching.
+ * The page scrolls to the stage panel when a run starts and to the verdict
+ * when it lands; an inspect attempt with a missing input focuses that field.
  */
 
-import { cn } from "@/lib/utils";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
+import { DEMO_TRUCK, PRESETS, SAMPLE_WAYBILL, SAMPLE_WAYBILL_PRINTED, demoFile, type PresetKey } from "@/lib/demo-cases";
+import type { InspectPayload } from "@/lib/inspect-api";
+import { cn } from "@/lib/utils";
 import {
-  IntakeForm,
-  type IntakeValues,
-  type UploadSlot,
-} from "./intake-form";
-import { VerdictPanel, type ResultError, type RunMode } from "./verdict-panel";
-import { normalizeGates, type GateDisplay, type GatePhase } from "./gate-strip";
-import {
-  inspectLoad,
-  blobToBase64,
-  InspectError,
-  type InspectResponse,
-} from "@/lib/inspect-api";
+  WAYBILL_FIELDS,
+  parseFieldNumber,
+  streamFromDeclaration,
+  toWaybillFields,
+  transcriptOf,
+  warmUp,
+} from "@/lib/waybill-api";
+import { GateHeader } from "./gate-header";
+import { IconCheck, IconDash } from "./gate-icons";
+import { LoadPhotos } from "./load-photos";
+import { dataUrl } from "./photo-encode";
+import { StagePanel } from "./stage-panel";
+import { prefersReducedMotion, useIntake, type Intake } from "./use-intake";
+import { useInspection, type RunSnapshot, type RunState } from "./use-inspection";
+import { formatKg } from "./units";
+import { VerdictPanel } from "./verdict-panel";
+import { WaybillBlock, waybillFieldId } from "./waybill-block";
+import { WeighbridgeBlock } from "./weighbridge-block";
 
-/** Long edge (px) of the load photo sent to the VLM. Image tokens, and so
- * VLM latency, grow with pixel count; a 12 MP phone photo has ~10x the pixels
- * of a 1280x960 one. 1280 is still >2x the 524 px image the Token Factory
- * probe localised at IoU >= 0.888 (docs/research/token-factory-probe.md). */
-const MAX_PHOTO_EDGE_PX = 1280;
-const PHOTO_JPEG_QUALITY = 0.85;
+type InvalidField = "photo" | "plate" | "scale" | null;
 
-/** The load photo re-encoded as a JPEG with its long edge at
- * MAX_PHOTO_EDGE_PX, or null when it is already that small or the browser
- * cannot decode or re-encode it (the original bytes are sent instead).
- * Aspect ratio is kept, so normalised (0..1) boxes map onto either image;
- * the canvas applies EXIF orientation, so the model sees what the
- * preview shows. */
-async function downscaledJpeg(file: File): Promise<Blob | null> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const longEdge = Math.max(img.naturalWidth, img.naturalHeight);
-    if (longEdge <= MAX_PHOTO_EDGE_PX) return null;
-    const scale = MAX_PHOTO_EDGE_PX / longEdge;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    // A transparent PNG would turn black in a JPEG; flatten onto white.
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", PHOTO_JPEG_QUALITY),
-    );
-  } catch {
-    return null;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function scrollToPanel(el: HTMLElement | null) {
+  el?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
-/** Base64 + MIME of the bytes actually sent for the load photo, and whether
- * they were re-encoded to JPEG here. Original bytes keep the file's own MIME,
- * empty when the browser does not know it (e.g. HEIC): the backend reads the
- * image type from the bytes, never from a name or MIME. */
-async function encodeLoadPhoto(
-  file: File,
-): Promise<{ base64: string; mime: string; reencoded: boolean }> {
-  const small = await downscaledJpeg(file);
-  return small
-    ? { base64: await blobToBase64(small), mime: "image/jpeg", reencoded: true }
-    : { base64: await blobToBase64(file), mime: file.type, reencoded: false };
-}
-
-/** The audit names the bytes it stores: only a photo re-encoded here becomes
- * a .jpg; original bytes keep their original name. */
-function sentFilename(name: string | null, reencoded: boolean): string | null {
-  if (!name || !reencoded || /\.jpe?g$/i.test(name)) return name;
-  return `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
-}
-
-/** Quick-pick presets: a site photo asset fetched as a File, so it flows
- * through the exact same upload pipeline (encode, preview, audit filename)
- * as a camera upload. Generic operator copy — no scenario name leaks into
- * the UI text. */
-const QUICK_LOADS: { label: string; file: string; moisture_pct: string }[] = [
-  { label: "Metal", file: "t-metal-1.jpg", moisture_pct: "22" },
-  { label: "Clean", file: "t-clean-1.jpg", moisture_pct: "18" },
-  { label: "Wet", file: "t-ambiguous-1.jpg", moisture_pct: "48" },
-];
-
-/** Register values a preset fills in when the operator left them blank (or a
- * previous preset filled them), so a first-time visitor can press Inspect Load
- * right after picking a preset. Truck, hauler and weight match the sample
- * waybill (fictitious); moisture is per scenario. */
-const QUICK_REGISTER = {
-  truck_id: "B 9723 KXW",
-  supplier: "PT. Hijau Lestari Transport",
-  weight_kg: "16340",
-  age_h: "12",
-};
-const QUICK_WAYBILL = "waybill-1.jpg";
-
-/** Fetch a public /demo asset as a File (browser-cached JPEG bytes). */
-async function demoFile(name: string): Promise<File> {
-  const res = await fetch(`/demo/${name}`);
-  if (!res.ok) throw new Error(`Cannot read ${name}`);
-  return new File([await res.blob()], name, { type: "image/jpeg" });
-}
-
-const EMPTY_FORM: IntakeValues = {
-  truck_id: "",
-  supplier: "",
-  weight_kg: "",
-  stream: "mixed-msw",
-  moisture_pct: "",
-  age_h: "",
-};
-
-/** The gate's manifest gate needs declared waybill text; without it the
-    inspection refuses (insufficient input). The operator no longer types
-    it — synthesize the declaration from the stream and weighed mass so
-    the LLM still has a claim to cross-check. */
-function synthesizeWaybill(stream: string, weightKg: number): string {
-  const streamLabel = stream.replace(/-/g, " ");
-  return `Dry ${streamLabel}, no metal, declared ${weightKg} kg`;
+/** After a state change renders the field, focus it. */
+function focusLater(id: string) {
+  requestAnimationFrame(() => document.getElementById(id)?.focus());
 }
 
 export function WorkspaceClient() {
-  const [values, setValues] = useState<IntakeValues>(EMPTY_FORM);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [resultError, setResultError] = useState<ResultError | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<InspectResponse | null>(null);
-  const [phase, setPhase] = useState<GatePhase>("idle");
-  const [bannerLit, setBannerLit] = useState(false);
-  const verdictRef = useRef<HTMLDivElement | null>(null);
+  const intake = useIntake();
+  const { run, start, clear } = useInspection();
+  const [preset, setPreset] = useState<PresetKey | null>(null);
+  const [loadingPreset, setLoadingPreset] = useState<PresetKey | null>(null);
+  const [autoRun, setAutoRun] = useState(false);
+  const [formError, setFormError] = useState<{ message: string; field: InvalidField } | null>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const verdictRef = useRef<HTMLElement>(null);
+  /** Bumped by every preset load and clear: an older flow stops at its next await. */
+  const flow = useRef(0);
 
-  // ---- Uploads: an uploaded load photo is the evidence; an uploaded
-  // waybill photo rides along as extra evidence bytes (backend accepts
-  // extra fields; the audit record digests every input). -------------
-  const EMPTY_SLOT: UploadSlot = { previewUrl: null, filename: null };
-  const [loadUpload, setLoadUpload] = useState<UploadSlot>(EMPTY_SLOT);
-  const [waybillUpload, setWaybillUpload] = useState<UploadSlot>(EMPTY_SLOT);
-  const loadBase64 = useRef<string | null>(null);
-  const loadSent = useRef({ mime: "image/jpeg", reencoded: false });
-  const waybillBase64 = useRef<string | null>(null);
+  // Wake the vision model while the visitor reads the page.
+  useEffect(() => {
+    void warmUp();
+  }, []);
 
-  // The photo the current verdict is about, frozen at submit: the intake
-  // side may change (new upload, next demo case) while the verdict and
-  // its outlined contaminants are still on screen.
-  const [evidence, setEvidence] = useState<{ src: string | null; alt: string }>({
-    src: null,
-    alt: "Load photo",
-  });
-  const [runMode, setRunMode] = useState<RunMode>("other");
+  // Follow the run: to the stages when it starts, to the verdict when it lands.
+  useEffect(() => {
+    if (run.phase === "running") scrollToPanel(stageRef.current);
+    if (run.phase === "error") scrollToPanel(stageRef.current);
+  }, [run.phase, run.runId]);
+  useEffect(() => {
+    if (run.phase === "done") requestAnimationFrame(() => scrollToPanel(verdictRef.current));
+  }, [run.phase, run.runId]);
 
-  // Encodes in flight, per slot: submit awaits them, and only the latest
-  // pick may store its bytes (a slow older encode must not overwrite it).
-  const encoding = useRef(new Map<object, Promise<void>>());
+  const inspect = useCallback(async () => {
+    setFormError(null);
+    const fail = (message: string, field: InvalidField, focusId?: string) => {
+      setFormError({ message, field });
+      if (focusId) focusLater(focusId);
+    };
+    const now = intake.latest();
+    const w = now.waybill;
+    if (w.status === "reading") return fail("The waybill is still being read: inspect once its fields are in.", null);
 
-  const pickFile = useCallback(
-    (
-      file: File | null,
-      setSlot: (s: UploadSlot) => void,
-      base64Ref: { current: string | null },
-      previous: UploadSlot,
-      encode: (file: File) => Promise<{ base64: string; mime: string; reencoded?: boolean }>,
-      sentRef?: { current: { mime: string; reencoded: boolean } },
-    ) => {
-      if (previous.previewUrl) URL.revokeObjectURL(previous.previewUrl);
-      base64Ref.current = null;
-      if (!file) {
-        setSlot(EMPTY_SLOT);
-        encoding.current.delete(base64Ref);
-        return;
-      }
-      setSlot({ previewUrl: URL.createObjectURL(file), filename: file.name });
-      const job: Promise<void> = encode(file).then(
-        ({ base64, mime, reencoded }) => {
-          if (encoding.current.get(base64Ref) !== job) return;
-          base64Ref.current = base64;
-          if (sentRef) sentRef.current = { mime, reencoded: reencoded ?? false };
-        },
-        () => undefined, // unreadable file: no bytes are stored
-      );
-      encoding.current.set(base64Ref, job);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+    const photos = await intake.encodedPhotos();
+    if (photos.length === 0) return fail("Add a load photo: it is what the AI inspects.", "photo", "load-photo-0");
+    if (!w.values.plate.trim()) {
+      return fail("The plate is empty: read the waybill photo or type the plate.", "plate", waybillFieldId("plate"));
+    }
+    if (now.scaleNetKg === null || now.scaleNetKg <= 0) {
+      intake.switchToManualScale();
+      return fail("No net weight yet: capture the weighbridge or type the net weight.", "scale", "scale-net");
+    }
 
-  const onLoadPhoto = useCallback(
-    (file: File | null) =>
-      pickFile(file, setLoadUpload, loadBase64, loadUpload, encodeLoadPhoto, loadSent),
-    [pickFile, loadUpload],
-  );
+    const values = w.values;
+    const hasFields = WAYBILL_FIELDS.some((f) => values[f.key].trim());
+    const read = w.status === "read" ? w.read : null;
+    const waybillPhoto = await intake.encodedWaybill();
+    const declaredNet = parseFieldNumber(values.net_kg);
+    const scale = now.scale;
+    const weightSource =
+      scale.status === "live" && scale.reading
+        ? scale.reading.source === "simulated"
+          ? "weighbridge_simulated"
+          : "weighbridge"
+        : "manual_entry";
 
-  // The waybill photo is evidence bytes, not a VLM input: sent unchanged.
-  const onWaybillPhoto = useCallback(
-    (file: File | null) =>
-      pickFile(file, setWaybillUpload, waybillBase64, waybillUpload, async (f) => ({
-        base64: await blobToBase64(f),
-        mime: f.type,
-      })),
-    [pickFile, waybillUpload],
-  );
+    const payload: InspectPayload = {
+      truck_id: values.plate.trim(),
+      supplier: values.carrier.trim() || null,
+      photo_base64: photos[0].photo.base64,
+      photo_filename: photos[0].photo.filename,
+      extra_photos_base64: photos.slice(1).map((p) => p.photo.base64),
+      extra_photo_filenames: photos.slice(1).map((p) => p.photo.filename),
+      demo_case: null,
+      // The confirmed fields as text: the read transcript when nothing was
+      // edited, else rebuilt from the fields. Nothing is synthesized.
+      manifest_text: hasFields
+        ? (read?.transcript && now.editedFields.length === 0 ? read.transcript : transcriptOf(values))
+        : null,
+      waybill_image_base64: waybillPhoto?.base64 ?? null,
+      waybill_photo_filename: waybillPhoto?.filename ?? null,
+      waybill_fields: hasFields ? toWaybillFields(values) : undefined,
+      waybill_read: read
+        ? {
+            confidence: read.confidence ?? 0,
+            model: read.model ?? "unknown",
+            provenance: read.provenance ?? "live",
+            latency_ms: read.latency_ms ?? null,
+            edited_fields: now.editedFields,
+          }
+        : undefined,
+      weight_kg: now.scaleNetKg,
+      declared_weight_kg: declaredNet,
+      weight_source: weightSource,
+      stream: streamFromDeclaration(values),
+      moisture_pct: parseFieldNumber(values.moisture_pct),
+    };
+    const snapshot: RunSnapshot = {
+      frames: photos.map((p) => ({ src: dataUrl(p.photo), filename: p.photo.filename })),
+      waybill: { values, status: w.status, read, editedFields: now.editedFields },
+      scale: { netKg: now.scaleNetKg, declaredNetKg: declaredNet, source: weightSource, reading: scale.reading },
+    };
+    await start(payload, snapshot);
+  }, [intake, start]);
 
-  // Quick-pick: site photo assets piped through the upload handlers above,
-  // so a picked preset is indistinguishable from a camera upload.
-  const [quickBusy, setQuickBusy] = useState<string | null>(null);
-  // Register values the last preset filled in (see QUICK_REGISTER).
-  const presetFilled = useRef<Partial<IntakeValues>>({});
-  const pickDemo = useCallback(
-    async (name: string, kind: "load" | "waybill") => {
-      setQuickBusy(name);
+  const loadPreset = useCallback(
+    async (key: PresetKey, thenInspect: boolean) => {
+      const p = PRESETS.find((x) => x.key === key);
+      if (!p) return;
+      const mine = ++flow.current;
+      clear();
+      setFormError(null);
+      setPreset(key);
+      setLoadingPreset(key);
+      setAutoRun(thenInspect);
+      intake.reset();
       try {
-        const file = await demoFile(name);
-        if (kind === "load") onLoadPhoto(file);
-        else onWaybillPhoto(file);
+        const [photo, waybill] = await Promise.all([demoFile(p.photo), demoFile(SAMPLE_WAYBILL)]);
+        if (mine !== flow.current) return;
+        intake.setPhoto(0, photo);
+        await intake.setWaybillPhoto(waybill, SAMPLE_WAYBILL_PRINTED);
+        if (mine !== flow.current) return;
+        setLoadingPreset(null);
+        if (thenInspect) {
+          await sleep(prefersReducedMotion() ? 0 : 450); // a beat to see the filled intake
+          if (mine !== flow.current) return;
+          await inspect();
+        }
+      } catch (err) {
+        if (mine === flow.current) {
+          setFormError({ message: err instanceof Error ? err.message : "The preset could not load.", field: null });
+        }
       } finally {
-        setQuickBusy(null);
+        if (mine === flow.current) {
+          setLoadingPreset(null);
+          setAutoRun(false);
+        }
       }
     },
-    [onLoadPhoto, onWaybillPhoto],
+    [clear, inspect, intake],
   );
 
-  // Memoised: GateStrip restarts its lighting stagger whenever the array
-  // identity changes, so a fresh array per render (typing in the form, say)
-  // would replay the interlock.
-  const gates: GateDisplay[] = useMemo(
-    () => normalizeGates(data?.gates),
-    [data?.gates],
-  );
-  const decision = data?.verdict?.decision ?? data?.decision;
-
-  const onChange = useCallback((patch: Partial<IntakeValues>) => {
-    setValues((v) => ({ ...v, ...patch }));
-  }, []);
-
-  // ---- Submit -------------------------------------------------------
-  const runInspection = useCallback(async () => {
+  const clearGate = useCallback(() => {
+    flow.current++;
+    clear();
+    intake.reset();
+    setPreset(null);
+    setLoadingPreset(null);
+    setAutoRun(false);
     setFormError(null);
-    setResultError(null);
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }));
+  }, [clear, intake]);
 
-    // Client-side validation (legacy contract).
-    if (!values.truck_id.trim()) {
-      setFormError("Truck ID is required.");
-      return;
-    }
-    const weight = parseFloat(values.weight_kg);
-    if (!isFinite(weight) || weight <= 0) {
-      setFormError("Weight must be a positive number (kg).");
-      return;
-    }
-    const moisture = parseFloat(values.moisture_pct);
-    if (!isFinite(moisture) || moisture < 0 || moisture > 100) {
-      setFormError("Moisture must be between 0 and 100 (%).");
-      return;
-    }
-    const age = parseFloat(values.age_h);
-    if (!isFinite(age) || age < 0) {
-      setFormError("Age must be zero or more hours.");
-      return;
-    }
-
-    // A photo picked just now may still be downscaling: wait for its bytes.
-    // Loading is set first so a second click cannot start a parallel run.
-    setLoading(true);
-    await Promise.all(encoding.current.values());
-
-    // Freeze the evidence photo for this inspection. Uploaded bytes become
-    // a data: URL so a later upload revoking its object URL cannot blank
-    // the verdict's photo.
-    const uploadSrc = loadBase64.current
-      ? `data:${loadSent.current.mime || "application/octet-stream"};base64,${loadBase64.current}`
-      : loadUpload.previewUrl;
-    setEvidence({
-      src: uploadSrc ?? null,
-      alt: loadUpload.filename
-        ? `Uploaded load photo ${loadUpload.filename}`
-        : "Load photo",
-    });
-    // Wait copy only: whether a live model actually ran is stated by the
-    // result's provenance badge, never assumed here.
-    setRunMode("live");
-
-    setPhase("evaluating");
-    setBannerLit(false);
-    // Stale-state fix (review finding 4): clear the previous verdict so
-    // the old impact note/gates never sit beneath the pending strip while
-    // the new run evaluates.
-    setData(null);
-    // User direction: pressing Inspect takes the operator straight to the
-    // verdict panel (the gate strip is the show while it evaluates).
-    // Scroll so the panel sits flush under the sticky topbar (scroll-mt
-    // on the wrapper clears the ~60px bar) — the whole verdict, from its
-    // head down, is the new viewport.
-    verdictRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-
-    try {
-      const resp = await inspectLoad({
-        truck_id: values.truck_id.trim(),
-        supplier: values.supplier.trim() || null,
-        photo_base64: loadBase64.current,
-        photo_filename: sentFilename(loadUpload.filename, loadSent.current.reencoded),
-        demo_case: null,
-        manifest_text: synthesizeWaybill(values.stream, weight),
-        waybill_image_base64: waybillBase64.current,
-        weight_kg: weight,
-        stream: values.stream,
-        moisture_pct: moisture,
-        age_h: age,
-      });
-      setData(resp);
-      setPhase("resolved");
-      // Banner lights only after the six gates resolve (GateStrip
-      // calls onAllResolved after the last stagger step).
-      setBannerLit(false);
-    } catch (err) {
-      // "network": the backend was never reached. "http": it answered
-      // with an error and said why: show that message, not "unreachable".
-      setPhase("idle");
-      setData(null);
-      setResultError(
-        err instanceof InspectError
-          ? { kind: err.kind, message: err.message }
-          : {
-              kind: "http",
-              message: err instanceof Error ? err.message : "Unexpected error.",
-            },
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [values, loadUpload]);
-
-  const onSubmit = useCallback(() => runInspection(), [runInspection]);
-
-  const onAllResolved = useCallback(() => {
-    setBannerLit(true);
-  }, []);
-
-  // Gate flow is truck-by-truck. Reset clears EVERYTHING (user
-  // direction): verdict stage, form, demo selection, uploads, photo —
-  // the gate stands empty for the next truck.
-  const onReset = useCallback(() => {
-    setData(null);
-    setPhase("idle");
-    setBannerLit(false);
-    setResultError(null);
-    setFormError(null);
-    setValues(EMPTY_FORM);
-    setLoadUpload((prev) => {
-      if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      return { previewUrl: null, filename: null };
-    });
-    setWaybillUpload((prev) => {
-      if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      return { previewUrl: null, filename: null };
-    });
-    loadBase64.current = null;
-    waybillBase64.current = null;
-    encoding.current.clear(); // an encode still in flight must not refill them
-  }, []);
-
-  const hasPhoto = Boolean(loadUpload.previewUrl);
-
-  const photoSlot = (
-    <figure className="m-0 flex h-full flex-col px-4 py-4">
-      {/* eslint-disable-next-line @next/next/no-img-element -- runtime base64/local demo assets; static export has no image optimizer */}
-      {/* Click-to-upload (user direction): the photo itself is the upload
-          target — hover reveals a hint, picking a file replaces the image.
-          aspect-[4/3] crop kills the dead space under the caption. */}
-      <input
-        id="load-photo-upload"
-        type="file"
-        accept="image/jpeg,image/png"
-        className="sr-only"
-        disabled={loading}
-        onChange={(e) => onLoadPhoto(e.target.files?.[0] ?? null)}
-      />
-      <label
-        htmlFor="load-photo-upload"
-        className={cn(
-          "group relative block cursor-pointer overflow-hidden rounded-[16px] border transition-colors duration-100",
-          hasPhoto
-            ? "border-seam hover:border-amber-line"
-            : "border-dashed border-seam-strong hover:border-amber-line",
-          loading && "pointer-events-none opacity-50",
-        )}
-        title={loadUpload.filename ? "Replace photo" : "Upload photo"}
-      >
-        {hasPhoto ? (
-          <>
-            <img
-              src={loadUpload.previewUrl!}
-              alt={loadUpload.filename ?? "Load photo"}
-              className="aspect-[4/3] w-full object-cover transition-opacity duration-150 group-hover:opacity-60"
-            />
-            {/* Hover veil: the only affordance for click-to-upload */}
-            <span
-              aria-hidden="true"
-              className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-[0.6px] text-ink uppercase opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-            >
-              Replace photo
-            </span>
-          </>
-        ) : (
-          /* Empty stage: no truck at the gate until a photo is uploaded. */
-          <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted transition-colors duration-100 group-hover:text-ink">
-            <span className="text-[22px] leading-none" aria-hidden="true">
-              ◉
-            </span>
-            <span className="text-[13px] font-semibold tracking-[0.6px] uppercase">
-              Upload load photo
-            </span>
-            <span className="text-[12px]">JPEG or PNG from the gate camera</span>
-          </span>
-        )}
-      </label>
-      {loadUpload.filename ? (
-        <figcaption className="figure mt-2 text-[11px] leading-relaxed break-words text-muted">
-          {`Uploaded photo · ${loadUpload.filename}`}
-        </figcaption>
-      ) : null}
-      {loadUpload.filename ? (
-        <button
-          type="button"
-          onClick={() => onLoadPhoto(null)}
-          disabled={loading}
-          className="mt-1 self-start cursor-pointer rounded-[6px] px-2 py-1 text-[12px] font-semibold text-muted transition-colors duration-100 hover:bg-seam hover:text-ink"
-        >
-          Clear upload
-        </button>
-      ) : null}
-      {/* Quick-pick row: one tap loads a site photo through the normal
-          upload pipeline — faster than browsing for a file. */}
-      <div className="mt-2 flex items-center gap-1.5">
-        <span className="smallcaps shrink-0 text-[10px]">Photo presets</span>
-        {QUICK_LOADS.map((p) => (
-          <button
-            key={p.file}
-            type="button"
-            disabled={loading || quickBusy !== null}
-            onClick={() => {
-              // Fill a register field only when it is blank or still holds what
-              // the previous preset put there: never overwrite what the operator typed.
-              const fill = { ...QUICK_REGISTER, moisture_pct: p.moisture_pct };
-              const prev = presetFilled.current;
-              setValues((v) => {
-                const next = { ...v };
-                for (const key of Object.keys(fill) as (keyof typeof fill)[]) {
-                  if (!v[key] || v[key] === prev[key]) next[key] = fill[key];
-                }
-                return next;
-              });
-              presetFilled.current = fill;
-              void pickDemo(p.file, "load");
-            }}
-            className="cursor-pointer rounded-[6px] border border-seam-strong bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink transition-colors duration-100 select-none hover:border-amber-line hover:bg-seam disabled:pointer-events-none disabled:opacity-50"
-          >
-            {quickBusy === p.file ? "…" : p.label}
-          </button>
-        ))}
-      </div>
-    </figure>
-  );
+  const running = run.phase === "running";
+  const busy = running || loadingPreset !== null;
+  const busyLabel = autoRun
+    ? intake.waybill.status === "reading"
+      ? "Reading the waybill…"
+      : intake.scale.status === "reading"
+        ? "Weighing…"
+        : running
+          ? "Inspecting…"
+          : "Loading the truck…"
+    : running
+      ? "Inspecting…"
+      : null;
 
   return (
-    /* Vertical gate flow: intake on top, verdict below (user direction,
-       2026-10-13). The previous 5/7 split caused a scroll-jump on resolve
-       (verdict column outgrew the form) and ~500px of dead space in the
-       shorter column; stacking removes both and matches truck-by-truck
-       reading order: register first, decision second. */
     <div className="flex flex-col gap-5">
-      {/* ============ Incoming Load ============ */}
-      <Panel>
-        <PanelHead title="Incoming load" meta="weighbridge gate A" />
-        <div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
-          {/* Photo column: hero + uploads stay beside the register on wide
-              screens so the form never stretches full-width unreadably. */}
-          <div className="flex flex-col border-b border-seam lg:border-b-0 lg:border-r">
-            {photoSlot}
+      <GateHeader
+        busyLabel={busyLabel}
+        activePreset={preset}
+        disabled={busy}
+        onRunDemo={() => void loadPreset(DEMO_TRUCK, true)}
+        onPreset={(k) => void loadPreset(k, false)}
+        onClear={clearGate}
+      />
+
+      <Panel aria-labelledby="intake-title">
+        <PanelHead title="Incoming truck" meta="weighbridge gate A" />
+        <h2 id="intake-title" className="sr-only">
+          Incoming truck
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.55fr)_minmax(0,0.9fr)]">
+          <div className="border-b border-seam md:border-r xl:border-b-0">
+            <LoadPhotos
+              photos={intake.photos}
+              disabled={busy}
+              invalid={formError?.field === "photo"}
+              onPick={(i, f) => {
+                setPreset(null);
+                intake.setPhoto(i, f);
+              }}
+            />
           </div>
-          <IntakeForm
-            values={values}
-            onChange={onChange}
-            onSubmit={onSubmit}
-            onReset={onReset}
-            onWaybillPhoto={onWaybillPhoto}
-            onQuickWaybill={() => pickDemo(QUICK_WAYBILL, "waybill")}
-            quickWaybillBusy={quickBusy === QUICK_WAYBILL}
-            waybillPhoto={waybillUpload}
-            loading={loading}
-            formError={formError}
-          />
+          <div className="border-b border-seam md:order-3 md:col-span-2 md:border-b-0 xl:order-none xl:col-span-1 xl:border-r">
+            <WaybillBlock
+              waybill={intake.waybill}
+              editedFields={intake.editedFields}
+              disabled={busy}
+              invalidField={formError?.field === "plate" ? "plate" : null}
+              onPhoto={(f) => {
+                setPreset(null);
+                void intake.setWaybillPhoto(f);
+              }}
+              onEdit={intake.editField}
+            />
+          </div>
+          <div className="border-seam md:border-b xl:border-b-0">
+            <WeighbridgeBlock
+              scale={intake.scale}
+              netKg={intake.scaleNetKg}
+              declaredNetKg={parseFieldNumber(intake.waybill.values.net_kg)}
+              plate={intake.waybill.values.plate}
+              disabled={busy}
+              invalid={formError?.field === "scale"}
+              onCapture={() =>
+                void intake.captureScale(intake.waybill.values.plate, parseFieldNumber(intake.waybill.values.net_kg))
+              }
+              onManual={intake.switchToManualScale}
+              onManualNet={intake.setManualNet}
+            />
+          </div>
         </div>
+        <IntakeBar intake={intake} busy={busy} error={formError?.message ?? null} onInspect={() => void inspect()} />
       </Panel>
 
-      {/* ============ Inspection Verdict ============ */}
-      {/* Progressive disclosure: the verdict stage only exists once an
-          inspection is running or resolved. Idle shows a quiet directive
-          line instead of empty panels. */}
-      {phase !== "idle" ? (
-        <div
-          ref={verdictRef}
-          className="flex scroll-mt-[72px] flex-col"
-        >
-          <VerdictPanel
-            phase={phase}
-            gates={gates}
-            data={data}
-            decision={decision}
-            bannerLit={bannerLit}
-            onAllResolved={onAllResolved}
-            onReset={onReset}
-            error={resultError}
-            evidence={evidence}
-            runMode={runMode}
-          />
-        </div>
-      ) : (
-        <div ref={verdictRef} className="scroll-mt-[72px]">
-          <p className="m-0 text-[13px] text-muted">
-            Upload a load photo, fill the register, then press Inspect Load.
+      {run.phase !== "idle" ? <StagePanel ref={stageRef} run={run} /> : null}
+      {run.phase === "error" && run.error ? <RunError error={run.error} onRetry={() => void inspect()} /> : null}
+      {run.phase === "done" && run.result && run.snapshot ? (
+        <VerdictPanel ref={verdictRef} run={run} onNextTruck={clearGate} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Readiness at a glance, then the one action. */
+function IntakeBar({
+  intake,
+  busy,
+  error,
+  onInspect,
+}: {
+  intake: Intake;
+  busy: boolean;
+  error: string | null;
+  onInspect: () => void;
+}) {
+  const photos = intake.photos.filter(Boolean).length;
+  const w = intake.waybill;
+  const fields = WAYBILL_FIELDS.filter((f) => w.values[f.key].trim()).length;
+  const items: { ok: boolean; text: string }[] = [
+    { ok: photos > 0, text: photos > 0 ? `${photos} photo${photos > 1 ? "s" : ""}` : "No load photo" },
+    {
+      ok: fields > 0 && w.status !== "reading",
+      text:
+        w.status === "reading"
+          ? "Reading the waybill"
+          : w.status === "read"
+            ? `Waybill read · ${fields} fields${intake.editedFields.length ? `, ${intake.editedFields.length} edited` : ""}`
+            : fields > 0
+              ? `Waybill typed · ${fields} fields`
+              : "No waybill: the inspection will refuse",
+    },
+    {
+      ok: intake.scaleNetKg !== null,
+      text: intake.scaleNetKg !== null ? `Net ${formatKg(intake.scaleNetKg)}` : "No net weight",
+    },
+  ];
+  return (
+    <div className="flex flex-col gap-3 border-t border-seam px-4 py-3 md:flex-row md:items-center md:justify-between">
+      <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12.5px]" aria-label="Ready to inspect">
+        {items.map((it) => (
+          <li key={it.text} className={cn("inline-flex items-center gap-1.5", it.ok ? "text-ink" : "text-muted")}>
+            <span className={it.ok ? "text-muted" : "text-faint"}>{it.ok ? <IconCheck size={13} /> : <IconDash size={13} />}</span>
+            {it.text}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-col gap-2 md:items-end">
+        {error ? (
+          <p role="alert" className="m-0 text-[13px] text-verdict-red md:text-right">
+            {error}
           </p>
-        </div>
-      )}
+        ) : null}
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          onClick={onInspect}
+          disabled={busy || w.status === "reading"}
+          className="w-full md:w-auto md:min-w-[180px]"
+        >
+          Inspect load
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A run that stopped before a verdict: what happened and what to do. */
+function RunError({ error, onRetry }: { error: NonNullable<RunState["error"]>; onRetry: () => void }) {
+  const title =
+    error.kind === "network"
+      ? "The backend could not be reached"
+      : error.status === 503
+        ? "The live AI pipeline is busy or unavailable"
+        : error.status === 429
+          ? "Rate limit reached on the AI endpoint"
+          : "The inspection could not run";
+  const recovery =
+    error.kind === "network"
+      ? "Start the Lynceus backend (it serves this console), then inspect again."
+      : error.status === 503 || error.status === 429
+        ? "Wait a few seconds, then inspect again. Nothing was decided for this truck."
+        : "Fix the input above if needed, then inspect again.";
+  return (
+    <div role="alert" className="flex flex-col gap-2 rounded-[14px] border border-verdict-red/60 bg-red-dim px-4 py-3">
+      <p className="m-0 text-[14px] font-semibold text-verdict-red">{title}</p>
+      <p className="figure m-0 text-[12.5px] leading-relaxed break-words text-muted">{error.message}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="m-0 text-[13px] text-ink">{recovery}</p>
+        <Button type="button" size="sm" onClick={onRetry}>
+          Inspect again
+        </Button>
+      </div>
     </div>
   );
 }

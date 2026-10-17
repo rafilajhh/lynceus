@@ -373,6 +373,12 @@ OPERATOR_COST_IDR_PER_MINUTE = (
 #: The model's unit: results are per this many trucks.
 VALUE_MODEL_TRUCKS = 1_000
 
+#: Manual visual check per truck, minutes (low, base, high): an assumption,
+#: no published duration (docs/research/token-factory-probe.md).  The shift
+#: report's ``improvement`` block uses the base value.
+MANUAL_CHECK_MINUTES = (2.0, 3.0, 5.0)
+MANUAL_CHECK_MINUTES_BASE = MANUAL_CHECK_MINUTES[1]
+
 #: Fallback benchmark summaries when no shipped-gate re-score
 #: (:func:`shipped_gate_summary`) is usable, preferred first: the offline
 #: replay re-score, then the live run it replays.
@@ -767,7 +773,7 @@ def _parameters(
         ),
         _param(
             "manual_check_minutes", "Manual visual check per truck", "min",
-            2.0, 3.0, 5.0, assumption=True, sources=(_MANUAL_TIME_SEARCH,),
+            *MANUAL_CHECK_MINUTES, assumption=True, sources=(_MANUAL_TIME_SEARCH,),
             rationale=(
                 "Searched, no published duration (token-factory-probe.md). "
                 "A flagged truck gets the same check the baseline gives every "

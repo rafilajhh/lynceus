@@ -107,6 +107,8 @@ const hybridSchema = z.object({
   kind: z.literal("hybrid_replay"),
   source_run: z.string().nullish().catch(null),
   framing: z.string().nullish().catch(null),
+  /** One-line scope statement ("component validation on public … images"). */
+  scope: z.string().nullish().catch(null),
   disclosure: z.string().nullish().catch(null),
   llm_note: z.string().nullish().catch(null),
   vlm_model: z.string().nullish().catch(null),

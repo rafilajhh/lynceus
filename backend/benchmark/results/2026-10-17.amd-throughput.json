@@ -1,0 +1,484 @@
+{
+  "kind": "amd_throughput",
+  "run_date": "2026-10-17",
+  "started_at_utc": "2026-10-17T16:01:48+00:00",
+  "finished_at_utc": "2026-10-17T16:22:32+00:00",
+  "provider": "amd-token-factory",
+  "endpoint_host": "developer.amd.com.cn",
+  "model": "DeepSeek-V4-Flash-Vision-Exp",
+  "settings": {
+    "votes": 3,
+    "temperature": 0.1,
+    "seed": 0,
+    "max_tokens": 1024,
+    "timeout_s": 90.0,
+    "image_max_edge_px": 1280,
+    "jpeg_quality": 85,
+    "concurrent_inspections": 3,
+    "max_in_flight": 6,
+    "calls_per_mode_budget": 40,
+    "pause_between_batches_s": 1.0,
+    "prompt": "lynceus.pipeline._VLM_PROMPT",
+    "json_retry": "one, as production",
+    "stream": "not requested (as production)"
+  },
+  "photos": [
+    {
+      "name": "t-ambiguous-1.jpg",
+      "source": "demo",
+      "expected": null,
+      "category": null,
+      "sent_px": [
+        1280,
+        853
+      ],
+      "sent_bytes": 427303,
+      "reencoded": true
+    },
+    {
+      "name": "t-ambiguous-2.jpg",
+      "source": "demo",
+      "expected": null,
+      "category": null,
+      "sent_px": [
+        1280,
+        960
+      ],
+      "sent_bytes": 480990,
+      "reencoded": true
+    },
+    {
+      "name": "t-clean-1.jpg",
+      "source": "demo",
+      "expected": null,
+      "category": null,
+      "sent_px": [
+        1280,
+        960
+      ],
+      "sent_bytes": 354939,
+      "reencoded": true
+    },
+    {
+      "name": "t-clean-2.jpg",
+      "source": "demo",
+      "expected": null,
+      "category": null,
+      "sent_px": [
+        1280,
+        960
+      ],
+      "sent_bytes": 390606,
+      "reencoded": true
+    },
+    {
+      "name": "t-metal-1.jpg",
+      "source": "demo",
+      "expected": null,
+      "category": null,
+      "sent_px": [
+        1280,
+        960
+      ],
+      "sent_bytes": 455716,
+      "reencoded": true
+    },
+    {
+      "name": "t-metal-2.jpg",
+      "source": "demo",
+      "expected": null,
+      "category": null,
+      "sent_px": [
+        1280,
+        960
+      ],
+      "sent_bytes": 472468,
+      "reencoded": true
+    },
+    {
+      "name": "metal_1.jpg",
+      "source": "benchmark",
+      "expected": "reject",
+      "category": "Metal",
+      "sent_px": [
+        524,
+        524
+      ],
+      "sent_bytes": 86878,
+      "reencoded": false
+    },
+    {
+      "name": "metal_40.jpg",
+      "source": "benchmark",
+      "expected": "reject",
+      "category": "Metal",
+      "sent_px": [
+        524,
+        524
+      ],
+      "sent_bytes": 161331,
+      "reencoded": false
+    },
+    {
+      "name": "glass_1.jpg",
+      "source": "benchmark",
+      "expected": "escalate",
+      "category": "Glass",
+      "sent_px": [
+        524,
+        524
+      ],
+      "sent_bytes": 186684,
+      "reencoded": false
+    },
+    {
+      "name": "food_organics_1.jpg",
+      "source": "benchmark",
+      "expected": "escalate",
+      "category": "Food Organics",
+      "sent_px": [
+        524,
+        524
+      ],
+      "sent_bytes": 193744,
+      "reencoded": false
+    },
+    {
+      "name": "paper_1.jpg",
+      "source": "benchmark",
+      "expected": "accept",
+      "category": "Paper",
+      "sent_px": [
+        524,
+        524
+      ],
+      "sent_bytes": 135841,
+      "reencoded": false
+    },
+    {
+      "name": "cardboard_1.jpg",
+      "source": "benchmark",
+      "expected": "accept",
+      "category": "Cardboard",
+      "sent_px": [
+        524,
+        524
+      ],
+      "sent_bytes": 103435,
+      "reencoded": false
+    }
+  ],
+  "headline": {
+    "read_latency_ms": {
+      "p50": 8594.5,
+      "p95": 55967.8,
+      "mean": 19621.3,
+      "n": 35
+    },
+    "inspection_latency_ms": {
+      "p50": 9403.0,
+      "p95": 48281.2,
+      "mean": 19131.1,
+      "n": 11
+    },
+    "inspections_per_min_concurrent": 2.07,
+    "tokens_per_inspection": {
+      "p50": 1780.0,
+      "p95": 2960.0,
+      "mean": 2141.5,
+      "n": 30
+    },
+    "parallel_speedup": 2.82,
+    "read_agreement": {
+      "n": 30,
+      "3/3": {
+        "count": 29,
+        "share": 0.967
+      },
+      "2/3": {
+        "count": 1,
+        "share": 0.033
+      },
+      "split": {
+        "count": 0,
+        "share": 0.0
+      }
+    },
+    "errors": 8,
+    "retries": 13,
+    "calls": 108
+  },
+  "modes": {
+    "sequential": {
+      "inspections": {
+        "attempted": 12,
+        "completed": 11
+      },
+      "calls": 36,
+      "read_latency_ms": {
+        "p50": 8174.9,
+        "p95": 40750.4,
+        "mean": 13995.2,
+        "n": 35
+      },
+      "ttfb_ms": {
+        "p50": 8173.8,
+        "p95": 40750.0,
+        "mean": 13994.0,
+        "n": 35
+      },
+      "inspection_latency_ms": {
+        "p50": 26534.9,
+        "p95": 137087.0,
+        "mean": 42121.9,
+        "n": 11
+      },
+      "tokens_per_inspection": {
+        "total": {
+          "p50": 1753.0,
+          "p95": 3203.0,
+          "mean": 2108.8,
+          "n": 11
+        },
+        "prompt": {
+          "p50": 1533.0,
+          "p95": 2001.0,
+          "mean": 1733.7,
+          "n": 11
+        },
+        "completion": {
+          "p50": 214.0,
+          "p95": 1202.0,
+          "mean": 375.1,
+          "n": 11
+        }
+      },
+      "wall_s": 594.65,
+      "inspections_per_min": 1.11,
+      "agreement": {
+        "n": 11,
+        "3/3": {
+          "count": 10,
+          "share": 0.909
+        },
+        "2/3": {
+          "count": 1,
+          "share": 0.091
+        },
+        "split": {
+          "count": 0,
+          "share": 0.0
+        }
+      },
+      "statuses": {
+        "200": 36
+      },
+      "errors": 1,
+      "json_retries": 1,
+      "backoff_retries": 0,
+      "rate_limited": 0,
+      "no_workers": 0,
+      "budget_skipped": 0,
+      "aborted": null
+    },
+    "parallel": {
+      "inspections": {
+        "attempted": 12,
+        "completed": 11
+      },
+      "calls": 36,
+      "read_latency_ms": {
+        "p50": 8594.5,
+        "p95": 55967.8,
+        "mean": 19621.3,
+        "n": 35
+      },
+      "ttfb_ms": {
+        "p50": 8370.6,
+        "p95": 55966.6,
+        "mean": 17490.5,
+        "n": 35
+      },
+      "inspection_latency_ms": {
+        "p50": 9403.0,
+        "p95": 48281.2,
+        "mean": 19131.1,
+        "n": 11
+      },
+      "tokens_per_inspection": {
+        "total": {
+          "p50": 1780.0,
+          "p95": 2762.0,
+          "mean": 2098.0,
+          "n": 11
+        },
+        "prompt": {
+          "p50": 1533.0,
+          "p95": 2001.0,
+          "mean": 1733.7,
+          "n": 11
+        },
+        "completion": {
+          "p50": 182.0,
+          "p95": 761.0,
+          "mean": 364.3,
+          "n": 11
+        }
+      },
+      "wall_s": 350.17,
+      "inspections_per_min": 1.88,
+      "agreement": {
+        "n": 11,
+        "3/3": {
+          "count": 11,
+          "share": 1.0
+        },
+        "2/3": {
+          "count": 0,
+          "share": 0.0
+        },
+        "split": {
+          "count": 0,
+          "share": 0.0
+        }
+      },
+      "statuses": {
+        "200": 36
+      },
+      "errors": 1,
+      "json_retries": 2,
+      "backoff_retries": 1,
+      "rate_limited": 1,
+      "no_workers": 0,
+      "budget_skipped": 0,
+      "aborted": null
+    },
+    "concurrent": {
+      "inspections": {
+        "attempted": 12,
+        "completed": 8
+      },
+      "calls": 36,
+      "read_latency_ms": {
+        "p50": 19605.9,
+        "p95": 72455.0,
+        "mean": 24435.2,
+        "n": 30
+      },
+      "ttfb_ms": {
+        "p50": 13891.7,
+        "p95": 63883.0,
+        "mean": 18903.2,
+        "n": 30
+      },
+      "inspection_latency_ms": {
+        "p50": 22975.7,
+        "p95": 72512.2,
+        "mean": 30063.0,
+        "n": 8
+      },
+      "tokens_per_inspection": {
+        "total": {
+          "p50": 2152.0,
+          "p95": 2960.0,
+          "mean": 2246.4,
+          "n": 8
+        },
+        "prompt": {
+          "p50": 1869.0,
+          "p95": 2001.0,
+          "mean": 1809.0,
+          "n": 8
+        },
+        "completion": {
+          "p50": 247.0,
+          "p95": 959.0,
+          "mean": 437.4,
+          "n": 8
+        }
+      },
+      "wall_s": 231.36,
+      "inspections_per_min": 2.07,
+      "agreement": {
+        "n": 8,
+        "3/3": {
+          "count": 8,
+          "share": 1.0
+        },
+        "2/3": {
+          "count": 0,
+          "share": 0.0
+        },
+        "split": {
+          "count": 0,
+          "share": 0.0
+        }
+      },
+      "statuses": {
+        "200": 31,
+        "transport_error": 5
+      },
+      "errors": 6,
+      "json_retries": 1,
+      "backoff_retries": 8,
+      "rate_limited": 8,
+      "no_workers": 0,
+      "budget_skipped": 5,
+      "aborted": null
+    }
+  },
+  "detector_cpu": {
+    "available": true,
+    "model": "lynceus-yolo26m-realwaste-taco.onnx",
+    "runtime": "onnxruntime-cpu",
+    "threads": 2,
+    "cpu": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "cpu_count": 12,
+    "runs": 36,
+    "inference_ms": {
+      "p50": 995.8,
+      "p95": 1354.7,
+      "mean": 1010.4,
+      "n": 36
+    },
+    "call_wall_ms": {
+      "p50": 996.4,
+      "p95": 1355.2,
+      "mean": 1011.1,
+      "n": 36
+    },
+    "note": "inference_ms is the detector's own timing (decode + model); call_wall_ms adds the run slot. Measured on the benchmark machine's CPU, not the deployment host."
+  },
+  "cost": {
+    "token_factory": {
+      "basis": "quota-based",
+      "tokens_per_inspection": {
+        "p50": 1780.0,
+        "p95": 2960.0,
+        "mean": 2141.5,
+        "n": 30
+      },
+      "note": "AMD Token Factory is a free tier with a usage quota (about $10/day per third-party sources; the terms are not published), so no per-call price is claimed."
+    },
+    "mi300x_projection": {
+      "label": "projection, not measured on MI300X",
+      "usd_per_hour": 1.99,
+      "inspections_per_hour": 124.2,
+      "usd_per_1k_inspections": 16.02,
+      "basis": "AMD Developer Cloud MI300X list price / inspections per hour measured on Token Factory in the concurrent mode"
+    }
+  },
+  "usage_reported": true,
+  "aborted": null,
+  "caveats": [
+    "One run on a shared, hosted endpoint (AMD Token Factory): latency includes network and queueing and moves with the endpoint's load at the time.",
+    "12 photos per mode (6 demo photos + 6 RealWaste benchmark images), 3 reads per inspection; small n, so p95 is close to the slowest call.",
+    "Concurrent mode runs 3 inspections at once with at most 6 calls in flight (the shared key allows 8). The production server caps vision reads at 3 in flight process-wide, so one server's throughput is the parallel mode's, not this one's.",
+    "The modes ran one after another, not interleaved: endpoint load may differ between them, which moves the speed-up.",
+    "Read agreement compares the allow-listed hard contaminants of each read; temperature 0.1 and seed 0 as production.",
+    "The MI300X cost is a projection from Token Factory throughput, not a measurement on a self-hosted MI300X.",
+    "The CPU detector was timed on the benchmark machine, not the deployment host.",
+    "Model set on the command line (DeepSeek-V4-Flash-Vision-Exp); the local backend/.env names MiniCPM-V-4.7-35B-A3B."
+  ],
+  "raw_rows": "2026-10-17.amd-throughput.jsonl"
+}

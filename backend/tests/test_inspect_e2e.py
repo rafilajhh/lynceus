@@ -268,11 +268,12 @@ def test_inspect_refuses_without_photo_or_demo_case(client, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 3. Weight mismatch: declared 15,500 kg vs weighbridge 19,300 kg → REJECT.
+# 3. Weight mismatch: declared 15,500 kg vs weighbridge 19,300 kg → ESCALATE
+#    (ticket correction; a weight gap never rejects a load on its own).
 # ---------------------------------------------------------------------------
 
 
-def test_inspect_weight_mismatch_is_rejected(client):
+def test_inspect_weight_mismatch_is_held_for_ticket_correction(client):
     payload = {
         "truck_id": "F-7702-TS",
         # No demo_case: the stub falls back to the clean (green) VLM script,
@@ -290,9 +291,10 @@ def test_inspect_weight_mismatch_is_rejected(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    assert _decision(body) == Decision.REJECT, body
+    assert _decision(body) == Decision.ESCALATE_HUMAN, body
     reasons = body.get("reasons")
-    assert isinstance(reasons, list) and reasons, "a REJECT must carry reasons"
+    assert isinstance(reasons, list) and reasons, "a hold must carry reasons"
+    assert any("ticket correction" in r.lower() for r in reasons), reasons
     states = _gate_states(body)
     assert states.get("weight_plausibility") == GateState.FAILED, states
 
@@ -521,7 +523,7 @@ def test_inspect_with_nan_in_gateway_instrument_completes(
     assert rec.ai_outputs.gas.instrument == {"model": "X"}
 
 
-def test_inspect_with_invalid_sensor_url_falls_back_to_twin(
+def test_inspect_with_invalid_sensor_url_records_no_gas(
     client, tmp_path, monkeypatch
 ):
     from lynceus import gas_ingest
@@ -530,7 +532,10 @@ def test_inspect_with_invalid_sensor_url_falls_back_to_twin(
     resp = client.post("/inspect", json=DEMO_CASES["green"]["payload"])
     assert resp.status_code == 200, resp.text
     rec = _load_audit_record(tmp_path, resp.json()["record_id"])
-    assert rec.inputs.gas.source == "digital_twin"
+    # No live sensor answered: no gas data, and the twin no longer stands in.
+    assert rec.inputs.gas.source == "not_measured"
+    assert rec.inputs.gas.readings_ppm == {}
+    assert rec.ai_outputs.gas is None
 
 
 # ---------------------------------------------------------------------------

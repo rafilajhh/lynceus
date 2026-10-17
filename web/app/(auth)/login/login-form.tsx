@@ -91,27 +91,30 @@ export function LoginForm() {
           </p>
         ) : null}
 
-        <Button type="submit" variant="primary" disabled={loading} className="mt-1">
+        <Button id="login-submit" type="submit" variant="primary" disabled={loading} className="mt-1">
           {loading ? "Signing in…" : "Sign in"}
         </Button>
 
         {/* Default console credentials, stated for reviewers of this
-            deployment: the values come from the deployment's env and are
-            defaults for this instance, not secrets. */}
-        <p className="m-0 text-center text-[12px] leading-relaxed text-muted">
-          Demo access:{" "}
-          <button
+            deployment (they are in the public README): the button only
+            fills the form; the visitor still presses Sign in. */}
+        <div className="flex flex-col gap-1.5 border-t border-seam pt-4">
+          <Button
             type="button"
             disabled={loading}
             onClick={() => {
               setUsername("admin");
               setPassword("admin123");
+              setError(null);
+              requestAnimationFrame(() => document.getElementById("login-submit")?.focus());
             }}
-            className="cursor-pointer font-semibold text-ink underline decoration-seam-strong underline-offset-2 transition-colors duration-100 hover:decoration-amber-line disabled:pointer-events-none disabled:opacity-50"
           >
-            admin / admin123
-          </button>
-        </p>
+            Use demo account
+          </Button>
+          <p className="m-0 text-center text-[12px] text-muted">
+            Fills <span className="figure text-ink">admin / admin123</span>, then press Sign in.
+          </p>
+        </div>
       </form>
     </Panel>
   );

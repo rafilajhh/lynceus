@@ -8,13 +8,17 @@ import {
   type InspectionDetail,
   type PhotoInput,
 } from "@/lib/api";
+import { parseChecks } from "@/lib/ops-api";
 import { cn } from "@/lib/utils";
 import { formatMilliseconds, formatWeight } from "@/lib/format";
+import { ChecksStrip } from "@/components/checks/checks-strip";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
 import { PythiaPanel, pythiaSuggestions } from "@/components/assist/pythia-panel";
 import { NextSteps } from "@/components/workspace/next-steps";
 import { PhotoEvidence } from "@/components/workspace/photo-evidence";
+import { FollowupChain } from "./followup-chain";
 
 /**
  * Inline detail panel (not a modal): opens beneath the ledger when a row is
@@ -35,6 +39,29 @@ const GATE_STATE_LABEL: Record<GateState, string> = {
   failed: "FAILED",
   not_run: "NOT RUN",
   not_evaluated: "NOT EVALUATED",
+};
+
+const VERDICT_BADGE = {
+  accept: { variant: "accept", label: "Accept" },
+  reject: { variant: "reject", label: "Reject · do not tip" },
+  escalate_human: { variant: "escalate", label: "Hold for review" },
+  refuse_insufficient_input: { variant: "refuse", label: "Refused" },
+  unknown: { variant: "default", label: "Unknown" },
+} as const;
+
+/** Said once, in plain words, wherever a REFUSED record appears. */
+export const REFUSED_EXPLANATION =
+  "No verdict: a required input (load photo or waybill) was missing, so the gate refused to guess.";
+
+const WEIGHT_SOURCE: Record<string, string> = {
+  weighbridge_simulated: "Weighbridge · simulated feed",
+  weighbridge: "Weighbridge",
+  manual_entry: "Typed by the operator",
+};
+
+const WAYBILL_SOURCE: Record<string, string> = {
+  waybill_photo_ai_read: "Waybill photo, read by AI",
+  waybill_photo_ai_read_operator_edited: "Waybill photo, read by AI, corrected by the operator",
 };
 
 const GATE_LABEL: Record<string, string> = {
@@ -64,7 +91,7 @@ function uncertaintyNote(uncertainty: string): string | null {
 const DEMO_PHOTO_PATH = /^\/demo\/[a-z0-9-]+\.(jpe?g|png)$/i;
 
 function photoSrc(
-  photo: PhotoInput | undefined,
+  photo: PhotoInput | null | undefined,
   recordId: string | undefined,
 ): string | null {
   if (!photo) return null;
@@ -124,9 +151,11 @@ export function InspectionDetailPanel({
       .catch((err: unknown) => {
         if (cancelled) return;
         const message =
-          err instanceof ApiError || err instanceof Error
-            ? err.message
-            : "Unexpected error.";
+          err instanceof Error && err.name === "ZodError"
+            ? "The record has a field this page cannot read; download it from the API instead."
+            : err instanceof ApiError || err instanceof Error
+              ? err.message
+              : "Unexpected error.";
         setState({ kind: "error", message });
       });
     return () => {
@@ -207,11 +236,31 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
   const vlm = detail.ai_outputs?.vlm;
   const detector = detail.ai_outputs?.detector;
   const steps = detail.engine_outputs?.recommendation?.actions ?? [];
+  const checks = parseChecks(detail.checks);
+  const badge = VERDICT_BADGE[decision];
+  const why =
+    detail.why ??
+    (decision === "refuse_insufficient_input" ? REFUSED_EXPLANATION : (reasons[0] ?? null));
+  const weightSource = detail.inputs?.weight?.source;
+  const waybillSource = detail.inputs?.manifest_text?.source;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ---- gates grid ---- */}
-      {detail.gates ? (
+      {/* ---- verdict and its cause, one sentence ---- */}
+      <section aria-label="Verdict" className="flex flex-col items-start gap-2">
+        <Badge variant={badge.variant}>
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+          {badge.label}
+        </Badge>
+        {why ? (
+          <p className="m-0 max-w-[70ch] text-[15px] leading-snug font-medium text-ink">{why}</p>
+        ) : null}
+      </section>
+
+      {/* ---- operator checks (current records) or raw gates (older ones) ---- */}
+      {checks.length > 0 ? (
+        <ChecksStrip checks={checks} showDetail />
+      ) : detail.gates ? (
         <section aria-label="Gates">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {Object.entries(detail.gates).map(([name, gate]) => {
@@ -239,6 +288,8 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
         </section>
       ) : null}
 
+      {detail.record_id ? <FollowupChain recordId={detail.record_id} /> : null}
+
       {/* ---- inputs ---- */}
       <section>
         <h3 className="smallcaps mb-2">Inputs</h3>
@@ -258,38 +309,44 @@ function DetailBody({ detail }: { detail: InspectionDetail }) {
             <div className="figure text-[13px] text-ink">
               {formatWeight(detail.inputs?.weight?.value_kg ?? 0)}
             </div>
+            {weightSource ? (
+              <div className="mt-0.5 text-[12px] text-muted">
+                {WEIGHT_SOURCE[weightSource] ?? weightSource}
+              </div>
+            ) : null}
           </div>
 
-          <div
-            className="rounded-[8px] border border-seam bg-ground px-3 py-2.5 sm:col-span-2"
-            title={[
-              gasInstrument?.model
-                ? `Instrument: ${gasInstrument.model}${gasInstrument.technology ? ` (${gasInstrument.technology})` : ""}`
-                : null,
-              gasModelBasis ? `Model basis: ${gasModelBasis}` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || undefined}
-          >
-            <div className="smallcaps mb-1">Gas readings</div>
-            {gasReadings && Object.keys(gasReadings).length > 0 ? (
+          {waybillSource ? (
+            <div className="rounded-[8px] border border-seam bg-ground px-3 py-2.5 sm:col-span-2">
+              <div className="smallcaps mb-1">Waybill</div>
+              <div className="text-[13px] text-ink">{WAYBILL_SOURCE[waybillSource] ?? waybillSource}</div>
+            </div>
+          ) : null}
+
+          {gasReadings && Object.keys(gasReadings).length > 0 ? (
+            <div
+              className="rounded-[8px] border border-seam bg-ground px-3 py-2.5 sm:col-span-2"
+              title={[
+                gasInstrument?.model
+                  ? `Instrument: ${gasInstrument.model}${gasInstrument.technology ? ` (${gasInstrument.technology})` : ""}`
+                  : null,
+                gasModelBasis ? `Model basis: ${gasModelBasis}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || undefined}
+            >
+              <div className="smallcaps mb-1">Gas readings</div>
               <ul className="figure m-0 list-none p-0 text-[12px] text-ink">
                 {Object.entries(gasReadings).map(([gas, ppm]) => (
-                  <li
-                    key={gas}
-                    className="flex justify-between gap-3 leading-relaxed"
-                  >
+                  <li key={gas} className="flex justify-between gap-3 leading-relaxed">
                     <span className="text-muted">{gas}</span>
                     <span>{ppm} ppm</span>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="text-[12.5px] text-muted">
-                {gasSource ?? "not measured"}
-              </div>
-            )}
-          </div>
+              {gasSource ? <div className="mt-1 text-[12px] text-muted">{gasSource}</div> : null}
+            </div>
+          ) : null}
         </div>
       </section>
 

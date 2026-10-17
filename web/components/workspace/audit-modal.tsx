@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { IconCross } from "./gate-icons";
 
 export function AuditModal({
   recordId,
@@ -74,7 +75,8 @@ export function AuditModal({
                 aria-label="Close audit record"
                 onClick={() => setOpen(false)}
               >
-                ✕ Close
+                <IconCross size={14} />
+                Close
               </Button>
             </div>
             <pre className="figure m-0 flex-1 overflow-auto bg-ground px-4 py-3 text-[13px] leading-relaxed text-muted">

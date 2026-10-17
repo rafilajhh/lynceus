@@ -21,7 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { InspectionDetailPanel } from "./inspection-detail-panel";
+import { InspectionDetailPanel, REFUSED_EXPLANATION } from "./inspection-detail-panel";
+import { useFollowupKinds } from "./use-followup-kinds";
 
 /** Filter keys map 1:1 onto Decision, plus "all". */
 type FilterKey = Decision | "all";
@@ -160,7 +161,9 @@ function LedgerViewInner() {
     const filtered = term
       ? filteredByVerdict.filter(
           (item) =>
-            matchesSearch(item.record_id) || matchesSearch(item.truck_id),
+            matchesSearch(item.record_id) ||
+            matchesSearch(item.truck_id) ||
+            matchesSearch(item.supplier ?? ""),
         )
       : filteredByVerdict;
     const direction = sort.dir === "asc" ? 1 : -1;
@@ -177,6 +180,7 @@ function LedgerViewInner() {
   const startIdx = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE;
   const endIdx = rows.length === 0 ? 0 : Math.min(startIdx + PAGE_SIZE, rows.length);
   const pagedRows = rows.slice(startIdx, endIdx);
+  const followupKinds = useFollowupKinds(pagedRows);
 
   const onFilterChange = (nextFilter: FilterKey) => {
     setFilter(nextFilter);
@@ -297,8 +301,8 @@ function LedgerViewInner() {
                   type="search"
                   value={search}
                   onChange={(e) => onSearchChange(e.target.value)}
-                  placeholder="Search record or plate…"
-                  aria-label="Search record or plate"
+                  placeholder="Search record, plate or supplier…"
+                  aria-label="Search record, plate or supplier"
                   className="input w-full text-[13px]"
                 />
               </div>
@@ -342,7 +346,9 @@ function LedgerViewInner() {
                     </SortButton>
                   </TableHead>
                   <TableHead>Truck</TableHead>
+                  <TableHead className="hidden lg:table-cell">Supplier</TableHead>
                   <TableHead>Verdict</TableHead>
+                  <TableHead>After the verdict</TableHead>
                   <TableHead
                     aria-sort={
                       sort.column === "when"
@@ -389,6 +395,9 @@ function LedgerViewInner() {
                       <TableCell className="figure text-[12.5px] text-muted">
                         {row.truck_id}
                       </TableCell>
+                      <TableCell className="hidden max-w-[220px] truncate text-[12.5px] text-muted lg:table-cell">
+                        {row.supplier ?? "—"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={DECISION_BADGE[row.decision]}>
                           <span
@@ -398,13 +407,16 @@ function LedgerViewInner() {
                           {VERDICT_LABEL[row.decision]}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <FollowupMarks row={row} kinds={followupKinds[row.record_id]} />
+                      </TableCell>
                       <TableCell className="text-[12.5px] whitespace-nowrap text-muted">
                         {relativeTime(row.decided_at_utc)}
                       </TableCell>
                     </TableRow>
                     {selectedId === row.record_id ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={4} className="p-2 sm:p-3">
+                        <TableCell colSpan={6} className="p-2 sm:p-3">
                           <InspectionDetailPanel
                             recordId={row.record_id}
                             onClose={closeDetail}
@@ -417,7 +429,7 @@ function LedgerViewInner() {
                 {pagedRows.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-10 text-center text-[13px] text-muted"
                     >
                       No inspections match this filter.
@@ -454,6 +466,15 @@ function LedgerViewInner() {
                       <span className="figure">{row.truck_id}</span>
                       <span>{relativeTime(row.decided_at_utc)}</span>
                     </div>
+                    {row.supplier ? (
+                      <div className="mt-1 truncate text-[12.5px] text-muted">{row.supplier}</div>
+                    ) : null}
+                    <FollowupMarks
+                      row={row}
+                      kinds={followupKinds[row.record_id]}
+                      hideEmpty
+                      className="mt-2"
+                    />
                   </button>
                   {selectedId === row.record_id ? (
                     <div className="py-1">
@@ -503,6 +524,74 @@ function LedgerViewInner() {
         )}
       </Panel>
     </div>
+  );
+}
+
+const FOLLOWUP_MARK: readonly { kind: string; label: string }[] = [
+  { kind: "resolution", label: "Reviewed" },
+  { kind: "lab_result", label: "Lab" },
+  { kind: "notice", label: "Notice" },
+];
+
+/**
+ * What happened after the verdict, at a glance: supervisor review, lab
+ * sample, supplier notice. A held truck with no review yet says so; a
+ * REFUSED record says why it has no verdict.
+ */
+function FollowupMarks({
+  row,
+  kinds,
+  hideEmpty = false,
+  className,
+}: {
+  row: InspectionSummary;
+  kinds: string[] | undefined;
+  /** Stacked cards: an empty follow-up line is left out, not dashed. */
+  hideEmpty?: boolean;
+  className?: string;
+}) {
+  if (row.decision === "refuse_insufficient_input") {
+    return (
+      <span title={REFUSED_EXPLANATION} className={`block text-[12.5px] text-muted ${className ?? ""}`}>
+        Input missing: no verdict issued
+      </span>
+    );
+  }
+  if (!kinds) {
+    if (hideEmpty) return null;
+    return (
+      <span className="text-[12.5px] text-faint" aria-label="Follow-ups not loaded">
+        —
+      </span>
+    );
+  }
+  const marks = FOLLOWUP_MARK.filter((m) => kinds.includes(m.kind));
+  const awaiting = row.decision === "escalate_human" && !kinds.includes("resolution");
+  if (marks.length === 0 && !awaiting) {
+    if (hideEmpty) return null;
+    return (
+      <span className="text-[12.5px] text-faint">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No follow-up</span>
+      </span>
+    );
+  }
+  return (
+    <span className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}>
+      {awaiting ? (
+        <span className="inline-flex items-center gap-1 rounded-[4px] border border-amber-line px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-verdict-amber">
+          Needs review
+        </span>
+      ) : null}
+      {marks.map((m) => (
+        <span
+          key={m.kind}
+          className="inline-flex items-center rounded-[4px] border border-seam-strong bg-panel px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-muted"
+        >
+          {m.label}
+        </span>
+      ))}
+    </span>
   );
 }
 

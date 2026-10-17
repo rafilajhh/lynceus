@@ -52,6 +52,9 @@ const inspectionSummarySchema = z.object({
   /** Market value of an accepted load (NOT a prevented loss); 0 otherwise. */
   admitted_value_idr: z.coerce.number().catch(0),
   gate_states: z.record(z.string(), gateStateSchema).catch({}),
+  /** Kinds of sealed follow-ups on this record ("resolution", "lab_result",
+      "notice"), when the backend summarises them; absent otherwise. */
+  followup_kinds: z.array(z.string()).nullish().catch(null),
 });
 
 const inspectionsResponseSchema = z.object({
@@ -91,6 +94,8 @@ const evidenceBoxSchema = z
     y0: z.number(),
     x1: z.number(),
     y1: z.number(),
+    /** 0-based camera frame on multi-angle inspections; absent = frame 0. */
+    frame: z.number().int().nonnegative().nullish().catch(null),
   })
   .refine(
     (b) => 0 <= b.x0 && b.x0 < b.x1 && b.x1 <= 1 && 0 <= b.y0 && b.y0 < b.y1 && b.y1 <= 1,
@@ -140,6 +145,8 @@ const detectorBoxSchema = z
     label: z.string().catch("object"),
     confidence: z.number(),
     box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+    /** 0-based camera frame on multi-angle inspections; absent = frame 0. */
+    frame: z.number().int().nonnegative().nullish().catch(null),
   })
   .refine(
     ({ box: [x0, y0, x1, y1] }) =>
@@ -207,49 +214,49 @@ const auditRecordSchema = z
       .optional(),
     inputs: z
       .object({
-        truck_id: z.string().optional(),
+        truck_id: z.string().nullish(),
         // Persisted from the intake form by a later backend task; absent
         // on older records.
         supplier: z.string().nullish().catch(null),
         photo: z
           .object({
             filename: z.string().catch("photo.jpg"),
-            sha256: z.string().optional(),
-            captured_at_utc: z.string().optional(),
-            provenance: z.string().optional(),
+            sha256: z.string().nullish(),
+            captured_at_utc: z.string().nullish(),
+            provenance: z.string().nullish(),
             // Relative path of the stored evidence file, when the backend
             // persisted the photo bytes; absent on older records.
-            path: z.string().optional(),
+            path: z.string().nullish(),
           })
-          .optional(),
+          .nullish(),
         waybill_photo: z
           .object({
             filename: z.string().catch("waybill.jpg"),
-            sha256: z.string().optional(),
-            captured_at_utc: z.string().optional(),
-            provenance: z.string().optional(),
-            path: z.string().optional(),
+            sha256: z.string().nullish(),
+            captured_at_utc: z.string().nullish(),
+            provenance: z.string().nullish(),
+            path: z.string().nullish(),
           })
           .nullish()
           .catch(null),
         weight: z
           .object({
-            value_kg: z.number().optional(),
-            source: z.string().optional(),
+            value_kg: z.number().nullish(),
+            source: z.string().nullish(),
           })
-          .optional(),
+          .nullish(),
         gas: z
           .object({
-            readings_ppm: z.record(z.string(), z.number()).optional(),
-            source: z.string().optional(),
+            readings_ppm: z.record(z.string(), z.number()).nullish(),
+            source: z.string().nullish(),
           })
-          .optional(),
+          .nullish(),
         manifest_text: z
           .object({
-            source: z.string().optional(),
-            ocr_confidence: z.number().optional(),
+            source: z.string().nullish(),
+            ocr_confidence: z.number().nullish(),
           })
-          .optional(),
+          .nullish(),
       })
       .optional(),
     ai_outputs: z
@@ -296,6 +303,12 @@ const auditRecordSchema = z
       .optional(),
     // Optional human-readable reasons list (as returned by POST /inspect).
     reasons: z.array(z.string()).optional(),
+    /** One-sentence cause of the verdict (backend checks.py); absent on
+        older backends. */
+    why: z.string().nullish().catch(null),
+    /** Operator checks (backend checks.py), untrusted: parse with
+        ops-api parseChecks. */
+    checks: z.unknown().optional(),
   })
   .catchall(z.unknown());
 
@@ -369,11 +382,15 @@ export async function fetchInspections(): Promise<InspectionSummary[]> {
 export async function fetchInspectionDetail(
   recordId: string,
 ): Promise<InspectionDetail> {
-  const record = auditRecordSchema.parse(
-    unwrapRecordSchema.parse(
-      await getJSON(`/inspections/${encodeURIComponent(recordId)}`),
-    ),
-  );
+  const raw = await getJSON(`/inspections/${encodeURIComponent(recordId)}`);
+  const record = auditRecordSchema.parse(unwrapRecordSchema.parse(raw));
+  // A wrapped response may carry why/checks beside the record, not inside it.
+  const outer = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   // The path identifies the record; keep it even if the payload disagrees.
-  return { ...record, record_id: recordId };
+  return {
+    ...record,
+    why: record.why ?? (typeof outer.why === "string" ? outer.why : null),
+    checks: record.checks ?? outer.checks,
+    record_id: recordId,
+  };
 }

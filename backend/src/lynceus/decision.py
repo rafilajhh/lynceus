@@ -1,8 +1,8 @@
 """Lynceus decision (fusion) layer.
 
-Fuses the VLM photo analysis, the LLM manifest cross-check, and the Lynceus engine
-engine assessment into one final verdict plus a set of **stated** quality
-gates and human-readable English reasons for the demo UI.
+Fuses the VLM photo analysis, the waybill declarations, the weighbridge
+reading and the Lynceus engine assessment into one final verdict plus a set
+of **stated** quality gates and human-readable English reasons for the UI.
 
 Priority order (a red flag always outranks an amber one, and refusing to
 answer always outranks everything — a speculative verdict built on missing
@@ -11,21 +11,41 @@ pattern 14):
 
 1. ``refuse_insufficient_input`` — a mandatory input is missing (no photo,
    VLM failed, empty manifest).  The verdict carries the ``missing`` list.
-2. ``reject`` — hard contamination (metal / rock / tire) with VLM confidence
-   >= 0.6, weight mismatch > 10 %, or VLM confidence < 0.3 (unsafe).
-3. ``escalate_human`` — light/ambiguous contamination (glass, organic
-   residue, wet mix; plastic film and textile are RDF feedstock), moisture conflict
-   between the VLM visual estimate and the waybill claim, or a failed
-   manifest cross-check that is not already a big weight mismatch, or an
-   engine ranking whose top two routes are tied within 0.02.
+2. ``reject`` — only a confident hard contaminant (metal / rock / concrete /
+   tire / e-waste with VLM confidence >= 0.6).  When the waybill declares
+   processed (sorted) RDF, the declaration check fails too and the reasons
+   add a contract-breach notice.
+3. ``escalate_human`` — anything a person must look at, never a reject:
+
+   * VLM confidence < 0.3: the photo is unreadable, retake it;
+   * weighbridge vs declared weight beyond 5 %: ticket correction;
+   * the waybill photo read below 0.6 confidence: check the fields;
+   * the load looks wetter than declared (waybill field: visual moisture
+     >= declared + 15 points; typed text: a dry claim < 15 % against a
+     visual >= 15 %): grab sample;
+   * waybill arithmetic: |gross - tare - net| > 1 % of net;
+   * light/ambiguous contamination (glass, organic residue, wet mix;
+     plastic film and textile are RDF feedstock);
+   * an engine ranking whose top two routes are tied within 0.02.
 4. ``accept`` — no red flags and the engine recommendation is actionable
    and not tied.
+
+The LLM's own cross-check verdict (``crosscheck_failed``) no longer moves
+the verdict: its notes stay in the audit as a narrative.  The
+``manifest_crosscheck`` gate is the deterministic declaration check
+("Waybill vs load"), ``not_evaluated`` when the waybill declares nothing
+it can be compared on.  ``ocr_confidence`` is the waybill photo read's own
+confidence (``not_run`` for a typed waybill).  ``gas_plausibility`` runs only
+on a live gate sensor's readings (:mod:`lynceus.gas_ingest`); otherwise it
+is ``not_run`` "No gas sensor at this gate".
 
 The CPU object detector (:mod:`lynceus.detector`) is a second opinion, never
 a verdict of its own: a hard contaminant it flags (at/above
 ``detector_hard_conf``) that the VLM did not confidently confirm holds the
 truck for a human (escalate, never accept, never reject); a light one the VLM
-did not report does the same unless ``detector_escalate_light`` is off.  When
+did not report does the same unless ``detector_escalate_light`` is off.  A
+confident VLM hard contaminant the detector did not flag stays a reject: the
+gate passes with a reason saying the vision finding stands.  When
 the live vision model is unavailable, :func:`decide_degraded` holds every
 truck for a human and lists what the detector saw (or refuses, when a
 mandatory input is missing).
@@ -46,16 +66,28 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from lynceus import detector as cv_detector
 from lynceus.audit import Decision, GateState, Route
 from lynceus.config import DEFAULT_DETECTOR_HARD_CONF, DEFAULT_DETECTOR_LIGHT_CONF
+from lynceus.gas_ingest import LIVE_GAS_SOURCE
 
 __all__ = [
     "HARD_CONTAMINANTS",
     "LIGHT_CONTAMINANTS",
     "HARD_CONTAMINANT_CONFIDENCE",
     "UNSAFE_VLM_CONFIDENCE",
+    "WEIGHT_TOLERANCE",
     "WEIGHT_MISMATCH_THRESHOLD",
+    "WAYBILL_READ_MIN_CONFIDENCE",
+    "MOISTURE_DECLARED_MARGIN",
+    "ARITHMETIC_TOLERANCE",
     "DETECTOR_HARD_CONFIDENCE",
     "DETECTOR_LIGHT_CONFIDENCE",
+    "DECLARED_SORTED_MARKER",
+    "MOISTURE_CONFLICT_MARKER",
+    "ARITHMETIC_MARKER",
+    "DETECTOR_MISSED_MARKER",
     "confident_hard_contaminants",
+    "light_contaminant_hits",
+    "declares_processed_rdf",
+    "declared_moisture_fraction",
     "GAS_CH4_ANAEROBIC_THRESHOLD_PPM",
     "decide",
     "decide_degraded",
@@ -79,11 +111,33 @@ LIGHT_CONTAMINANTS = ("glass", "organic_residue", "wet_mix")
 HARD_CONTAMINANT_CONFIDENCE = 0.6
 #: VLM confidence below which the visual analysis is considered unsafe to act on.
 UNSAFE_VLM_CONFIDENCE = 0.3
-#: Allowed relative deviation between declared and actual weight (fraction).
-WEIGHT_MISMATCH_THRESHOLD = 0.10
-#: A waybill "dry" claim conflicts with a visibly wet load above this visual
-#: moisture estimate (fraction, wet basis).
+#: Allowed relative deviation between declared and weighed net weight
+#: (fraction).  Beyond it the ticket is corrected, never the load rejected.
+WEIGHT_TOLERANCE = 0.05
+#: Older name of :data:`WEIGHT_TOLERANCE`, kept for callers that import it.
+WEIGHT_MISMATCH_THRESHOLD = WEIGHT_TOLERANCE
+#: Waybill photo read confidence below which the operator checks the fields.
+WAYBILL_READ_MIN_CONFIDENCE = 0.6
+#: Typed waybill text: a "dry" claim (below this) conflicts with a visibly
+#: wet load at/above this visual moisture estimate (fraction, wet basis).
 MOISTURE_CONFLICT_MARGIN = 0.15
+#: Waybill moisture field: the load looks wetter than declared when the
+#: visual estimate is at/above declared + this margin (fraction points).
+MOISTURE_DECLARED_MARGIN = 0.15
+#: Waybill arithmetic: |gross - tare - net| above this fraction of net fails.
+ARITHMETIC_TOLERANCE = 0.01
+#: Markers in the ``manifest_crosscheck`` reason, read by
+#: :mod:`lynceus.actions` and :mod:`lynceus.checks` (one source of wording).
+DECLARED_SORTED_MARKER = "declares sorted RDF"
+MOISTURE_CONFLICT_MARKER = "Moisture conflict"
+ARITHMETIC_MARKER = "Waybill arithmetic"
+#: Marker in the ``detector_second_opinion`` reason when the detector did not
+#: flag a hard contaminant the vision model confidently found.
+DETECTOR_MISSED_MARKER = "Second look did not find it"
+#: Load-type / remarks wording that declares processed (sorted) RDF.
+_PROCESSED_RDF_RE = re.compile(
+    r"\b(?:rdf|srf|fluff)\b|pemilahan|hasil proses", re.IGNORECASE
+)
 #: CH4 concentration above which a load is strongly anaerobic / spoiling
 #: (ppmv above the bin).  Very high CH4 with a "dry" waybill claim means
 #: the load is far wetter and older than declared.
@@ -153,6 +207,52 @@ def _waybill_moisture_claim(text: str) -> Optional[float]:
     return None
 
 
+def _number(value: Any) -> Optional[float]:
+    """A waybill field as a number: ints/floats, or a plain numeric string."""
+    number = _as_float(value)
+    if number is not None or not isinstance(value, str):
+        return number
+    try:
+        return float(value.strip().rstrip("%").strip())
+    except ValueError:
+        return None
+
+
+def _waybill_fields(inputs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The operator-confirmed waybill field values (``inputs["waybill_fields"]``)."""
+    fields = (inputs or {}).get("waybill_fields")
+    return dict(fields) if isinstance(fields, dict) else {}
+
+
+def declares_processed_rdf(fields: Optional[Dict[str, Any]]) -> bool:
+    """True when the waybill's load type or remarks declare processed RDF
+    (RDF, SRF, fluff, "pemilahan" = sorting, "hasil proses" = processed)."""
+    fields = fields if isinstance(fields, dict) else {}
+    text = " ".join(str(fields.get(k) or "") for k in ("load_type", "remarks"))
+    return bool(_PROCESSED_RDF_RE.search(text))
+
+
+def declared_moisture_fraction(inputs: Optional[Dict[str, Any]]) -> Tuple[Optional[float], str]:
+    """``(fraction, origin)`` of the declared moisture: the waybill field
+    ``moisture_pct`` (origin ``"waybill"``), else the typed text's
+    "moisture ... N %" (origin ``"text"``), else ``(None, "")``."""
+    pct = _number(_waybill_fields(inputs).get("moisture_pct"))
+    if pct is not None and 0.0 <= pct <= 100.0:
+        return pct / 100.0, "waybill"
+    claim = _waybill_moisture_claim(str((inputs or {}).get("manifest_text") or ""))
+    return (claim, "text") if claim is not None else (None, "")
+
+
+def light_contaminant_hits(vlm_result: Optional[Dict[str, Any]]) -> List[str]:
+    """The light contaminants :func:`decide` escalates on, read from every
+    value of the VLM's ``detected`` block (whole words, deduplicated, sorted)."""
+    detected = (vlm_result or {}).get("detected") if isinstance(vlm_result, dict) else None
+    if not isinstance(detected, dict):
+        return []
+    text = " ".join(str(part) for part in detected.values()).lower()
+    return sorted(set(_find_terms(text, LIGHT_CONTAMINANTS)))
+
+
 def confident_hard_contaminants(
     inputs: Optional[Dict[str, Any]],
     vlm_result: Optional[Dict[str, Any]],
@@ -199,6 +299,9 @@ def _top_finding(
     )
     return (None, hard_conf) if best is None else best
 
+
+_NO_WAYBILL_PHOTO = "No waybill photo; fields typed by the operator."
+_NO_GAS_SENSOR = "No gas sensor at this gate."
 
 #: Appended to a failed detector gate's reason once the verdict is known.
 _DETECTOR_HELD = " The truck is held for a manual check."
@@ -271,7 +374,16 @@ def _detector_second_opinion(
             [f"{f}; hold for a manual check." for f in findings],
         )
     found = {**hard, **light}
-    if unconfirmed_light:  # escalate_light is off
+    missed = [name for name in confirmed_hard if name not in hard]
+    if missed:
+        # The detector is a second opinion, never a veto: a confident vision
+        # finding it did not see stands (it is trained on close-ups).
+        reason = (
+            f"{DETECTOR_MISSED_MARKER}; the vision finding stands (the detector is "
+            f"trained on close-ups, not truck beds). {DETECTOR_NAME} did not flag "
+            f"{', '.join(missed)}."
+        )
+    elif unconfirmed_light:  # escalate_light is off
         reason = (
             f"{DETECTOR_NAME} flagged {_findings_text(unconfirmed_light)} that the vision "
             "model did not report; light detector findings are set not to escalate."
@@ -464,11 +576,12 @@ def decide(
             "vlm_confidence": _not_run("VLM analysis could not be completed."),
             "ocr_confidence": _gate(
                 GateState.NOT_EVALUATED,
-                value=_as_float((llm_result or {}).get("confidence")),
-                reason="OCR confidence not evaluated: input incomplete.",
+                value=_as_float(inputs["waybill_read"].get("confidence")),
+                threshold=WAYBILL_READ_MIN_CONFIDENCE,
+                reason="Waybill read not evaluated: input incomplete.",
             )
-            if llm_result
-            else _not_run("No LLM output available."),
+            if isinstance(inputs.get("waybill_read"), dict)
+            else _not_run(_NO_WAYBILL_PHOTO),
             "manifest_crosscheck": _not_run("Cross-check not run: input incomplete."),
             "gas_plausibility": _not_run("Gas readings not part of this inspection."),
             "weight_plausibility": _not_run("Weight not evaluated: input incomplete."),
@@ -486,14 +599,15 @@ def decide(
         ]
         return Decision.REFUSE_INSUFFICIENT_INPUT, gates, reasons
 
-    # ----- Weight plausibility -------------------------------------------
+    # ----- Weight plausibility (a ticket problem, never a reject) ----------
+    fields = _waybill_fields(inputs)
     declared_weight_kg = _as_float(inputs.get("declared_weight_kg"))
+    if declared_weight_kg is None:
+        declared_weight_kg = _number(fields.get("net_kg"))
     actual_weight_kg = _as_float(inputs.get("weight_kg"))
-    weight_mismatch = _weight_mismatch_fraction(declared_weight_kg, actual_weight_kg)
 
-    # The waybill itself may state a declared weight when the caller did not
-    # supply one explicitly (e.g. "Declared weight: 18,400 kg", or the
-    # console's synthesized declaration "declared 18,400 kg").
+    # A typed waybill may state a declared weight when the caller did not
+    # supply one (e.g. "Declared weight: 18,400 kg").
     if declared_weight_kg is None and manifest_text:
         for match in re.finditer(
             r"declared(?:\s+weight)?[^0-9]{0,24}?([0-9][0-9,\.]*)\s*kg",
@@ -501,111 +615,181 @@ def decide(
             re.IGNORECASE,
         ):
             try:
-                declared_weight_kg = float(match.group(1).replace(",", ""))
+                candidate = float(match.group(1).replace(",", ""))
             except ValueError:
                 continue
-            if declared_weight_kg > 0:
-                weight_mismatch = _weight_mismatch_fraction(
-                    declared_weight_kg, actual_weight_kg
-                )
+            if candidate > 0:
+                declared_weight_kg = candidate
                 break
+    weight_mismatch = _weight_mismatch_fraction(declared_weight_kg, actual_weight_kg)
+    weight_off = weight_mismatch is not None and weight_mismatch > WEIGHT_TOLERANCE
 
-    if actual_weight_kg is not None:
-        weight_gate = _gate(
-            GateState.PASSED,
-            value=weight_mismatch,
-            threshold=WEIGHT_MISMATCH_THRESHOLD,
-            reason="Weighbridge weight is consistent with the declared weight.",
-        )
-        if weight_mismatch is None:
-            weight_gate["state"] = GateState.NOT_EVALUATED
-            weight_gate["reason"] = "No declared weight available for comparison."
-        elif weight_mismatch > WEIGHT_MISMATCH_THRESHOLD:
-            weight_gate["state"] = GateState.FAILED
-            weight_gate["reason"] = (
-                f"Weighbridge weight deviates {weight_mismatch:.1%} from the declared "
-                f"weight (threshold {WEIGHT_MISMATCH_THRESHOLD:.0%})."
-            )
-    else:
+    if actual_weight_kg is None:
         weight_gate = _not_run("No weighbridge weight supplied.")
+    elif weight_mismatch is None or declared_weight_kg is None:
+        weight_gate = _gate(
+            GateState.NOT_EVALUATED,
+            threshold=WEIGHT_TOLERANCE,
+            reason="No declared weight available for comparison.",
+        )
+    else:
+        signed = (actual_weight_kg - declared_weight_kg) / declared_weight_kg
+        weight_gate = _gate(
+            GateState.FAILED if weight_off else GateState.PASSED,
+            value=weight_mismatch,
+            threshold=WEIGHT_TOLERANCE,
+            reason=(
+                f"Weighbridge {actual_weight_kg:,.0f} kg is {signed:+.1%} from the declared "
+                f"{declared_weight_kg:,.0f} kg (tolerance {WEIGHT_TOLERANCE:.0%}): "
+                + (
+                    "ticket correction: re-weigh or correct the waybill."
+                    if weight_off
+                    else "within tolerance."
+                )
+            ),
+        )
 
-    # ----- VLM confidence gate -------------------------------------------
+    # ----- VLM confidence gate (an unreadable photo is retaken) -----------
     assert vlm_confidence is not None  # refused above, kept for type checkers
+    unreadable = vlm_confidence < UNSAFE_VLM_CONFIDENCE
     vlm_gate = _gate(
-        GateState.FAILED,
+        GateState.FAILED if unreadable else GateState.PASSED,
         value=vlm_confidence,
         threshold=UNSAFE_VLM_CONFIDENCE,
-        reason=f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
-        f"{UNSAFE_VLM_CONFIDENCE:.2f}.",
+        reason=(
+            f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
+            f"{UNSAFE_VLM_CONFIDENCE:.2f}: photo unreadable, retake it."
+            if unreadable
+            else f"VLM confidence {vlm_confidence:.2f} is within the safe range."
+        ),
     )
-    if vlm_confidence >= UNSAFE_VLM_CONFIDENCE:
-        vlm_gate["state"] = GateState.PASSED
-        vlm_gate["reason"] = (
-            f"VLM confidence {vlm_confidence:.2f} is within the safe range."
-        )
 
     # ----- Contamination scan (hard: shared helper; light: VLM detections) --
-    detected_text = " ".join(str(part) for part in vlm_detected.values()).lower()
-    light_hits = _find_terms(detected_text, LIGHT_CONTAMINANTS)
-
+    light_hits = light_contaminant_hits(vlm_result)
     confident_hard = confident_hard_contaminants(inputs, vlm_result, llm_result)
-    hard_confident = bool(confident_hard)
 
-    # ----- OCR / LLM confidence gate ---------------------------------------
-    llm_confidence = _as_float((llm_result or {}).get("confidence"))
-    if llm_confidence is None:
-        ocr_gate = _not_run("LLM manifest analysis did not run.")
+    # ----- Waybill read gate (the waybill photo read's own confidence) ------
+    waybill_read = inputs.get("waybill_read")
+    read_confidence: Optional[float] = None
+    read_uncertain = False
+    if not isinstance(waybill_read, dict):
+        ocr_gate = _not_run(_NO_WAYBILL_PHOTO)
     else:
-        ocr_gate = _gate(
-            GateState.PASSED,
-            value=llm_confidence,
-            reason=f"Manifest analysis confidence {llm_confidence:.2f}.",
-        )
+        read_confidence = _as_float(waybill_read.get("confidence"))
+        edited = [str(f) for f in waybill_read.get("edited_fields") or [] if str(f).strip()]
+        edited_note = f" Operator edited: {', '.join(edited)}." if edited else ""
+        if read_confidence is None:
+            ocr_gate = _gate(
+                GateState.NOT_EVALUATED,
+                threshold=WAYBILL_READ_MIN_CONFIDENCE,
+                reason="The waybill read carries no confidence." + edited_note,
+            )
+        else:
+            read_uncertain = read_confidence < WAYBILL_READ_MIN_CONFIDENCE
+            ocr_gate = _gate(
+                GateState.FAILED if read_uncertain else GateState.PASSED,
+                value=read_confidence,
+                threshold=WAYBILL_READ_MIN_CONFIDENCE,
+                reason=(
+                    f"Waybill read confidence {read_confidence:.2f} is below "
+                    f"{WAYBILL_READ_MIN_CONFIDENCE:.2f}: check the fields."
+                    if read_uncertain
+                    else f"Waybill read confidence {read_confidence:.2f}."
+                )
+                + edited_note,
+            )
 
-    # ----- Manifest cross-check -------------------------------------------
-    crosscheck_failed = bool((llm_result or {}).get("crosscheck_failed", False))
-
-    moisture_claim = _waybill_moisture_claim(manifest_text)
+    # ----- Declaration check ("Waybill vs load"), deterministic -----------
+    # The LLM's own crosscheck_failed no longer moves anything: its notes
+    # stay in the audit as a narrative.
+    declared_sorted = declares_processed_rdf(fields)
+    moisture_claim, moisture_origin = declared_moisture_fraction(inputs)
     visual_moisture = _as_float(vlm_detected.get("moisture"))
-    moisture_conflict = (
-        moisture_claim is not None
-        and visual_moisture is not None
-        and moisture_claim < MOISTURE_CONFLICT_MARGIN
-        and visual_moisture >= MOISTURE_CONFLICT_MARGIN
+    moisture_conflict: Optional[bool] = None  # None: nothing to compare
+    if moisture_claim is not None and visual_moisture is not None:
+        if moisture_origin == "waybill":
+            moisture_conflict = (
+                round(visual_moisture - moisture_claim, 6) >= MOISTURE_DECLARED_MARGIN
+            )
+        else:  # typed text: the original dry-claim rule
+            moisture_conflict = (
+                moisture_claim < MOISTURE_CONFLICT_MARGIN
+                and visual_moisture >= MOISTURE_CONFLICT_MARGIN
+            )
+    gross, tare, net = (_number(fields.get(k)) for k in ("gross_kg", "tare_kg", "net_kg"))
+    arithmetic_gap: Optional[float] = None
+    if gross is not None and tare is not None and net is not None and net > 0:
+        arithmetic_gap = abs(gross - tare - net)
+    arithmetic_off = arithmetic_gap is not None and net is not None and (
+        arithmetic_gap > ARITHMETIC_TOLERANCE * net
     )
 
-    cross_reasons: List[str] = []
-    if crosscheck_failed:
-        cross_reasons.append("The manifest cross-check failed on one or more fields.")
+    cross_failed: List[str] = []
+    cross_matched: List[str] = []
+    if declared_sorted:
+        declared_as = str(fields.get("load_type") or "").strip() or "per the remarks"
+        if confident_hard:
+            cross_failed.append(
+                f"Waybill {DECLARED_SORTED_MARKER} ({declared_as}); the camera sees "
+                f"{', '.join(confident_hard)}."
+            )
+        else:
+            cross_matched.append(f"declared sorted RDF ({declared_as}), no hard contaminant seen")
     if moisture_conflict:
-        cross_reasons.append(
-            "Moisture conflict: the waybill declares a dry load "
+        assert moisture_claim is not None and visual_moisture is not None
+        cross_failed.append(
+            f"{MOISTURE_CONFLICT_MARKER}: the waybill declares {moisture_claim:.0%} moisture "
+            f"but the load looks like {visual_moisture:.0%}."
+            if moisture_origin == "waybill"
+            else f"{MOISTURE_CONFLICT_MARKER}: the waybill declares a dry load "
             f"(<{MOISTURE_CONFLICT_MARGIN:.0%}) but the visual analysis estimates "
             f"{visual_moisture:.0%} moisture."
         )
-    manifest_gate = _gate(
-        GateState.FAILED if cross_reasons else GateState.PASSED,
-        reason="; ".join(cross_reasons) if cross_reasons else "Manifest cross-check passed.",
-    )
+    elif moisture_conflict is False:
+        assert moisture_claim is not None and visual_moisture is not None
+        cross_matched.append(
+            f"declared moisture {moisture_claim:.0%}, the load looks like {visual_moisture:.0%}"
+        )
+    if arithmetic_off:
+        assert gross is not None and tare is not None and net is not None
+        cross_failed.append(
+            f"{ARITHMETIC_MARKER}: gross {gross:,.0f} - tare {tare:,.0f} = "
+            f"{gross - tare:,.0f} kg, but the waybill net says {net:,.0f} kg."
+        )
+    elif arithmetic_gap is not None:
+        cross_matched.append("gross - tare = net")
 
-    # ----- Gas plausibility (digital twin, supporting evidence only) -----
-    # The gas channel is a *supporting* gate: it corroborates or
-    # contradicts the waybill's moisture / age claims but never overrides
-    # the VLM-driven verdict.  Its absence stays honest: not_run.
+    if cross_failed:
+        manifest_gate = _gate(GateState.FAILED, reason=" ".join(cross_failed))
+    elif cross_matched:
+        manifest_gate = _gate(
+            GateState.PASSED,
+            reason="Waybill declarations match the load: " + "; ".join(cross_matched) + ".",
+        )
+    else:
+        manifest_gate = _gate(
+            GateState.NOT_EVALUATED,
+            reason="Nothing declared on the waybill to compare with the load "
+            "(no load type, moisture or weight breakdown).",
+        )
+
+    # ----- Gas plausibility (a live gate sensor only, supporting) ----------
+    # The gas channel corroborates or contradicts the waybill's moisture /
+    # age claims but never overrides the verdict.  Only a live sensor's
+    # measurement counts: a simulated reading is no evidence about this load.
     gas_input = inputs.get("gas")
-    if isinstance(gas_input, dict):
-        gas_input = dict(gas_input)
-    readings = gas_input.get("readings_ppm") if gas_input else None
-    if not isinstance(readings, dict) or not readings:
-        gas_gate = _not_run("Gas readings are not part of this inspection stage.")
+    gas_input = dict(gas_input) if isinstance(gas_input, dict) else {}
+    readings = gas_input.get("readings_ppm")
+    if gas_input.get("source") != LIVE_GAS_SOURCE or not isinstance(readings, dict) or not readings:
+        gas_gate = _not_run(_NO_GAS_SENSOR)
     else:
         ch4_ppm = _as_float(readings.get("ch4"))
         if ch4_ppm is None:
-            gas_gate = _not_run("No CH4 reading in the gas twin output.")
+            gas_gate = _not_run("No CH4 reading from the gate gas sensor.")
         elif ch4_ppm > GAS_CH4_ANAEROBIC_THRESHOLD_PPM:
             # High CH4 means a strongly anaerobic, spoiling load.  It only
             # contradicts the waybill when the load is claimed dry (the
-            # same <15 % boundary the visual moisture conflict uses); a
+            # same <15 % boundary the typed-text moisture conflict uses); a
             # declared or supplied wet mix explains the reading.
             claimed_moisture = _waybill_moisture_claim(manifest_text)
             supplied_moisture = _as_float(inputs.get("moisture"))
@@ -662,21 +846,17 @@ def decide(
     }
 
     # ----- Verdict fusion (priority: refuse > reject > escalate > accept) --
-    if hard_confident:
+    # Only a confident hard contaminant rejects.
+    if confident_hard:
         reasons.append(
             f"Hard contamination detected in the load: {', '.join(confident_hard)} "
             f"(VLM confidence {vlm_confidence:.2f})."
         )
-    if weight_mismatch is not None and weight_mismatch > WEIGHT_MISMATCH_THRESHOLD:
-        reasons.append(
-            f"Weight mismatch: weighbridge reads {actual_weight_kg:,.0f} kg against a "
-            f"declared {declared_weight_kg:,.0f} kg ({weight_mismatch:.1%} deviation)."
-        )
-    if vlm_confidence is not None and vlm_confidence < UNSAFE_VLM_CONFIDENCE:
-        reasons.append(
-            f"VLM confidence {vlm_confidence:.2f} is below the safe minimum of "
-            f"{UNSAFE_VLM_CONFIDENCE:.2f} — the visual analysis is unsafe to act on."
-        )
+        if declared_sorted:
+            reasons.append(
+                "Contract breach: the waybill declares sorted RDF but the load carries "
+                f"{', '.join(confident_hard)}; issue a supplier notice."
+            )
 
     # A fallback vision model with no benchmark run behind it may hold a
     # load, never decide one: its would-be accept or reject is escalated.
@@ -691,7 +871,7 @@ def decide(
         else None
     )
 
-    if reasons:  # any hard red flag → reject
+    if reasons:  # a confident hard contaminant → reject
         if unbenchmarked:
             if detector_reasons:
                 detector_gate["reason"] += _DETECTOR_HELD
@@ -704,21 +884,41 @@ def decide(
             detector_gate["reason"] += _DETECTOR_OUTRANKED
         return Decision.REJECT, gates, reasons
 
-    # Amber flags → escalate
+    # Amber flags → escalate (a person looks; never a reject)
     escalate_reasons: List[str] = []
-    if light_hits:
+    if unreadable:
         escalate_reasons.append(
-            f"Light or ambiguous contamination detected: {', '.join(sorted(set(light_hits)))}."
+            f"Photo unreadable: VLM confidence {vlm_confidence:.2f} is below the safe "
+            f"minimum of {UNSAFE_VLM_CONFIDENCE:.2f}; retake the photo."
+        )
+    if weight_off:
+        assert declared_weight_kg is not None and actual_weight_kg is not None
+        escalate_reasons.append(
+            f"Ticket correction: the weighbridge reads {actual_weight_kg:,.0f} kg against a "
+            f"declared {declared_weight_kg:,.0f} kg "
+            f"({(actual_weight_kg - declared_weight_kg) / declared_weight_kg:+.1%}, tolerance "
+            f"{WEIGHT_TOLERANCE:.0%}); re-weigh or correct the waybill."
+        )
+    if read_uncertain:
+        assert read_confidence is not None
+        escalate_reasons.append(
+            f"Waybill read uncertain (confidence {read_confidence:.2f}): check the fields."
         )
     if moisture_conflict:
+        assert moisture_claim is not None
         escalate_reasons.append(
-            "The visual moisture estimate conflicts with the waybill's dry claim."
+            f"Load looks wetter than the declared {moisture_claim:.0%}: take a grab sample."
+            if moisture_origin == "waybill"
+            else "The visual moisture estimate conflicts with the waybill's dry claim."
         )
-    if crosscheck_failed and not (
-        weight_mismatch is not None and weight_mismatch > WEIGHT_MISMATCH_THRESHOLD
-    ):
+    if arithmetic_off:
         escalate_reasons.append(
-            "The manifest cross-check failed, but not on a major weight mismatch."
+            "Waybill arithmetic does not add up (gross - tare differs from net by more "
+            f"than {ARITHMETIC_TOLERANCE:.0%}): correct the ticket."
+        )
+    if light_hits:
+        escalate_reasons.append(
+            f"Light or ambiguous contamination detected: {', '.join(light_hits)}."
         )
     # The detector's unconfirmed findings: never a reject, never an accept.
     escalate_reasons.extend(detector_reasons)

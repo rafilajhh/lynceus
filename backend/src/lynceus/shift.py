@@ -26,18 +26,22 @@ Rules (spec §4.5, plan Task 9):
   supplier (all v1 records) is ``"unknown"``.
 * ``sample`` is true only when every counted record came from scripted data
   (photo provenance green / amber / red / sample).
+* ``improvement`` (:func:`improvement`) is what the UI leads with: measured
+  from the same records plus their sealed follow-ups (passed in, never read
+  here), every assumption labelled in its ``notes``.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 import statistics
 import time
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Sequence
 
-from lynceus import audit, impact
+from lynceus import audit, contracts, followups, impact
 from lynceus.decision import LIGHT_CONTAMINANTS
 
 __all__ = [
@@ -46,6 +50,7 @@ __all__ = [
     "SAMPLE_PROVENANCES",
     "FAILURE_RETRY_S",
     "build_report",
+    "improvement",
     "risk_score",
     "explain_supplier",
     "needs_model",
@@ -123,8 +128,12 @@ def build_report(
     records: Iterable[audit.AuditRecord],
     since: str | None,
     until: str | None,
+    followups_by_record: Mapping[str, Sequence[dict]] | None = None,
 ) -> dict:
     """Aggregate completed inspections whose ``started_at_utc`` is in the window.
+
+    ``followups_by_record`` maps a record id to its sealed follow-ups
+    (:func:`lynceus.followups.load_many`); they feed the ``improvement`` block.
 
     Raises ``ValueError`` for a ``since``/``until`` that is not ISO 8601 UTC
     with a trailing ``Z``, or when ``since`` is after ``until``.
@@ -224,6 +233,92 @@ def build_report(
         "suppliers": supplier_rows,
         "sample": trucks > 0 and sample_records == trucks,
         "sample_records": sample_records,
+        "improvement": improvement(
+            [record for _, record in kept], followups_by_record, durations
+        ),
+    }
+
+
+def _p95(values: list[float]) -> float | None:
+    """Nearest-rank 95th percentile."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    return float(ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)])
+
+
+def improvement(
+    records: Sequence[audit.AuditRecord],
+    followups_by_record: Mapping[str, Sequence[dict]] | None,
+    durations: Sequence[float],
+) -> dict:
+    """What the gate measurably changed this shift, from records + follow-ups.
+
+    * ``hand_checks_avoided``: ACCEPT verdicts with no supervisor resolution;
+      ``staff_minutes_freed`` multiplies them by the value model's assumed
+      manual check time (``impact.MANUAL_CHECK_MINUTES_BASE``).
+    * Decision time is ``started_at_utc`` to ``finished_at_utc`` of each
+      record (the same durations as ``median_seconds_per_truck``): what the
+      operator waits for, AI and sealing included.
+    * ``hazardous_loads_stopped``: REJECTs naming a hard contaminant;
+      ``exposure_if_tipped_idr``: the worst-case exposure of those a
+      supervisor accepted anyway (resolution ``accept``, not sorted).
+    * Review, lab and contract figures come from the sealed follow-ups
+      (:func:`lynceus.followups.ledger_row`), contract terms from the example
+      contract.
+    """
+    chains = followups_by_record or {}
+    rows = [followups.ledger_row(r, list(chains.get(r.record_id, ()))) for r in records]
+    by_id = {r.record_id: r for r in records}
+    minutes = impact.MANUAL_CHECK_MINUTES_BASE
+    avoided = sum(1 for r in rows if r["decision"] == audit.Decision.ACCEPT and not r["reviewed"])
+    exposure = 0
+    for row in rows:
+        if row["hard_contaminant_load"] and (row["resolution"] or {}).get("decision") == "accept":
+            record = by_id[row["record_id"]]
+            exposure += round(impact.estimate_prevented_loss(
+                audit.Decision.REJECT,
+                {"detected": record.ai_outputs.vlm.detected},
+                record.inputs.weight.value_kg,
+            )["prevented_loss_idr"])
+    notes = [
+        f"Manual check time is an assumption ({minutes:g} min per truck, the "
+        "value model's manual_check_minutes; no published duration was found, "
+        "docs/research/token-factory-probe.md); staff minutes freed = trucks "
+        "cleared without a hand check x that time, before the photo and "
+        "waybill capture time.",
+        "Decision time is measured from record start to seal (started_at_utc to "
+        "finished_at_utc): what the operator waits for.",
+        "Deductions and breach fees use the example supply contract: terms are "
+        f"set per contract ({contracts.DEFAULT_CONTRACT['sop_ref']}).",
+    ]
+    if followups_by_record is None:
+        notes.append("Follow-ups were not loaded: review, lab and contract figures are 0.")
+    return {
+        "trucks": len(rows),
+        "auto_cleared": sum(1 for r in rows if r["decision"] == audit.Decision.ACCEPT),
+        "held": sum(1 for r in rows if r["decision"] == audit.Decision.ESCALATE_HUMAN),
+        "rejected": sum(1 for r in rows if r["decision"] == audit.Decision.REJECT),
+        "refused": sum(
+            1 for r in rows if r["decision"] == audit.Decision.REFUSE_INSUFFICIENT_INPUT
+        ),
+        "hand_checks_avoided": avoided,
+        "manual_check_minutes_assumed": minutes,
+        "staff_minutes_freed": round(avoided * minutes, 1),
+        "median_decision_s": float(statistics.median(durations)) if durations else None,
+        "p95_decision_s": _p95(list(durations)),
+        "hazardous_loads_stopped": sum(1 for r in rows if r["hard_contaminant_load"]),
+        "declaration_conflicts": sum(1 for r in rows if r["declaration_conflict"]),
+        "supervisor_reviews": sum(1 for r in rows if r["reviewed"]),
+        "ai_confirmed": sum(1 for r in rows if r["confirmed"]),
+        "ai_overridden": sum(1 for r in rows if r["overridden"]),
+        "lab_samples": sum(len(r["labs"]) for r in rows),
+        "spec_breaches": sum(r["spec_breach_samples"] for r in rows),
+        "deductions_idr": sum(r["deductions_idr"] for r in rows),
+        "breach_fees_idr": sum(r["breach_fee_idr"] for r in rows),
+        "notices": sum(r["notices"] for r in rows),
+        "exposure_if_tipped_idr": exposure,
+        "notes": notes,
     }
 
 

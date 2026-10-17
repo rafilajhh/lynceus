@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { providerName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -11,6 +12,7 @@ import {
   type BenchmarkSummary,
   type Confusion,
   type HybridSummary,
+  type ReplaySummary,
 } from "@/lib/validation-api";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHead } from "@/components/ui/panel";
@@ -31,11 +33,21 @@ type LoadState =
 type Label = (typeof LABELS)[number];
 
 const DATASET_URL = "https://archive.ics.uci.edu/dataset/908/realwaste";
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Gate outcome names, as the gate operator sees them. */
 const COLUMN_LABEL: Record<(typeof COLUMNS)[number], string> = {
   reject: "Reject",
-  escalate: "Escalate",
+  escalate: "Hold",
   accept: "Accept",
   error: "Error",
+};
+
+/** What each expected row holds, in the gate's words. */
+const ROW_LABEL: Record<Label, string> = {
+  reject: "Metal (should reject)",
+  escalate: "Glass, food, vegetation (should hold)",
+  accept: "Clean RDF (should accept)",
 };
 
 /** Expected verdict per RealWaste class (mirrors backend/benchmark/manifest.csv). */
@@ -58,7 +70,11 @@ function ratio(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
 }
 
-/** 95% Wilson score interval for k of n, as "0.76 to 0.99"; "—" when n is 0. */
+function pct(k: number, n: number): string {
+  return n > 0 ? `${Math.round((k / n) * 100)} %` : "—";
+}
+
+/** 95% Wilson score interval for k of n, as "0.22 to 0.61"; "—" when n is 0. */
 function wilson(k: number, n: number): string {
   if (n <= 0) return "—";
   const z = 1.96;
@@ -72,6 +88,23 @@ function wilson(k: number, n: number): string {
 function seconds(ms: number | null | undefined): string {
   return typeof ms === "number" && Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)} s` : "—";
 }
+
+/** "2026-10-17.deepseek-vision-exp" → "17 Oct 2026"; a run id without a date stays as is. */
+function runDate(run: string | null | undefined): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(run ?? "");
+  if (!m) return run ?? null;
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+}
+
+/** Backend sentences may start lower-case or end without a stop: tidy, never reword. */
+function sentence(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  const head = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(head) ? head : `${head}.`;
+}
+
+const rowTotal = (row: Confusion["reject"]) => row.reject + row.escalate + row.accept + row.error;
 
 export function ValidationView() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -97,15 +130,15 @@ export function ValidationView() {
   }, [load]);
 
   if (state.kind === "loading") {
+    const bar = "rounded-[4px] bg-raised animate-[gate-pulse_1.1s_ease-in-out_infinite]";
     return (
-      <Panel>
+      <Panel role="status">
         <PanelHead title="Validation" />
-        <div role="status" className="flex flex-col items-center gap-3 px-4 py-12 text-center">
-          <span
-            aria-hidden="true"
-            className="h-6 w-6 animate-spin rounded-full border-2 border-seam border-t-amber"
-          />
-          <p className="text-[13px] text-muted">Loading the benchmark summary.</p>
+        <span className="sr-only">Loading the benchmark summary</span>
+        <div aria-hidden="true" className="flex flex-col gap-3 px-5 py-6">
+          <div className={cn(bar, "h-4 w-[60%]")} />
+          <div className={cn(bar, "h-14 w-[40%]")} />
+          <div className={cn(bar, "h-5 w-[70%]")} />
         </div>
       </Panel>
     );
@@ -117,7 +150,9 @@ export function ValidationView() {
         <PanelHead title="Validation" />
         <div role="alert" className="flex flex-col items-center gap-3 px-4 py-12 text-center">
           <p className="max-w-[52ch] text-[13.5px] text-muted">
-            {state.missing ? state.message : `The benchmark could not be loaded. ${state.message}`}
+            {state.missing
+              ? `${state.message} Run the benchmark (backend/benchmark/README) and commit its summary to show it here.`
+              : `The benchmark could not be loaded. ${state.message}`}
           </p>
           {state.missing ? null : (
             <Button variant="default" size="sm" onClick={() => void load()}>
@@ -132,185 +167,243 @@ export function ValidationView() {
   const { summary } = state;
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="sr-only">Validation benchmark</h1>
-      {summary.hybrid ? <ShippedGatePanel hybrid={summary.hybrid} /> : null}
-      <Panel aria-labelledby="validation-title">
-        <PanelHead
-          title="Vision model alone (live run)"
-          meta={
-            summary.complete
-              ? summary.date ?? undefined
-              : `partial · ${summary.n}/${summary.manifest_n}`
-          }
-        />
-        <h2 id="validation-title" className="sr-only">
-          Vision model alone (live run)
-        </h2>
-        <HeadlineRun summary={summary} />
-        <p className="m-0 border-t border-seam px-4 py-2.5 text-[13px] text-muted">
-          {summary.framing}. Live on AMD Token Factory, {summary.date ?? "—"}.
-        </p>
-        {summary.replay ? <ReplayTable summary={summary} replay={summary.replay} /> : null}
-        <details className="group border-t border-seam px-4 py-3">
-          <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
-            Method, data &amp; per-category detail
-          </summary>
-          <MethodDetail summary={summary} />
-        </details>
-      </Panel>
+      {summary.hybrid ? (
+        <ShippedGatePanel hybrid={summary.hybrid} summary={summary} />
+      ) : (
+        <h1 className="sr-only">Validation benchmark</h1>
+      )}
+      <VisionOnlyPanel summary={summary} demoted={summary.hybrid !== null && summary.hybrid !== undefined} />
     </div>
   );
 }
 
 /**
  * The shipped gate: the vision model's recorded live outputs fused with the
- * CPU detector (light detections escalate). Leads with the safety number,
- * metal accepted; non-rejected metal is held for an operator, not passed.
+ * CPU detector (light detections hold the truck). Leads with the safety
+ * outcome, metal let through, in counts an operator can check.
  */
-function ShippedGatePanel({ hybrid }: { hybrid: HybridSummary }) {
-  const t = hybrid.table.hybrid_light_escalation_on;
+function ShippedGatePanel({ hybrid, summary }: { hybrid: HybridSummary; summary: BenchmarkSummary }) {
   const v = hybrid.variants.hybrid_light_escalation_on;
+  const t = hybrid.table.hybrid_light_escalation_on;
   const metal = v.confusion.reject;
-  const metalN = metal.reject + metal.escalate + metal.accept + metal.error;
-  const ops = operatorCounts(v.confusion);
-  const accepted = t.metal_accepted ?? metal.accept;
+  const holdRow = v.confusion.escalate;
+  const clean = v.confusion.accept;
+  const metalN = rowTotal(metal);
+  const holdN = rowTotal(holdRow);
+  const cleanN = rowTotal(clean);
+  const letThrough = t.metal_accepted ?? metal.accept;
+  const sentToPerson = LABELS.reduce((sum, row) => sum + v.confusion[row].escalate, 0);
+  const allHeld = holdN > 0 && holdRow.escalate === holdN;
   const detector = hybrid.detector;
-  const figures: { key: string; value: string; of: string | null; label: string; tone?: string }[] = [
-    {
-      key: "accepted",
-      value: String(accepted),
-      of: `/ ${metalN}`,
-      label: "metal photos accepted",
-      tone: accepted === 0 ? "text-verdict-green" : "text-verdict-red",
-    },
-    { key: "rejected", value: String(metal.reject), of: `/ ${metalN}`, label: "metal rejected outright" },
-    { key: "held", value: String(metal.escalate), of: `/ ${metalN}`, label: "metal held for an operator" },
-    { key: "clean", value: String(ops.cleanPassed), of: `/ ${ops.cleanN}`, label: "clean loads passed" },
-    { key: "review", value: String(ops.escalated), of: `/ ${ops.graded}`, label: "trucks sent to an operator" },
-    { key: "accuracy", value: ratio(t.gate_accuracy), of: v.gate_correct ? `(${v.gate_correct})` : null, label: "gate accuracy" },
-  ];
+  const scope = hybrid.scope ?? summary.framing;
+
+  const headline = [
+    `${letThrough} of ${metalN} metal photos let through`,
+    `${clean.accept} of ${cleanN} clean loads passed`,
+    allHeld
+      ? "every glass and organic load held"
+      : `${holdRow.escalate} of ${holdN} glass and organic loads held`,
+  ].join(" · ");
+
   return (
     <Panel aria-labelledby="shipped-gate-title">
-      <PanelHead title="Shipped gate" meta={hybrid.source_run ?? "replay"} />
-      <div className="px-4 pt-4 pb-3">
-        <h2 id="shipped-gate-title" className="m-0 text-[15px] font-semibold text-ink">
-          Shipped gate: vision model + CPU detector (replay)
-        </h2>
-        <dl className="m-0 mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-          {figures.map((f) => (
-            <div key={f.key} className="flex min-w-0 flex-col gap-1">
-              <dd className="m-0 flex items-baseline gap-1.5 whitespace-nowrap">
-                <span
-                  className={cn(
-                    "figure text-[clamp(24px,3vw,34px)] leading-tight font-semibold text-ink",
-                    f.tone,
-                  )}
-                >
-                  {f.value}
-                </span>
-                {f.of ? <span className="figure text-[13px] text-faint">{f.of}</span> : null}
-              </dd>
-              <dt className="text-[13px] leading-snug font-semibold text-ink">{f.label}</dt>
-            </div>
-          ))}
-        </dl>
-        <p className="m-0 mt-4 text-[14px] font-medium text-ink">
-          {accepted === 0
-            ? `No metal photo passed the gate: ${metal.reject} of ${metalN} were rejected outright and ${metal.escalate} held for an operator.`
-            : `${accepted} of ${metalN} metal photos passed the gate unchecked; ${metal.reject} were rejected and ${metal.escalate} held for an operator.`}
-        </p>
-        <p className="figure m-0 mt-2 text-[12px] break-words text-faint">
-          graded {v.graded}/{v.n} · errors {v.errors}
-          {hybrid.vlm_model ? ` · ${hybrid.vlm_model}` : ""}
-          {detector?.model ? ` + ${detector.model}` : ""}
-          {detector?.runtime ? ` (${detector.runtime})` : ""}
+      <PanelHead title="Validation · shipped gate" meta={runDate(hybrid.source_run) ?? "replay"} />
+      <p className="m-0 flex items-start gap-2 border-b border-seam px-5 py-2.5 text-[13px] leading-snug text-muted">
+        <span aria-hidden="true" className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-dot-idle" />
+        <span>
+          {sentence(scope)} {v.graded} photos with known contents, re-scored offline from a live
+          AMD run.
+        </span>
+      </p>
+
+      <div className="px-5 pt-5 pb-5">
+        <h1 id="shipped-gate-title" className="m-0 max-w-[62ch] text-[19px] leading-[1.4] font-semibold text-balance text-ink sm:text-[21px]">
+          {headline}
+        </h1>
+        <p className="m-0 mt-2 max-w-[70ch] text-[13.5px] leading-relaxed text-muted">
+          The gate that ships pairs the vision model with a CPU detector: when either one sees a
+          hard or doubtful item the truck is held for a person, so no metal photo was waved through.
         </p>
       </div>
-      <details className="group border-t border-seam px-4 py-3">
-        <summary className="cursor-pointer select-none text-[13px] font-semibold text-ink transition-colors hover:text-amber">
+
+      <div className="grid border-t border-seam lg:grid-cols-[1.25fr_1fr_1fr]">
+        <Outcome
+          lead
+          value={String(letThrough)}
+          of={metalN}
+          label="metal photos let through"
+          detail={`${metal.reject} rejected outright, ${metal.escalate} held for an operator`}
+          tone={letThrough > 0 ? "text-verdict-red" : "text-ink"}
+        />
+        <Outcome
+          value={String(clean.accept)}
+          of={cleanN}
+          label="clean loads passed"
+          detail={`${clean.escalate} held for a look, ${clean.reject} rejected by mistake`}
+        />
+        <Outcome
+          value={String(holdRow.escalate)}
+          of={holdN}
+          label="glass and organic loads held"
+          detail={`${holdRow.accept} passed, ${holdRow.reject} rejected`}
+        />
+      </div>
+
+      <p className="m-0 border-t border-seam px-5 py-3 text-[13px] leading-relaxed text-muted">
+        The cost of that caution:{" "}
+        <span className="figure font-semibold text-ink">
+          {sentToPerson} of {v.graded}
+        </span>{" "}
+        photos ({pct(sentToPerson, v.graded)}) go to a person, and{" "}
+        <span className="figure font-semibold text-ink">{v.gate_correct ?? ratio(t.gate_accuracy)}</span>{" "}
+        get the expected outcome.
+      </p>
+      <p className="figure m-0 border-t border-seam px-5 py-2.5 text-[12px] break-words text-faint">
+        Graded {v.graded} of {v.n} · {v.errors} {v.errors === 1 ? "error" : "errors"}
+        {hybrid.vlm_model ? ` · ${hybrid.vlm_model}` : ""}
+        {detector?.model ? ` + ${detector.model}` : ""}
+        {detector?.runtime ? ` (${detector.runtime})` : ""}
+      </p>
+
+      <details className="group border-t border-seam px-5 py-3">
+        <summary className="cursor-pointer text-[13px] font-semibold text-ink transition-colors duration-100 select-none hover:text-amber">
           What this replay is, and is not
         </summary>
-        <div className="flex flex-col gap-2 pt-2 text-[12px] leading-relaxed text-muted">
-          {hybrid.framing ? <p className="m-0">{hybrid.framing}</p> : null}
-          {hybrid.disclosure ? <p className="m-0">{hybrid.disclosure}</p> : null}
-          {hybrid.llm_note ? <p className="m-0">{hybrid.llm_note}</p> : null}
+        <div className="flex max-w-[80ch] flex-col gap-2 pt-2 text-[12.5px] leading-relaxed text-muted">
+          {hybrid.framing ? <p className="m-0">{sentence(hybrid.framing)}</p> : null}
+          {hybrid.disclosure ? <p className="m-0">{sentence(hybrid.disclosure)}</p> : null}
+          {hybrid.llm_note ? <p className="m-0">{sentence(hybrid.llm_note)}</p> : null}
         </div>
       </details>
     </Panel>
   );
 }
 
-/** Headline: the vision model alone on the live run, in numbers and in words. */
-function HeadlineRun({ summary }: { summary: BenchmarkSummary }) {
-  const r = summary.reject;
-  const caught = `${r.tp} of ${r.tp + r.fn}`;
-  const precisionNote = `${r.tp} of ${r.tp + r.fp} rejects were metal`;
-  const parts = [
-    {
-      key: "recall",
-      value: ratio(r.recall),
-      label: "recall",
-      sub: `${caught} metal images rejected`,
-    },
-    {
-      key: "precision",
-      value: ratio(r.precision),
-      label: "precision",
-      sub: precisionNote,
-    },
-    { key: "f1", value: ratio(r.f1), label: "F1", sub: null as string | null },
-  ];
+function Outcome({
+  value,
+  of,
+  label,
+  detail,
+  tone = "text-ink",
+  lead = false,
+}: {
+  value: string;
+  of: number;
+  label: string;
+  detail: string;
+  tone?: string;
+  lead?: boolean;
+}) {
   return (
-    <div className="px-4 pt-4 pb-3">
-      <dl className="m-0 grid grid-cols-3 gap-x-6">
-        {parts.map((part) => (
-          <div key={part.key} className="flex flex-col gap-1">
-            <dd className="figure m-0 whitespace-nowrap text-[clamp(24px,3vw,34px)] leading-tight font-semibold text-ink">
-              {part.value}
-            </dd>
-            <dt className="text-[14px] font-semibold text-ink">{part.label}</dt>
-            {part.sub ? (
-              <p className="m-0 text-[12px] leading-snug text-muted">{part.sub}</p>
-            ) : null}
-          </div>
-        ))}
-      </dl>
-      <p className="m-0 mt-3 text-[14px] font-medium text-ink">
-        {`Out of every ${r.tp + r.fn} loads carrying metal, the vision model alone rejected ${r.tp}.`}
+    <div className="flex flex-col gap-1.5 border-b border-seam px-5 py-4 last:border-b-0 lg:border-b-0 lg:border-l lg:first:border-l-0">
+      <p className="m-0 flex items-baseline gap-1.5 whitespace-nowrap">
+        <span
+          className={cn(
+            "figure leading-none font-semibold tracking-[-0.02em]",
+            lead ? "text-[clamp(40px,5vw,56px)]" : "text-[clamp(30px,3.4vw,38px)]",
+            tone,
+          )}
+        >
+          {value}
+        </span>
+        <span className="figure text-[15px] text-faint">/ {of}</span>
       </p>
-      <p className="figure m-0 mt-2 text-[12px] text-faint">
-        n = {summary.n} · one run · 95% interval {wilson(r.tp, r.tp + r.fn)}
-      </p>
+      <p className="m-0 text-[14px] font-semibold text-ink">{label}</p>
+      <p className="m-0 text-[12.5px] leading-snug text-muted">{detail}</p>
     </div>
   );
 }
 
-/** Live vs current rules, inline in the same panel. */
-function ReplayTable({
-  summary,
-  replay,
-}: {
-  summary: BenchmarkSummary;
-  replay: import("@/lib/validation-api").ReplaySummary;
-}) {
+/** The vision model on its own, the live run: what the detector is there to fix. */
+function VisionOnlyPanel({ summary, demoted }: { summary: BenchmarkSummary; demoted: boolean }) {
+  const r = summary.reject;
+  const metalN = r.tp + r.fn;
+  const live = summary.confusion;
+  const passed = live.reject.accept;
+  const date = runDate(summary.date);
+  return (
+    <Panel aria-labelledby="vlm-only-title">
+      <PanelHead
+        title="Vision model alone · live run"
+        meta={summary.complete ? (date ?? undefined) : `partial · ${summary.n} of ${summary.manifest_n}`}
+      />
+      <div className="px-5 pt-4 pb-4">
+        {demoted ? (
+          <h2 id="vlm-only-title" className="m-0 text-[15px] font-semibold text-ink">
+            On its own, the vision model rejected {r.tp} of {metalN} metal photos and passed {passed}.
+          </h2>
+        ) : (
+          <h1 id="vlm-only-title" className="m-0 text-[19px] font-semibold text-ink">
+            On its own, the vision model rejected {r.tp} of {metalN} metal photos and passed {passed}.
+          </h1>
+        )}
+        <p className="m-0 mt-1.5 max-w-[72ch] text-[13.5px] leading-relaxed text-muted">
+          Every one of its {r.tp + r.fp} rejects was metal (no false alarm), but it missed the
+          rest: the reason the shipped gate adds a second look. Live on{" "}
+          {summary.provider ? providerName(summary.provider) : "the model provider"}
+          {date ? `, ${date}` : ""}.
+        </p>
+        <dl className="m-0 mt-4 grid max-w-[560px] grid-cols-3 gap-px overflow-hidden rounded-[10px] border border-seam bg-seam">
+          {[
+            { key: "recall", label: "Metal recall", value: ratio(r.recall), sub: `${r.tp} of ${metalN}` },
+            { key: "precision", label: "Precision", value: ratio(r.precision), sub: `${r.tp} of ${r.tp + r.fp}` },
+            { key: "f1", label: "F1", value: ratio(r.f1), sub: `n = ${summary.n}` },
+          ].map((m) => (
+            <div key={m.key} className="flex flex-col gap-0.5 bg-panel px-3.5 py-3">
+              <dt className="text-[12px] font-semibold text-muted">{m.label}</dt>
+              <dd className="figure m-0 text-[22px] leading-tight font-semibold text-ink">{m.value}</dd>
+              <span className="figure text-[11.5px] text-faint">{m.sub}</span>
+            </div>
+          ))}
+        </dl>
+        <p className="figure m-0 mt-2 text-[12px] text-faint">
+          One run · 95 % interval for recall {wilson(r.tp, metalN)}
+        </p>
+      </div>
+      {summary.replay ? <ReplayNote summary={summary} replay={summary.replay} /> : null}
+      <details className="group border-t border-seam px-5 py-3">
+        <summary className="cursor-pointer text-[13px] font-semibold text-ink transition-colors duration-100 select-none hover:text-amber">
+          Method, data and per-category detail
+        </summary>
+        <MethodDetail summary={summary} />
+      </details>
+    </Panel>
+  );
+}
+
+function sameConfusion(a: Confusion, b: Confusion): boolean {
+  return LABELS.every((row) => COLUMNS.every((col) => a[row][col] === b[row][col]));
+}
+
+/**
+ * Live run vs the same outputs re-scored under today's rules. Identical
+ * columns say nothing twice: one sentence states the result instead.
+ */
+function ReplayNote({ summary, replay }: { summary: BenchmarkSummary; replay: ReplaySummary }) {
+  if (sameConfusion(summary.confusion, replay.confusion)) {
+    return (
+      <p className="m-0 border-t border-seam px-5 py-2.5 text-[13px] leading-relaxed text-muted">
+        Re-scored under today&apos;s decision rules: every verdict is unchanged.
+      </p>
+    );
+  }
   const live = operatorCounts(summary.confusion);
   const now = operatorCounts(replay.confusion);
-  const lr = summary.reject;
-  const rr = replay.reject;
   const rows = [
-    { key: "recall", label: "Metal recall", live: ratio(lr.recall), now: ratio(rr.recall) },
-    { key: "precision", label: "Metal precision", live: ratio(lr.precision), now: ratio(rr.precision) },
+    { key: "recall", label: "Metal rejected", live: share(summary.reject.tp, summary.reject.tp + summary.reject.fn), now: share(replay.reject.tp, replay.reject.tp + replay.reject.fn) },
     { key: "clean", label: "Clean loads passed", live: share(live.cleanPassed, live.cleanN), now: share(now.cleanPassed, now.cleanN) },
-    { key: "review", label: "Sent to operator", live: share(live.escalated, live.graded), now: share(now.escalated, now.graded) },
+    { key: "review", label: "Sent to an operator", live: share(live.escalated, live.graded), now: share(now.escalated, now.graded) },
   ];
   return (
-    <div className="border-t border-seam px-4 py-3">
+    <div className="border-t border-seam px-5 py-3">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-raised">
-            <TableHead className="px-2 sm:px-4" />
+            <TableHead className="px-2 sm:px-4">
+              <span className="sr-only">Measure</span>
+            </TableHead>
             <TableHead className="px-1.5 text-right sm:px-4">Live run</TableHead>
-            <TableHead className="px-1.5 text-right sm:px-4">Current rules</TableHead>
+            <TableHead className="px-1.5 text-right sm:px-4">Today&apos;s rules</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -323,45 +416,47 @@ function ReplayTable({
           ))}
         </TableBody>
       </Table>
-      <p className="figure m-0 mt-2 text-[12px] text-faint">
-        Replay: recorded model outputs scored by today&apos;s rules — not a new measurement.
+      <p className="m-0 mt-2 text-[12px] text-faint">
+        Replay: recorded model outputs scored by today&apos;s rules, not a new measurement.
       </p>
     </div>
   );
 }
 
-/** Clean loads passed, loads sent to a person and escalate-expected loads escalated. */
+/** Clean loads passed and loads sent to a person. */
 function operatorCounts(confusion: Confusion) {
-  const clean = confusion.accept;
-  const esc = confusion.escalate;
   const graded = LABELS.reduce(
     (sum, row) => sum + confusion[row].reject + confusion[row].escalate + confusion[row].accept,
     0,
   );
   const escalated = LABELS.reduce((sum, row) => sum + confusion[row].escalate, 0);
   return {
-    cleanPassed: clean.accept,
-    cleanN: clean.reject + clean.escalate + clean.accept + clean.error,
+    cleanPassed: confusion.accept.accept,
+    cleanN: rowTotal(confusion.accept),
     escalated,
     graded,
-    escalateCaught: esc.escalate,
-    escalateN: esc.reject + esc.escalate + esc.accept + esc.error,
   };
 }
 
 function share(k: number, n: number): string {
-  return n > 0 ? ratio(k / n) : "—";
+  return n > 0 ? `${k} of ${n}` : "—";
+}
+
+/** Columns that are zero in every row say nothing: they are left out. */
+function liveColumns(rows: Confusion["reject"][]): (typeof COLUMNS)[number][] {
+  return COLUMNS.filter((c) => c !== "error" || rows.some((r) => r.error > 0));
 }
 
 /** Confusion matrix, used inside the method detail. */
 function ConfusionTable({ confusion }: { confusion: Confusion }) {
+  const cols = liveColumns(LABELS.map((l) => confusion[l]));
   return (
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-raised">
-          <TableHead className="px-2 sm:px-4">Expected</TableHead>
-          {COLUMNS.map((c) => (
-            <TableHead key={c} className="px-1.5 text-right text-[11px] tracking-[0.4px] sm:px-4 sm:text-[12px] sm:tracking-[1.2px]">
+          <TableHead className="px-2 sm:px-4">Photo set</TableHead>
+          {cols.map((c) => (
+            <TableHead key={c} className="px-1.5 text-right sm:px-4">
               {COLUMN_LABEL[c]}
             </TableHead>
           ))}
@@ -370,15 +465,14 @@ function ConfusionTable({ confusion }: { confusion: Confusion }) {
       <TableBody>
         {LABELS.map((expected) => (
           <TableRow key={expected} className="hover:bg-transparent">
-            <TableCell className="px-2 font-semibold text-ink sm:px-4">{COLUMN_LABEL[expected]}</TableCell>
-            {COLUMNS.map((c) => (
+            <TableCell className="px-2 text-[12.5px] font-semibold text-ink sm:px-4">{ROW_LABEL[expected]}</TableCell>
+            {cols.map((c) => (
               <TableCell
                 key={c}
-                className={
-                  c === expected
-                    ? "figure px-1.5 text-right text-[13px] font-semibold text-ink sm:px-4"
-                    : "figure px-1.5 text-right text-[13px] text-muted sm:px-4"
-                }
+                className={cn(
+                  "figure px-1.5 text-right text-[13px] sm:px-4",
+                  c === expected ? "font-semibold text-ink" : "text-muted",
+                )}
               >
                 {confusion[expected][c]}
               </TableCell>
@@ -397,92 +491,90 @@ function CategoryTable({ summary }: { summary: BenchmarkSummary }) {
       LABELS.indexOf(expectedFor(a)) - LABELS.indexOf(expectedFor(b)) || a.localeCompare(b),
   );
   if (rows.length === 0) return null;
+  const cols = liveColumns(rows.map(([, cell]) => cell));
   return (
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-raised">
           <TableHead className="px-2 sm:px-4">Category</TableHead>
-          <TableHead className="hidden px-2 sm:table-cell sm:px-4">Expected</TableHead>
-          {COLUMNS.map((c) => (
-            <TableHead key={c} className="px-1.5 text-right text-[11px] tracking-[0.4px] sm:px-4 sm:text-[12px] sm:tracking-[1.2px]">
+          <TableHead className="hidden px-2 sm:table-cell sm:px-4">Should</TableHead>
+          {cols.map((c) => (
+            <TableHead key={c} className="px-1.5 text-right sm:px-4">
               {COLUMN_LABEL[c]}
             </TableHead>
           ))}
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map(([category, cell]) => (
-          <TableRow key={category} className="hover:bg-transparent">
-            <TableCell className="px-2 font-semibold text-ink sm:px-4">{category}</TableCell>
-            <TableCell className="hidden px-2 text-[12.5px] text-muted sm:table-cell sm:px-4">
-              {COLUMN_LABEL[expectedFor(category)]}
-            </TableCell>
-            {COLUMNS.map((c) => (
-              <TableCell key={c} className="figure px-1.5 text-right text-[13px] text-ink sm:px-4">
-                {cell[c]}
+        {rows.map(([category, cell]) => {
+          const expected = expectedFor(category);
+          return (
+            <TableRow key={category} className="hover:bg-transparent">
+              <TableCell className="px-2 font-semibold text-ink sm:px-4">{category}</TableCell>
+              <TableCell className="hidden px-2 text-[12.5px] text-muted sm:table-cell sm:px-4">
+                {COLUMN_LABEL[expected]}
               </TableCell>
-            ))}
-          </TableRow>
-        ))}
+              {cols.map((c) => (
+                <TableCell
+                  key={c}
+                  className={cn(
+                    "figure px-1.5 text-right text-[13px] sm:px-4",
+                    c === expected ? "font-semibold text-ink" : "text-muted",
+                  )}
+                >
+                  {cell[c]}
+                </TableCell>
+              ))}
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
 }
 
-/** Latency, models, method, data — all inside the detail. */
+/** Latency, models, method, data: all inside the detail. */
 function MethodDetail({ summary }: { summary: BenchmarkSummary }) {
+  const facts: { key: string; label: string; value: string; mono?: boolean }[] = [
+    { key: "e2e", label: "Full inspection", value: `p50 ${seconds(summary.total_ms.p50)} · p95 ${seconds(summary.total_ms.p95)}`, mono: true },
+    { key: "vlm", label: "Vision model call", value: `p50 ${seconds(summary.latency_ms.p50)} · p95 ${seconds(summary.latency_ms.p95)}`, mono: true },
+    { key: "vm", label: "Vision model", value: summary.vlm_model ?? "—", mono: true },
+    { key: "lm", label: "Language model", value: summary.llm_model ?? "—", mono: true },
+    { key: "prov", label: "Provider", value: summary.provider ? providerName(summary.provider) : "—" },
+    { key: "n", label: "Photos", value: String(summary.n), mono: true },
+  ];
   return (
-    <div className="flex flex-col gap-4 pt-3">
-      <dl className="m-0 grid grid-cols-1 gap-x-6 text-[12.5px] sm:grid-cols-2">
-        <div className="flex justify-between gap-4 border-b border-seam py-2">
-          <dt className="text-muted">End to end</dt>
-          <dd className="figure m-0 text-ink">
-            p50 {seconds(summary.total_ms.p50)} · p95 {seconds(summary.total_ms.p95)}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-seam py-2">
-          <dt className="text-muted">Vision model call</dt>
-          <dd className="figure m-0 text-ink">
-            p50 {seconds(summary.latency_ms.p50)} · p95 {seconds(summary.latency_ms.p95)}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-seam py-2">
-          <dt className="text-muted">Vision model</dt>
-          <dd className="figure m-0 text-ink">{summary.vlm_model ?? "—"}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-seam py-2">
-          <dt className="text-muted">Language model</dt>
-          <dd className="figure m-0 text-ink">{summary.llm_model ?? "—"}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-seam py-2">
-          <dt className="text-muted">Provider</dt>
-          <dd className="m-0 text-ink">
-            {summary.provider ? providerName(summary.provider) : "—"}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-seam py-2">
-          <dt className="text-muted">Images</dt>
-          <dd className="figure m-0 text-ink">{summary.n}</dd>
-        </div>
+    <div className="flex flex-col gap-5 pt-3">
+      <dl className="m-0 grid grid-cols-1 gap-x-8 text-[12.5px] sm:grid-cols-2">
+        {facts.map((f) => (
+          <div key={f.key} className="flex justify-between gap-4 border-b border-seam py-2">
+            <dt className="text-muted">{f.label}</dt>
+            <dd className={cn("m-0 text-right break-all text-ink", f.mono ? "figure" : null)}>{f.value}</dd>
+          </div>
+        ))}
       </dl>
       <div>
-        <p className="smallcaps m-0 mb-2">Confusion matrix</p>
+        <h3 className="smallcaps m-0 mb-2">Vision model alone: outcome by photo set</h3>
         <ConfusionTable confusion={summary.confusion} />
       </div>
       <div>
-        <p className="smallcaps m-0 mb-2">By category</p>
+        <h3 className="smallcaps m-0 mb-2">By category</h3>
         <CategoryTable summary={summary} />
       </div>
-      <p className="m-0 text-[12px] leading-relaxed text-muted">
-        Images: RealWaste (Single, Iranmanesh, Raad),{" "}
+      <p className="m-0 max-w-[80ch] text-[12px] leading-relaxed text-muted">
+        Photos: RealWaste (Single, Iranmanesh, Raad),{" "}
         <a href={DATASET_URL} className="text-amber underline underline-offset-2">
           UCI ML Repository
         </a>
-        . Licence: UCI lists CC BY 4.0; the dataset README says CC BY-NC-SA 4.0 — the stricter
+        . Licence: UCI lists CC BY 4.0; the dataset README says CC BY-NC-SA 4.0, so the stricter
         terms are assumed.{" "}
         <a href="/benchmark/manifest.csv" className="text-amber underline underline-offset-2">
           Manifest
         </a>
+        . Try one truck yourself in the{" "}
+        <Link href="/app" className="text-amber underline underline-offset-2">
+          Inspection console
+        </Link>
         .
       </p>
     </div>

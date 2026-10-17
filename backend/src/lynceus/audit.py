@@ -473,6 +473,54 @@ class GasInput(_StrictModel):
         return validate_timestamp(v, "inputs.gas.measured_at_utc")
 
 
+#: Closed set of observation states (lynceus.observations.STATUSES).
+OBSERVATION_STATUSES = ("ok", "poor", "mismatch", "not_installed", "unavailable")
+
+
+class Observation(_StrictModel):
+    """One gate sensor reading (lynceus.observations): measured, computed,
+    simulated (``simulated`` true) or a plug-in that is not installed."""
+
+    source: str
+    kind: str
+    value: Any = None
+    unit: Optional[str] = None
+    uncertainty: Optional[float] = None
+    status: str
+    measured_at_utc: str
+    sha256: Optional[str] = None
+    simulated: bool = False
+    note: Optional[str] = None
+    frame: Optional[int] = None
+
+    @field_validator("status")
+    @classmethod
+    def _v_status(cls, v: str) -> str:
+        return _validate_closed_enum(v, OBSERVATION_STATUSES, "inputs.observations[].status")
+
+    @field_validator("measured_at_utc")
+    @classmethod
+    def _v_ts(cls, v: str) -> str:
+        return validate_timestamp(v, "inputs.observations[].measured_at_utc")
+
+    @field_validator("sha256")
+    @classmethod
+    def _v_sha(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _validate_sha256_field(v, "inputs.observations[].sha256")
+
+    @field_validator("uncertainty")
+    @classmethod
+    def _v_uncertainty(cls, v: Optional[float]) -> Optional[float]:
+        if v is None:
+            return v
+        return _validate_finite_number(v, "inputs.observations[].uncertainty")
+
+    @field_validator("frame")
+    @classmethod
+    def _v_frame(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_frame(v, "inputs.observations[].frame")
+
+
 class InspectionInputs(_StrictModel):
     truck_id: str
     photo: PhotoInput
@@ -483,6 +531,12 @@ class InspectionInputs(_StrictModel):
     #: The uploaded waybill document photo, when one was attached: evidence
     #: only (no OCR is performed on it). Reuses the photo validation.
     waybill_photo: Optional[PhotoInput] = None
+    #: Extra camera angles of the load (at most two, stored as photo-2.jpg
+    #: and photo-3.jpg); absent on single-photo and older records.
+    extra_photos: Optional[List[PhotoInput]] = None
+    #: Gate sensor observations (image quality, scale, plate camera, ...);
+    #: absent on records written before the observation framework.
+    observations: Optional[List[Observation]] = None
 
     @field_validator("truck_id")
     @classmethod
@@ -503,6 +557,19 @@ def _validate_latency_ms(value: Optional[float], field: str) -> Optional[float]:
     return value
 
 
+#: Main photo plus at most two extra camera angles.
+MAX_FRAMES = 3
+
+
+def _validate_frame(value: Optional[int], field: str) -> Optional[int]:
+    """A camera-angle index: absent, or 0..MAX_FRAMES-1."""
+    if value is None:
+        return value
+    if isinstance(value, bool) or not 0 <= value < MAX_FRAMES:
+        raise _err(_ERR_FORMAT, field, f"must be 0..{MAX_FRAMES - 1} (got {value!r})")
+    return value
+
+
 class ContaminantBox(_StrictModel):
     """One localised contaminant: normalised image coordinates in 0..1,
     top-left ``(x0, y0)`` strictly before bottom-right ``(x1, y1)``."""
@@ -512,6 +579,14 @@ class ContaminantBox(_StrictModel):
     y0: float
     x1: float
     y1: float
+    #: Which camera angle the box is on (0 = the main photo); only set on
+    #: multi-angle inspections.
+    frame: Optional[int] = None
+
+    @field_validator("frame")
+    @classmethod
+    def _v_frame(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_frame(v, "ai_outputs.vlm.boxes[].frame")
 
     @field_validator("x0", "y0", "x1", "y1")
     @classmethod
@@ -576,6 +651,26 @@ class ActionStep(_StrictModel):
         return v
 
 
+class VLMVote(_StrictModel):
+    """One vision read's own answer, before the majority vote merged it."""
+
+    hard: List[str] = []
+    light: List[str] = []
+    confidence: float
+    #: Camera angle of the read (multi-angle inspections only).
+    frame: Optional[int] = None
+
+    @field_validator("confidence")
+    @classmethod
+    def _v_conf(cls, v: float) -> float:
+        return _validate_confidence(v, "ai_outputs.vlm.votes[].confidence")
+
+    @field_validator("frame")
+    @classmethod
+    def _v_frame(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_frame(v, "ai_outputs.vlm.votes[].frame")
+
+
 class VLMOutput(_StrictModel):
     model: str
     model_version: str
@@ -590,6 +685,9 @@ class VLMOutput(_StrictModel):
     #: "<model>: <error> after <s> s"); absent when the primary answered and
     #: on records written before the fallback chain existed.
     fallback_from: Optional[List[str]] = None
+    #: Every read's own answer (``vlm_votes`` reads, or one per angle);
+    #: absent on records written before votes were kept.
+    votes: Optional[List[VLMVote]] = None
 
     @field_validator("latency_ms")
     @classmethod
@@ -662,6 +760,13 @@ class DetectorBox(_StrictModel):
     label: str
     confidence: float
     box: List[float]
+    #: Camera angle of the box (0 = the main photo); multi-angle only.
+    frame: Optional[int] = None
+
+    @field_validator("frame")
+    @classmethod
+    def _v_frame(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_frame(v, "ai_outputs.detector.boxes[].frame")
 
     @field_validator("confidence")
     @classmethod
@@ -726,6 +831,9 @@ class AIOutputs(_StrictModel):
     llm: LLMOutput
     gas: Optional[GasOutput] = None
     detector: Optional[DetectorOutput] = None
+    #: Each camera angle's own vision answer, when extra angles were sent
+    #: (``vlm`` is then their merge); absent on single-photo records.
+    vlm_frames: Optional[List[VLMOutput]] = None
 
 
 class SuitabilityOutput(_StrictModel):

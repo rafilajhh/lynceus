@@ -24,6 +24,8 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import hashlib
+import inspect
 import json
 import logging
 import math
@@ -33,7 +35,7 @@ import time
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 import httpx
 
@@ -41,6 +43,7 @@ from lynceus import detector
 from lynceus import gas_ingest
 from lynceus import gas_twin
 from lynceus.config import Settings, get_settings, provider_for_url
+from lynceus.decision import HARD_CONTAMINANT_CONFIDENCE
 from lynceus.vision_boxes import parse_locations
 
 
@@ -51,6 +54,61 @@ VLM_TIMEOUT_S = 90.0
 LLM_TIMEOUT_S = 45.0
 ASSIST_TIMEOUT_S = 30.0
 EXPLAIN_TIMEOUT_S = ASSIST_TIMEOUT_S
+#: One waybill read, fallbacks included (``POST /waybill/read``).
+DOCUMENT_TIMEOUT_S = 45.0
+#: The warm-up ping (``POST /warmup``): one token, never worth a long wait.
+WARMUP_TIMEOUT_S = 20.0
+
+#: Stage progress callback ``on_progress(stage, status, data)`` behind
+#: ``POST /inspect/stream``.  Called from worker threads; must not block.
+ProgressFn = Callable[[str, str, Optional[Dict[str, Any]]], None]
+
+
+def progress_emitter(on_progress: Optional[ProgressFn]) -> ProgressFn:
+    """``on_progress`` made safe to call anywhere: a missing callback is a
+    no-op and a failing one is logged, never raised into the inspection."""
+
+    def emit(stage: str, status: str, data: Optional[Dict[str, Any]] = None) -> None:
+        if on_progress is None:
+            return
+        try:
+            on_progress(stage, status, data)
+        except Exception as exc:  # noqa: BLE001 — progress is best-effort
+            _log.warning("progress callback failed: %s: %s", type(exc).__name__, exc)
+
+    return emit
+
+
+#: Key under which :meth:`VLLMClient._vote_reads` hands the per-read
+#: summaries to :meth:`VLLMClient._vlm_result` (never part of raw_output).
+_VOTES_KEY = "__votes__"
+#: Key under which it reports an early-majority decision
+#: (``{votes_used, third_read}``); absent when every read was waited for.
+_EARLY_KEY = "__early_majority__"
+#: ``third_read`` values: the last read came back within the grace window,
+#: did not, or failed inside it.  Either of the last two decides on the
+#: agreeing reads alone.
+THIRD_READ_STATES = ("arrived", "late", "failed")
+
+
+class _ReadProgress:
+    """Counts finished vision reads and reports each as a ``vision_read``
+    stage; shared by the concurrent reads of one inspection."""
+
+    def __init__(self, on_progress: Optional[ProgressFn], total: int) -> None:
+        self._emit = progress_emitter(on_progress)
+        self._total = total
+        self._done = 0
+        self._lock = threading.Lock()
+
+    def read_done(self, parsed: Dict[str, Any], frame: Optional[int] = None) -> None:
+        with self._lock:
+            self._done += 1
+            index = self._done
+        data: Dict[str, Any] = {"index": index, "of": self._total, **vote_summary(parsed)}
+        if frame is not None:
+            data["frame"] = frame
+        self._emit("vision_read", "done", data)
 
 
 class LiveAIUnavailableError(RuntimeError):
@@ -261,6 +319,19 @@ def _clamp01(value: Any, default: float = 0.0) -> float:
     if number != number or number in (float("inf"), float("-inf")):
         return default
     return max(0.0, min(1.0, number))
+
+
+def _strings(value: Any) -> List[str]:
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
+def vote_summary(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    """One vision read as ``{hard, light, confidence}`` (``votes`` entries)."""
+    return {
+        "hard": _strings(parsed.get("hard_contaminants")),
+        "light": _strings(parsed.get("light_contaminants")),
+        "confidence": _clamp01(parsed.get("confidence")),
+    }
 
 
 def _vote_majority(reads: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -556,7 +627,16 @@ class VLLMClient:
             )
         return parsed
 
-    def _vote_reads(self, model: str, messages: list, deadline: float) -> Dict[str, Any]:
+    def _vote_reads(
+        self,
+        model: str,
+        messages: list,
+        deadline: float,
+        *,
+        votes: Optional[int] = None,
+        progress: Optional[_ReadProgress] = None,
+        frame: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """``vlm_votes`` reads of one model, merged by :func:`_vote_majority`.
 
         Token Factory reads are bimodal: identical photos sometimes return
@@ -568,9 +648,14 @@ class VLLMClient:
         about one read of wall time.  The first failed read fails the model
         at once, as a single read would: the chain does not wait for the
         other reads (they end at the deadline and their answers are dropped).
+        ``votes`` overrides the setting (multi-angle frames get one read
+        each); ``progress`` hears of every read that returned.
         """
         # Settings built in code skip the env clamp: never more reads than slots.
-        votes = min(max(1, self._settings.vlm_votes), _VLM_READ_SLOT_COUNT)
+        votes = min(
+            max(1, self._settings.vlm_votes if votes is None else votes),
+            _VLM_READ_SLOT_COUNT,
+        )
         url = self._settings.vllm_vlm_url
         abandoned = threading.Event()
 
@@ -580,12 +665,16 @@ class VLLMClient:
             try:
                 if abandoned.is_set():  # the model already failed: spend nothing
                     raise _deadline_error(self._timeout_s)
-                return self._remaining(deadline)._chat_json(url, model, messages)
+                parsed = self._remaining(deadline)._chat_json(url, model, messages)
             finally:
                 _VLM_READ_SLOTS.release()
+            if progress is not None and not abandoned.is_set():
+                progress.read_done(parsed, frame)
+            return parsed
 
         if votes == 1:
-            return read()
+            parsed = read()
+            return {**parsed, _VOTES_KEY: [vote_summary(parsed)]}
         pool = ThreadPoolExecutor(max_workers=votes, thread_name_prefix="lynceus-vote")
         try:
             reads = [pool.submit(read) for _ in range(votes)]
@@ -595,42 +684,52 @@ class VLLMClient:
                 # A failure that ends the chain (refused key, spent 429s,
                 # timeout) wins over one that would move to the next model.
                 raise next((e for e in errors if not _model_specific_failure(e)), errors[0])
-            return _vote_majority([future.result() for future in reads])
+            answers = [future.result() for future in reads]
+            # Every read's own answer travels with the merge: a minority
+            # sighting the vote dropped is still visible to the rules.
+            return {**_vote_majority(answers), _VOTES_KEY: [vote_summary(a) for a in answers]}
         finally:
             abandoned.set()
             pool.shutdown(wait=False, cancel_futures=True)
 
-    def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
-        if not photo:
-            raise ValueError("VLMClient.vlm requires a base64 photo")
+    @staticmethod
+    def _image_messages(prompt: str, photo: str) -> list:
+        """One user turn: ``prompt`` plus the photo as a data-URI image."""
         # PNG base64 always starts "iVBOR" (the 0x89 'PNG' signature); the
         # API has already admitted only JPEG and PNG.
         mime = "image/png" if photo.startswith("iVBOR") else "image/jpeg"
         data_uri = photo if photo.startswith("data:") else f"data:{mime};base64,{photo}"
-        messages = [
+        return [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": _VLM_PROMPT},
+                    {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": {"url": data_uri}},
                 ],
             }
         ]
-        # VLM_MODEL first, then VLM_FALLBACK_MODELS in order: a shared endpoint
-        # can drop one model ("no available workers") while others still serve.
-        # One wall-clock budget covers the whole chain.  Only a failure of the
-        # model itself (an HTTP error status, an unparseable reply) moves on;
-        # an unreachable endpoint or a spent budget ends the chain.  The model
-        # that answered is reported; the ones that failed are named in
-        # ``fallback_from`` so the audit never hides the switch.
+
+    def _vision_chain(
+        self, read_with: Callable[[str], Dict[str, Any]]
+    ) -> Tuple[Dict[str, Any], str, List[str], float]:
+        """Run ``read_with(model)`` down the vision model chain.
+
+        VLM_MODEL first, then VLM_FALLBACK_MODELS in order: a shared endpoint
+        can drop one model ("no available workers") while others still serve.
+        The caller's ``read_with`` holds the one wall-clock budget of the
+        whole chain.  Only a failure of the model itself (an HTTP error
+        status, an unparseable reply) moves on; an unreachable endpoint or a
+        spent budget ends the chain.  Returns ``(parsed, model, failed,
+        latency_ms)``: the model that answered, and the ones that failed
+        before it, so the audit never hides the switch.
+        """
         models = (self._settings.vlm_model, *self._settings.vlm_fallback_models)
-        deadline = time.monotonic() + self._timeout_s
         failed: List[str] = []
         details: List[str] = []
         for model in models:
             started = time.perf_counter()
             try:
-                parsed = self._vote_reads(model, messages, deadline)
+                parsed = read_with(model)
                 break
             except Exception as exc:  # noqa: BLE001 — next model, else re-raise
                 took = f"{type(exc).__name__} after {time.perf_counter() - started:.1f} s"
@@ -643,17 +742,115 @@ class VLLMClient:
                 raise VisionModelsFailedError(
                     "every vision model tried failed: " + "; ".join(details)
                 ) from exc
-        latency_ms = (time.perf_counter() - started) * 1000.0
-        mode = self._settings.localisation_mode
-        result = self._vlm_result(parsed, model, latency_ms, mode)
+        return parsed, model, failed, (time.perf_counter() - started) * 1000.0
+
+    @property
+    def vision_model(self) -> str:
+        """The vision model tried first (progress events name it)."""
+        return self._settings.vlm_model
+
+    @property
+    def vision_provider(self) -> str:
+        return provider_for_url(self._settings.vllm_vlm_url)
+
+    def vlm(
+        self, photo: Optional[str], on_progress: Optional[ProgressFn] = None
+    ) -> Dict[str, Any]:
+        if not photo:
+            raise ValueError("VLMClient.vlm requires a base64 photo")
+        messages = self._image_messages(_VLM_PROMPT, photo)
+        deadline = time.monotonic() + self._timeout_s
+        votes = min(max(1, self._settings.vlm_votes), _VLM_READ_SLOT_COUNT)
+
+        def read_with(model: str) -> Dict[str, Any]:
+            # A fallback model's reads count again from 1.
+            progress = _ReadProgress(on_progress, votes)
+            return self._vote_reads(model, messages, deadline, progress=progress)
+
+        parsed, model, failed, latency_ms = self._vision_chain(read_with)
+        result = self._vlm_result(parsed, model, latency_ms, self._settings.localisation_mode)
         if failed:
             result["fallback_from"] = failed
         return result
 
+    def vlm_frames(
+        self, photos: List[str], on_progress: Optional[ProgressFn] = None
+    ) -> List[Dict[str, Any]]:
+        """One read per camera angle, concurrent on the shared read slots.
+
+        Each frame runs its own model chain inside one wall-clock budget; the
+        first frame that fails fails the vision stage, as a single read would.
+        """
+        if not photos or not all(photos):
+            raise ValueError("VLMClient.vlm_frames requires base64 photos")
+        deadline = time.monotonic() + self._timeout_s
+        progress = _ReadProgress(on_progress, len(photos))
+        mode = self._settings.localisation_mode
+
+        def one(frame: int, photo: str) -> Dict[str, Any]:
+            messages = self._image_messages(_VLM_PROMPT, photo)
+            parsed, model, failed, latency_ms = self._vision_chain(
+                lambda m: self._vote_reads(
+                    m, messages, deadline, votes=1, progress=progress, frame=frame
+                )
+            )
+            result = self._vlm_result(parsed, model, latency_ms, mode)
+            if failed:
+                result["fallback_from"] = failed
+            return result
+
+        pool = ThreadPoolExecutor(max_workers=len(photos), thread_name_prefix="lynceus-frame")
+        try:
+            futures = [pool.submit(one, i, p) for i, p in enumerate(photos)]
+            done, _ = wait(futures, return_when=FIRST_EXCEPTION)
+            errors = [f.exception() for f in done if f.exception() is not None]
+            if errors:
+                raise errors[0]
+            return [f.result() for f in futures]
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def read_document(
+        self,
+        image: str,
+        prompt: str,
+        *,
+        budget_s: float = DOCUMENT_TIMEOUT_S,
+        max_tokens: int = 1024,
+    ) -> Tuple[Dict[str, Any], str, List[str], float]:
+        """One JSON read of a document photo (no voting) down the vision chain.
+
+        Used for the waybill.  Takes no vision read slot: a waybill read must
+        never queue behind an inspection's votes (the caller caps its own
+        concurrency).  Returns ``(parsed, model, failed, latency_ms)`` like
+        :meth:`_vision_chain`; raises like :meth:`vlm`.
+        """
+        if not image:
+            raise ValueError("VLLMClient.read_document requires a base64 image")
+        client = self._scoped(budget_s)
+        messages = self._image_messages(prompt, image)
+        url = self._settings.vllm_vlm_url
+        deadline = time.monotonic() + client._timeout_s
+        return client._vision_chain(
+            lambda m: client._remaining(deadline)._chat_json(url, m, messages, max_tokens)
+        )
+
+    def warm(self, budget_s: float = WARMUP_TIMEOUT_S) -> None:
+        """A one-token text chat to the primary vision model (wakes a cold
+        worker before the first truck).  Raises like any chat call."""
+        self._scoped(budget_s)._chat_once(
+            self._settings.vllm_vlm_url,
+            self._settings.vlm_model,
+            [{"role": "user", "content": "ping"}],
+            max_tokens=1,
+        )
+
     def _vlm_result(
         self, parsed: Dict[str, Any], model: str, latency_ms: float, mode: str
     ) -> Dict[str, Any]:
-        return {
+        parsed = dict(parsed)
+        votes = parsed.pop(_VOTES_KEY, None)
+        result = {
             "detected": {
                 "contamination": parsed.get("contamination", "unknown"),
                 "moisture": parsed.get("moisture"),
@@ -670,6 +867,9 @@ class VLLMClient:
             "provider": provider_for_url(self._settings.vllm_vlm_url),
             "latency_ms": latency_ms,
         }
+        if votes is not None:
+            result["votes"] = votes
+        return result
 
     def llm(self, manifest_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
         context_block = json.dumps(context, sort_keys=True, default=str)
@@ -826,9 +1026,18 @@ class StubAIClients:
             self._demo_case = "green"
         self.provenance = provenance
 
-    def vlm(self, photo: Optional[str]) -> Dict[str, Any]:
+    vision_model = "stub-vlm"
+    vision_provider = None
+
+    def vlm(
+        self, photo: Optional[str], on_progress: Optional[ProgressFn] = None
+    ) -> Dict[str, Any]:
         script = _STUB_VLM[self._demo_case]
+        read = {**script["detected"], "confidence": script["confidence"]}
+        _ReadProgress(on_progress, 1).read_done(read)
         return {
+            # The scripted answer counts as one read.
+            "votes": [vote_summary(read)],
             "detected": dict(script["detected"]),
             "confidence": script["confidence"],
             "boxes": parse_locations(script.get("locations", []), "zone"),
@@ -906,8 +1115,44 @@ def resolve_clients(
     if not settings.allow_stub_fallback:
         raise LiveAIUnavailableError(f"{reason}; stub fallback disabled")
     return StubAIClients(
-        provenance="stub_fallback_live_error", fallback_reason=reason
+        demo_case=stub_case_for(payload),
+        provenance="stub_fallback_live_error",
+        fallback_reason=reason,
     )
+
+
+#: The bundled demo load photos (web/public/demo, AI-generated) and the stub
+#: script that tells their story, by sha256 of the exact file.
+_DEMO_PHOTO_CASES = {
+    "ee94de8be36e1cd288c0d8b8a206e997765850e140ce29b22f423d4d0dc3700b": "red",  # t-metal-1
+    "b2ddbcb9ca800b387379070b5afe4c8deea912ae1900fd58fef6630c81dc63c5": "red",  # t-metal-2
+    "b1344f36592ad0009def53c240084ee6b4f03e471ec0c41da8bd7a2cc61835d1": "green",  # t-clean-1
+    "9d9892e979faf8063de1e42195adacfdf22c246567c060e24e2354e50a5fb559": "green",  # t-clean-2
+    "7dab3b77d44f184a05a81c31287f34b4b3805d929478067db4c349c758898bc7": "amber",  # t-ambiguous-1
+    "a7d4d48b1a4be099044b179218bd93fa8e9d4ecbcd024f9c8017d4311fe73862": "amber",  # t-ambiguous-2
+}
+#: Their filename prefixes: the console downscales photos over 1280 px, which
+#: changes the bytes of these 1448 px files but keeps their names.
+_DEMO_PHOTO_PREFIXES = (("t-metal-", "red"), ("t-clean-", "green"), ("t-ambiguous-", "amber"))
+
+
+def stub_case_for(payload: Dict[str, Any]) -> Optional[str]:
+    """The stub script for an offline inspection: ``demo_case`` when set,
+    else the script of a bundled demo photo (by digest, then by filename),
+    else ``None`` (the clean script).  The stub reads no image: this only
+    keeps the bundled demo trucks telling their own story offline."""
+    if payload.get("demo_case"):
+        return str(payload["demo_case"])
+    photo = _photo_bytes(payload.get("photo_base64") or payload.get("photo"))
+    if photo:
+        case = _DEMO_PHOTO_CASES.get(hashlib.sha256(photo).hexdigest())
+        if case:
+            return case
+    name = str(payload.get("photo_filename") or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    for prefix, case in _DEMO_PHOTO_PREFIXES:
+        if name.startswith(prefix):
+            return case
+    return None
 
 
 def _assist_reachable(
@@ -972,8 +1217,9 @@ def collect_gate_gas(
     Called by the API *before* the audit record is begun so the readings are
     frozen into the begin-time inputs (audit invariant 3).  The result is
     then handed to :func:`run_inspection` via ``precomputed_gas`` so the
-    sensor/twin never runs a second time (a live sensor could otherwise
-    return different values and break the frozen snapshot).
+    sensor never runs a second time (a live sensor could otherwise return
+    different values and break the frozen snapshot).  ``None`` when no live
+    sensor answered.
     """
     return _gate_gas_readings(payload, record_id)
 
@@ -981,20 +1227,17 @@ def collect_gate_gas(
 def _gate_gas_readings(
     payload: Dict[str, Any], record_id: Optional[str]
 ) -> Optional[Dict[str, Any]]:
-    """Gas readings for this inspection: live instrument first, twin second.
+    """Gas readings for this inspection, from a live gate instrument only.
 
     A configured, reachable sensor gateway (:mod:`lynceus.gas_ingest`,
-    env ``LYNCEUS_GAS_SENSOR_URL`` — e.g. a TDLAS gate
-    monitor) provides *measured* values and is stamped
-    ``sentinel_gate_sensor``.  Otherwise the physics digital twin runs
-    and is stamped ``digital_twin``.  Either way the audit record states
-    which it was; a measurement never masquerades as a simulation and
-    vice versa.
+    env ``LYNCEUS_GAS_SENSOR_URL`` — e.g. a TDLAS gate monitor) provides
+    *measured* values stamped ``sentinel_gate_sensor``.  Without one the
+    inspection has no gas data (``None``; the record says ``not_measured``):
+    the digital twin ran on operator-typed numbers, so it no longer feeds a
+    gate verdict.  It stays available through ``/assess`` and
+    :func:`_simulate_gas_readings`.
     """
-    live = gas_ingest.fetch_live_readings()
-    if live is not None:
-        return live
-    return _simulate_gas_readings(payload, record_id)
+    return gas_ingest.fetch_live_readings()
 
 
 def _simulate_gas_readings(
@@ -1086,6 +1329,145 @@ def safe_detect(
         return None
 
 
+
+
+def _accepts_progress(fn: Any) -> bool:
+    """True when ``fn`` takes ``on_progress`` (test doubles often do not)."""
+    try:
+        return "on_progress" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _read_frames(
+    ai_clients: AIClients, frames: List[Optional[str]], on_progress: Optional[ProgressFn]
+) -> List[Dict[str, Any]]:
+    """The vision answer per frame: ``vlm_votes`` voted reads for one photo,
+    one read per angle for two or three (concurrent when the client can)."""
+    if len(frames) <= 1:
+        photo = frames[0] if frames else None
+        if _accepts_progress(ai_clients.vlm):
+            return [ai_clients.vlm(photo, on_progress=on_progress)]
+        return [ai_clients.vlm(photo)]
+    vlm_frames = getattr(ai_clients, "vlm_frames", None)
+    if vlm_frames is not None:
+        return vlm_frames(frames, on_progress=on_progress)
+    progress = _ReadProgress(on_progress, len(frames))
+    results = []
+    for index, photo in enumerate(frames):
+        result = ai_clients.vlm(photo)
+        progress.read_done(
+            {**(result.get("detected") or {}), "confidence": result.get("confidence")},
+            index,
+        )
+        results.append(result)
+    return results
+
+
+def merge_frame_reads(frames: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """One vision result from the reads of several camera angles.
+
+    * hard contaminants: the union over frames read at/above
+      ``HARD_CONTAMINANT_CONFIDENCE`` (a metal pipe seen from one side only
+      is still in the load);
+    * light contaminants: the union; moisture: the wettest frame;
+    * confidence: the lowest frame confidence, except when a hard
+      contaminant was found, then the lowest confidence among the frames
+      that found one (an unreadable second angle must not hide a confident
+      sighting in the first);
+    * boxes and ``votes`` (each frame's reads) keep their ``frame`` index
+      (0 = the main photo).
+    """
+    if len(frames) == 1:
+        return frames[0]
+    hard: set = set()
+    light: List[str] = []
+    moistures: List[float] = []
+    confidences: List[float] = []
+    hard_confidences: List[float] = []
+    contamination: List[str] = []
+    boxes: List[Dict[str, Any]] = []
+    fallback_from: List[str] = []
+    votes: List[Dict[str, Any]] = []
+    for index, result in enumerate(frames):
+        detected = result.get("detected") or {}
+        confidence = _clamp01(result.get("confidence"))
+        confidences.append(confidence)
+        frame_hard = [h for h in detected.get("hard_contaminants") or [] if isinstance(h, str)]
+        if frame_hard and confidence >= HARD_CONTAMINANT_CONFIDENCE:
+            hard.update(frame_hard)
+            hard_confidences.append(confidence)
+        for name in detected.get("light_contaminants") or []:
+            if isinstance(name, str) and name not in light:
+                light.append(name)
+        moisture = detected.get("moisture")
+        if isinstance(moisture, (int, float)) and not isinstance(moisture, bool):
+            moistures.append(_clamp01(moisture))
+        text = str(detected.get("contamination") or "").strip()
+        if text and text not in contamination:
+            contamination.append(text)
+        boxes += [{**box, "frame": index} for box in result.get("boxes") or []]
+        votes += [{**vote, "frame": index} for vote in result.get("votes") or []]
+        fallback_from += [f for f in result.get("fallback_from") or [] if f not in fallback_from]
+    if len(contamination) > 1:
+        contamination = [c for c in contamination if c.lower() != "none detected"]
+    models = list(dict.fromkeys(str(r.get("model", "")) for r in frames))
+    latencies = [r["latency_ms"] for r in frames if isinstance(r.get("latency_ms"), (int, float))]
+    merged: Dict[str, Any] = {
+        "detected": {
+            "contamination": "; ".join(contamination) or "none detected",
+            "moisture": max(moistures) if moistures else None,
+            "hard_contaminants": sorted(hard),
+            "light_contaminants": light,
+        },
+        "confidence": min(hard_confidences) if hard else min(confidences),
+        "boxes": boxes,
+        "localisation": frames[0].get("localisation"),
+        # Different answering models are all named: a mixed answer is
+        # never passed off as the benchmarked model's.
+        "model": "+".join(models),
+        "model_version": "+".join(
+            dict.fromkeys(str(r.get("model_version", "")) for r in frames)
+        ),
+        "raw_output": json.dumps([r.get("raw_output") for r in frames]),
+        "provenance": frames[0].get("provenance"),
+        "provider": frames[0].get("provider"),
+        "latency_ms": max(latencies) if latencies else None,
+    }
+    if fallback_from:
+        merged["fallback_from"] = fallback_from
+    if votes:
+        merged["votes"] = votes
+    return merged
+
+
+def merge_frame_detections(
+    results: List[Optional[Dict[str, Any]]], settings: Settings
+) -> Optional[Dict[str, Any]]:
+    """One detector block from per-frame runs; boxes keep their ``frame``.
+
+    ``None`` when no frame was read (disabled or failed everywhere).
+    """
+    if len(results) == 1:
+        return results[0]
+    present = [(i, r) for i, r in enumerate(results) if r is not None]
+    if not present:
+        return None
+    first = present[0][1]
+    thresholds = first.get("thresholds") or {}
+    latencies = [r["latency_ms"] for _, r in present if isinstance(r.get("latency_ms"), (int, float))]
+    return detector.summarize(
+        [{**box, "frame": i} for i, r in present for box in r.get("boxes") or []],
+        sum(latencies) if latencies else None,
+        float(thresholds.get("hard", settings.detector_hard_conf)),
+        float(thresholds.get("light", settings.detector_light_conf)),
+        escalate_light=bool(thresholds.get("escalate_light", settings.detector_escalate_light)),
+        model=str(first.get("model", detector.MODEL_NAME)),
+        model_sha256=first.get("model_sha256"),
+        runtime=str(first.get("runtime", detector.RUNTIME)),
+    )
+
+
 def run_inspection(
     payload: Dict[str, Any],
     ai_clients: AIClients,
@@ -1094,42 +1476,49 @@ def run_inspection(
     precomputed_gas: Any = _GAS_NOT_SUPPLIED,
     settings: Optional[Settings] = None,
     precomputed_detector: Any = _DETECTOR_NOT_SUPPLIED,
+    on_progress: Optional[ProgressFn] = None,
 ) -> Dict[str, Any]:
-    """Run the VLM + LLM + detector + gas-twin stages for one inspection payload.
+    """Run the VLM + LLM + detector stages for one inspection payload.
 
     Args:
         payload: The raw ``/inspect`` request payload (``truck_id``,
-            ``demo_case``, ``photo_base64``, ``manifest_text``, weights, ...).
+            ``demo_case``, ``photo_base64``, ``extra_photos_base64``,
+            ``manifest_text``, weights, ...).
         ai_clients: A live :class:`VLLMClient` or a :class:`StubAIClients`.
-        record_id: The audit record identity — part of the deterministic
-            noise seed of the gas twin, so the same truck + record always
-            reproduce the same readings.
+        record_id: The audit record identity (kept for callers; the gas
+            channel no longer needs it).
         precomputed_gas: Gas already collected by the API (see
             :func:`collect_gate_gas`).  The default sentinel means "collect
             here"; an explicit value (including ``None``) is used as-is and
             never triggers another collection.
         settings: Detector configuration (default: :func:`get_settings`).
-        precomputed_detector: A detector result the caller already has (the
-            default sentinel means "run it here when a photo is present").
+        precomputed_detector: A detector result for the main photo the
+            caller already has (the default sentinel means "run it here when
+            a photo is present").
+        on_progress: Optional stage callback (``detector``, ``vision``,
+            ``vision_read``, ``waybill_audit``); see ``POST /inspect/stream``.
 
     Returns:
         ``{"vlm": ..., "llm": ..., "gas": ..., "detector": ...,
-        "provenance": "live"|"stub"}``.  ``detector`` is the CPU detector's
-        second opinion (:mod:`lynceus.detector`) or ``None`` when it did not
-        run (disabled, no photo bytes, or it failed: logged, never raised).
+        "provenance": "live"|"stub"}`` plus ``vlm_frames`` (each angle's own
+        answer) when extra camera angles were sent.  With two or three
+        frames the detector runs per frame and the vision reads are merged
+        by :func:`merge_frame_reads`; boxes carry their ``frame`` index.
+        ``detector`` is the CPU detector's second opinion
+        (:mod:`lynceus.detector`) or ``None`` when it did not run (disabled,
+        no photo bytes, or it failed: logged, never raised).
         A live failure with stub fallback disabled returns provenance
         ``"detector_only_degraded"`` (``vlm``/``llm`` None, ``failed_stage``
         ``"vlm"`` or ``"llm"`` naming the call that failed) when the detector
         answered, and raises :class:`LiveAIUnavailableError` otherwise.
-        ``gas`` carries the digital-twin gate readings (see
-        :mod:`lynceus.gas_twin`) or ``None`` when the twin could not run
-        (incomplete batch description or engine unavailable).  When the
-        live client raises, the call falls back to the stub for the *same*
-        payload and reports ``provenance: "stub_fallback_live_error"`` with
-        the original error message — the stub result is marked honestly,
-        never passed off as live output.
+        ``gas`` carries a live gate sensor's readings or ``None`` (no
+        sensor).  When the live client raises, the call falls back to the
+        stub for the *same* payload and reports ``provenance:
+        "stub_fallback_live_error"`` with the original error message — the
+        stub result is marked honestly, never passed off as live output.
     """
     payload = dict(payload or {})
+    emit = progress_emitter(on_progress)
     gas_result = (
         _gate_gas_readings(payload, record_id)
         if precomputed_gas is _GAS_NOT_SUPPLIED
@@ -1146,34 +1535,105 @@ def run_inspection(
     }
     manifest_text = str(payload.get("manifest_text") or "")
     photo = payload.get("photo_base64") or payload.get("photo")
+    # Extra camera angles count only beside a main photo.
+    frames: List[Optional[str]] = [photo]
+    if photo:
+        frames += [p for p in payload.get("extra_photos_base64") or [] if p]
 
     # The CPU detector reads the real photo bytes only: a scripted demo case
     # without a photo stays exactly as scripted.
-    photo_bytes = _photo_bytes(photo)
+    frame_bytes = [_photo_bytes(p) for p in frames]
+    have_precomputed = precomputed_detector is not _DETECTOR_NOT_SUPPLIED
     detector_result: Optional[Dict[str, Any]] = (
-        precomputed_detector if precomputed_detector is not _DETECTOR_NOT_SUPPLIED else None
+        precomputed_detector if have_precomputed else None
+    )
+    # Scripted demo requests never queue for the detector and use at most
+    # one of its run slots, so live inspections always keep one.
+    wait_for_slot = not payload.get("demo_case")
+
+    def detect(data: bytes) -> Optional[Dict[str, Any]]:
+        if not data:
+            return None
+        if wait_for_slot:
+            return safe_detect(data, settings)
+        return safe_detect(data, settings, wait_for_slot=False)
+
+    def detect_frames() -> Optional[Dict[str, Any]]:
+        results = [
+            precomputed_detector if index == 0 and have_precomputed else detect(data)
+            for index, data in enumerate(frame_bytes)
+        ]
+        return merge_frame_detections(results, settings)
+
+    def detector_done(result: Optional[Dict[str, Any]]) -> None:
+        if result is None:
+            emit("detector", "skipped")
+            return
+        emit(
+            "detector",
+            "done",
+            {
+                "labels": sorted(
+                    set(result.get("hard_contaminants") or [])
+                    | set(result.get("light_contaminants") or [])
+                ),
+                "latency_ms": result.get("latency_ms"),
+            },
+        )
+
+    def stage_callback(stage: str, describe: Callable[[Any], Optional[Dict[str, Any]]]) -> Callable[[Any], None]:
+        def done(future: Any) -> None:
+            error = future.exception()
+            if error is not None:
+                emit(stage, "failed", {"error": type(error).__name__})
+            else:
+                emit(stage, "done", describe(future.result()))
+
+        return done
+
+    def vision_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        merged = merge_frame_reads(results)
+        return {"model": merged.get("model"), "latency_ms": merged.get("latency_ms")}
+
+    votes = min(max(1, settings.vlm_votes), _VLM_READ_SLOT_COUNT)
+    emit(
+        "vision",
+        "running",
+        {
+            "model": getattr(ai_clients, "vision_model", None),
+            "provider": getattr(ai_clients, "vision_provider", None),
+            "reads": (votes if isinstance(ai_clients, VLLMClient) else 1)
+            if len(frames) == 1
+            else len(frames),
+            "frames": len(frames),
+        },
     )
 
     with ThreadPoolExecutor(max_workers=3) as pool:
-        # The detector runs beside the model calls (~150 ms on CPU, no network).
+        # The detector runs beside the model calls (~150 ms per frame on
+        # CPU, no network).
         detector_future = None
-        if precomputed_detector is _DETECTOR_NOT_SUPPLIED and photo_bytes:
-            # Scripted demo requests never queue for the detector and use at
-            # most one of its run slots, so live inspections always keep one.
-            detector_future = (
-                pool.submit(safe_detect, photo_bytes, settings, wait_for_slot=False)
-                if payload.get("demo_case")
-                else pool.submit(safe_detect, photo_bytes, settings)
+        if any(frame_bytes[1:]) or (frame_bytes[0] and not have_precomputed):
+            detector_future = pool.submit(detect_frames)
+            detector_future.add_done_callback(
+                lambda f: detector_done(f.result() if f.exception() is None else None)
             )
+        elif have_precomputed:
+            detector_done(detector_result)
         try:
             # The two calls are independent and each takes seconds on a shared
             # endpoint, so run them concurrently; .result() re-raises either error.
-            vlm_future = pool.submit(ai_clients.vlm, photo)
+            vlm_future = pool.submit(_read_frames, ai_clients, frames, on_progress)
+            vlm_future.add_done_callback(stage_callback("vision", vision_summary))
             llm_future = pool.submit(ai_clients.llm, manifest_text, context)
+            llm_future.add_done_callback(
+                stage_callback("waybill_audit", lambda r: {"model": r.get("model")})
+            )
             # Which call failed decides the degraded wording: a vision answer
             # without its waybill check is still discarded, but it did run.
             failed_stage = "vlm"
-            vlm_result = vlm_future.result()
+            vlm_frames = vlm_future.result()
+            vlm_result = merge_frame_reads(vlm_frames)
             failed_stage = "llm"
             llm_result = llm_future.result()
             live_error: Optional[Exception] = None
@@ -1204,7 +1664,8 @@ def run_inspection(
             raise LiveAIUnavailableError(
                 f"live AI failed ({reason}); stub fallback disabled"
             ) from exc
-        fallback = StubAIClients(demo_case=payload.get("demo_case"))
+        fallback = StubAIClients(demo_case=stub_case_for(payload))
+        emit("vision", "done", {"model": fallback.vision_model, "fallback": True})
         return {
             "vlm": fallback.vlm(photo),
             "llm": fallback.llm(manifest_text, context),
@@ -1221,8 +1682,9 @@ def run_inspection(
         "detector": detector_result,
         "provenance": ai_clients.provenance,
     }
+    if len(vlm_frames) > 1:
+        result["vlm_frames"] = vlm_frames
     fallback_reason = getattr(ai_clients, "fallback_reason", None)
     if fallback_reason:
         result["fallback_reason"] = fallback_reason
     return result
-

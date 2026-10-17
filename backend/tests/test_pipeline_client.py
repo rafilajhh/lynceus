@@ -769,6 +769,9 @@ def test_fast_stream_within_deadline_still_returns(monkeypatch):
 
 def test_deadline_takes_the_existing_fallback_and_fail_closed_paths(monkeypatch):
     monkeypatch.setattr(pipeline.httpx, "stream", _streaming_transport(_trickle()))
+    # The timing is about the model budget: a cold detector load (seconds,
+    # when the bundled ONNX file is present) must not count against it.
+    monkeypatch.setattr(pipeline, "safe_detect", lambda *a, **k: None)
     client = VLLMClient(settings=get_settings(), timeout_s=0.3)
     start = time.perf_counter()
     result = run_inspection({"photo_base64": "aGVsbG8=", "manifest_text": "w"}, client)
