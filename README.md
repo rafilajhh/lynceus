@@ -19,12 +19,40 @@ inspection is sealed as a tamper-evident, SHA-256-digested audit record.
 > **35 of 40** clean RDF loads straight through, with a verdict in about
 > **20 seconds** ([Results](#results)).
 
-**Contents:** [The console](#the-console) ·
+**Contents:** [Intelligent Industry](#built-for-intelligent-industry) ·
+[The console](#the-console) ·
 [AI on AMD Token Factory](#ai-on-amd-token-factory) ·
 [Architecture](#architecture) · [Results](#results) ·
 [Quickstart](#quickstart) ·
 [Configuration](#environment-variables) · [API](#api) · [Tests](#tests) ·
 [Licences](#licences)
+
+## Built for Intelligent Industry
+
+Cement plants replace coal with refuse-derived fuel (RDF), but every truck of
+shredded waste can hide metal, stone or tyres. One piece that reaches the
+shredder or the kiln destroys the machine and stops the line — up to
+**Rp 798 million per incident** (a Rp 350 million industrial shredder plus an
+hour of lost clinker at US$28,000/h). Today a gate officer checks loads by eye
+and keeps no record. Lynceus moves that check to the weighbridge, *before* the
+load is tipped.
+
+| The track asks for | Lynceus delivers |
+|---|---|
+| **A real manufacturing problem** | Fuel contamination at the receiving gate of a cement / waste-to-energy plant: the cause of shredder damage and unplanned kiln stops. |
+| **Detect defects from images** | A vision model on AMD Token Factory reads the load photo, names the contaminants and boxes them; a CPU YOLO26m detector checks the same photo as a second opinion. |
+| **Reduce downtime, increase safety** | Metal is stopped at the gate: 19 of 20 metal loads rejected live, and with the detector second opinion no metal load is let through ([Results](#results)). |
+| **Explain anomalies** | Every verdict says why: what the camera saw, whether it matches the waybill, which of the six gate checks failed. |
+| **Help technicians search manuals** | Pythia answers gate questions only from the plant's SOP and reference documents, with citations. |
+| **Recommend actions** | A next-step card after every verdict, each step citing a gate-SOP clause; one-click supplier notice and supervisor escalation. |
+| **Use resources efficiently** | Clean RDF passes straight through (35 of 40), so good fuel is not wasted on manual checks; waybill OCR fills the register from a photo. |
+| **Results operators understand** | One word per truck — ACCEPT, ESCALATE or REJECT — with the photo, boxes and reasons, sealed in a tamper-evident audit record. |
+| **A measurable improvement** | Per 1,000 trucks (base case of the shipped value model): expected escaped hard loads **6 → 1**, trucks checked by hand **1,000 → ~140**, operator time **−69 %**, expected damage **Rp 239 M → Rp 40 M**, net value **≈ Rp 150 M** after the cost of wrongly rejected loads. |
+| **AMD technology** | All live AI — load vision, waybill OCR, waybill cross-check, Pythia — runs on AMD Token Factory (AMD GPUs). |
+
+Who uses it: **gate operators** (one photo, one verdict, one sealed record),
+**shift supervisors** (review queue, repeat-offender suppliers) and **plant
+managers** (an audit-ready trail of every load).
 
 ## The console
 
